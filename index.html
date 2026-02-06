@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice Blue Wonderland - Joy & Speed</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: radial-gradient(circle at center, #001f3f 0%, #00050a 100%);
+            color: #e0f2fe;
+            font-family: 'Serif', 'Palatino', 'Georgia', serif;
+        }
+        canvas {
+            display: block;
+        }
+        .video-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 180px;
+            height: 135px;
+            border-radius: 50% 20% 50% 20%;
+            overflow: hidden;
+            border: 3px double #0ea5e9;
+            transform: scaleX(-1);
+            opacity: 0.4;
+            z-index: 10;
+            box-shadow: 0 0 20px rgba(14, 165, 233, 0.5);
+        }
+        #instructions {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 20;
+            pointer-events: none;
+            transition: opacity 1.5s ease;
+            max-width: 80%;
+        }
+        .alice-title {
+            font-size: 4rem;
+            text-shadow: 0 0 15px #0ea5e9, 0 0 30px #0369a1;
+            letter-spacing: 0.1em;
+        }
+        #speed-meter {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            width: 200px;
+            height: 10px;
+            background: rgba(14, 165, 233, 0.2);
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        #speed-fill {
+            height: 100%;
+            width: 0%;
+            background: #0ea5e9;
+            box-shadow: 0 0 10px #0ea5e9;
+            transition: width 0.1s ease;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="speed-meter"><div id="speed-fill"></div></div>
+
+    <div id="instructions" class="bg-blue-950/40 p-12 rounded-3xl backdrop-blur-xl border-2 border-sky-400/20 shadow-2xl">
+        <h1 class="alice-title font-bold mb-4 text-sky-200">Alice no País Azul</h1>
+        <p class="text-xl mb-4 italic text-sky-100">"Quanto mais rápido corres, mais alegre o mundo se torna!"</p>
+        <p class="text-sm mb-8 text-sky-300 opacity-70">Mova as mãos rapidamente para despertar a alegria.</p>
+        <button id="startBtn" class="pointer-events-auto bg-transparent border-2 border-sky-400 text-sky-200 hover:bg-sky-400 hover:text-blue-950 px-10 py-4 rounded-full font-bold transition-all transform hover:scale-110 uppercase tracking-widest">
+            Entrar na Toca
+        </button>
+    </div>
+
+    <div class="video-container">
+        <video id="input_video" class="w-full h-full object-cover"></video>
+    </div>
+   
+    <canvas id="canvas_output"></canvas>
+
+    <script>
+        const videoElement = document.getElementById('input_video');
+        const canvasElement = document.getElementById('canvas_output');
+        const canvasCtx = canvasElement.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const instructions = document.getElementById('instructions');
+        const speedFill = document.getElementById('speed-fill');
+
+        let audioStarted = false;
+        let synth, joySynth, filter, delay, reverb;
+        let particles = [];
+        let spiralRotation = 0;
+       
+        // Estados de velocidade
+        let lastPos = { x: 0, y: 0 };
+        let currentSpeed = 0;
+
+        // Escalas: Mistério vs Alegria
+        const mysteryScale = ["C3", "Eb3", "G3", "Ab3", "B3"];
+        const joyScale = ["C4", "D4", "E4", "G4", "A4", "C5", "E5", "G5"];
+
+        function initAudio() {
+            reverb = new Tone.Reverb({ decay: 4, wet: 0.5 }).toDestination();
+            delay = new Tone.FeedbackDelay("8n", 0.3).connect(reverb);
+            filter = new Tone.Filter(1500, "lowpass").connect(delay);
+           
+            // Sintetizador de fundo (Mistério)
+            synth = new Tone.PolySynth(Tone.FMSynth, {
+                envelope: { attack: 0.5, release: 2 }
+            }).connect(filter);
+
+            // Sintetizador de alegria (Plucky/Bell-like)
+            joySynth = new Tone.PolySynth(Tone.Synth, {
+                oscillator: { type: "triangle" },
+                envelope: { attack: 0.01, decay: 0.2, sustain: 0.1, release: 0.5 }
+            }).connect(filter);
+           
+            synth.set({ volume: -15 });
+            joySynth.set({ volume: -12 });
+
+            Tone.start();
+            audioStarted = true;
+            instructions.style.opacity = '0';
+            setTimeout(() => instructions.remove(), 1500);
+        }
+
+        class WonderParticle {
+            constructor(x, y, speedFactor) {
+                this.x = x;
+                this.y = y;
+                this.size = Math.random() * (5 + speedFactor * 10) + 2;
+                this.speedX = (Math.random() - 0.5) * (2 + speedFactor * 10);
+                this.speedY = (Math.random() - 0.5) * (2 + speedFactor * 10);
+                this.life = 1;
+                this.decay = 0.01 + (speedFactor * 0.02);
+                this.hue = 200 + (speedFactor * 60); // Muda de azul para ciano/branco com a velocidade
+            }
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.life -= this.decay;
+            }
+            draw() {
+                canvasCtx.globalAlpha = this.life;
+                canvasCtx.fillStyle = `hsl(${this.hue}, 90%, 70%)`;
+                canvasCtx.beginPath();
+                canvasCtx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                canvasCtx.fill();
+            }
+        }
+
+        function onResults(results) {
+            canvasElement.width = window.innerWidth;
+            canvasElement.height = window.innerHeight;
+
+            canvasCtx.fillStyle = '#00050a';
+            canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+
+            // Fundo animado (mais rápido conforme a velocidade da mão)
+            spiralRotation += 0.005 + (currentSpeed * 0.05);
+            canvasCtx.save();
+            canvasCtx.translate(canvasElement.width/2, canvasElement.height/2);
+            canvasCtx.rotate(spiralRotation);
+            for(let i=0; i<8; i++) {
+                canvasCtx.beginPath();
+                canvasCtx.strokeStyle = `rgba(14, 165, 233, ${0.05 + currentSpeed*0.1})`;
+                canvasCtx.arc(0, 0, (Date.now()/10 + i*80) % 800, 0, Math.PI*2);
+                canvasCtx.stroke();
+            }
+            canvasCtx.restore();
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const hand = results.multiHandLandmarks[0];
+                const x = (1 - hand[8].x) * canvasElement.width;
+                const y = hand[8].y * canvasElement.height;
+
+                // Cálculo de velocidade
+                const dx = x - lastPos.x;
+                const dy = y - lastPos.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                // Normaliza a velocidade (0 a 1)
+                const instantSpeed = Math.min(dist / 100, 1);
+                currentSpeed = currentSpeed * 0.9 + instantSpeed * 0.1; // Suavização
+
+                speedFill.style.width = `${currentSpeed * 100}%`;
+
+                lastPos = { x, y };
+
+                // Partículas baseadas na velocidade
+                for (let i = 0; i < 2 + Math.floor(currentSpeed * 5); i++) {
+                    particles.push(new WonderParticle(x, y, currentSpeed));
+                }
+
+                if (audioStarted) {
+                    // 1. Som de fundo (Sempre presente, muda com a posição Y)
+                    if (Math.random() > 0.95) {
+                        const baseNote = mysteryScale[Math.floor(hand[8].y * mysteryScale.length)];
+                        synth.triggerAttackRelease(baseNote, "1n");
+                    }
+
+                    // 2. Trilho de ALEGRIA (Aumenta com a velocidade)
+                    // Se a velocidade for alta, toca notas rápidas e alegres
+                    const joyThreshold = 0.3;
+                    if (currentSpeed > joyThreshold && Math.random() > (1 - currentSpeed * 0.5)) {
+                        const joyNote = joyScale[Math.floor(Math.random() * joyScale.length)];
+                        joySynth.triggerAttackRelease(joyNote, "8n");
+                       
+                        // Adiciona brilho visual extra quando está alegre
+                        canvasCtx.shadowBlur = 20 * currentSpeed;
+                        canvasCtx.shadowColor = "#fff";
+                    }
+                   
+                    // Ajusta brilho do filtro com a velocidade
+                    filter.frequency.rampTo(500 + (currentSpeed * 4000), 0.1);
+                }
+
+                // Efeito visual na mão
+                const g = canvasCtx.createRadialGradient(x, y, 0, x, y, 100 + currentSpeed * 100);
+                g.addColorStop(0, `rgba(14, 165, 233, ${0.2 + currentSpeed * 0.3})`);
+                g.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                canvasCtx.fillStyle = g;
+                canvasCtx.beginPath();
+                canvasCtx.arc(x, y, 100 + currentSpeed * 100, 0, Math.PI * 2);
+                canvasCtx.fill();
+            } else {
+                currentSpeed *= 0.95; // Desacelera se a mão sumir
+                speedFill.style.width = `${currentSpeed * 100}%`;
+            }
+
+            particles = particles.filter(p => p.life > 0);
+            particles.forEach(p => { p.update(); p.draw(); });
+            canvasCtx.shadowBlur = 0; // Reset shadow
+        }
+
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.6,
+            minTrackingConfidence: 0.6
+        });
+
+        hands.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => { await hands.send({image: videoElement}); },
+            width: 640, height: 480
+        });
+
+        startBtn.addEventListener('click', () => {
+            initAudio();
+            camera.start();
+        });
+    </script>
+</body>
+</html>
