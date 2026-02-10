@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Espelho Mágico - Alice no País das Maravilhas</title>
+    <!-- Tailwind CSS para layout rápido -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Face API (Biblioteca de Reconhecimento Facial) -->
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700&family=Lobster&display=swap');
+
+        body {
+            background-color: #1a0526;
+            background-image: 
+                linear-gradient(45deg, #1a0526 25%, #2a0a38 25%, #2a0a38 50%, #1a0526 50%, #1a0526 75%, #2a0a38 75%, #2a0a38 100%);
+            background-size: 40px 40px;
+            font-family: 'Cinzel Decorative', cursive;
+            overflow-x: hidden;
+        }
+
+        .wonderland-title {
+            font-family: 'Lobster', cursive;
+            text-shadow: 3px 3px 0px #e01666, -1px -1px 0 #fff;
+        }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 0 20px rgba(224, 22, 102, 0.3);
+        }
+
+        /* Moldura do espelho */
+        .mirror-frame {
+            position: relative;
+            border-radius: 20px;
+            padding: 10px;
+            background: linear-gradient(to bottom right, #ffd700, #b8860b, #ffd700);
+            box-shadow: 0 0 30px rgba(255, 215, 0, 0.5), inset 0 0 20px rgba(0,0,0,0.5);
+            max-width: 640px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .camera-container {
+            position: relative;
+            border-radius: 15px;
+            overflow: hidden;
+            background: #000;
+            /* Aspect ratio fixo para evitar pulos */
+            aspect-ratio: 4/3; 
+        }
+
+        video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); /* Espelhar a câmera */
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transform: scaleX(-1); /* Espelhar o canvas */
+        }
+
+        .btn-character {
+            transition: all 0.3s ease;
+            filter: grayscale(0.5);
+            cursor: pointer;
+        }
+        .btn-character:hover, .btn-character.active {
+            transform: scale(1.1) translateY(-5px);
+            filter: grayscale(0);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        }
+        .btn-character.active {
+            border: 2px solid #ffd700;
+        }
+
+        #loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 50;
+            color: #fff;
+            border-radius: 15px;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #e01666;
+            border-top: 5px solid transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4 text-white">
+
+    <!-- Header -->
+    <header class="text-center mb-6">
+        <h1 class="wonderland-title text-4xl md:text-6xl text-pink-300 mb-2">Espelho Mágico</h1>
+        <p class="text-yellow-200 text-sm md:text-lg">Escolha seu personagem de Alice no País das Maravilhas</p>
+    </header>
+
+    <!-- Main App -->
+    <main class="w-full max-w-4xl flex flex-col items-center">
+        
+        <!-- Controls Top -->
+        <div class="glass-panel p-4 rounded-xl w-full max-w-2xl mb-6 flex justify-center gap-4 flex-wrap z-10">
+            <button onclick="setChar('hatter')" class="btn-character active bg-green-900 p-2 rounded-lg flex flex-col items-center w-20" id="btn-hatter">
+                <span class="text-2xl">🎩</span>
+                <span class="text-xs mt-1">Chapeleiro</span>
+            </button>
+            <button onclick="setChar('queen')" class="btn-character bg-red-900 p-2 rounded-lg flex flex-col items-center w-20" id="btn-queen">
+                <span class="text-2xl">👑</span>
+                <span class="text-xs mt-1">Rainha</span>
+            </button>
+            <button onclick="setChar('cat')" class="btn-character bg-purple-900 p-2 rounded-lg flex flex-col items-center w-20" id="btn-cat">
+                <span class="text-2xl">😼</span>
+                <span class="text-xs mt-1">Gato</span>
+            </button>
+            <button onclick="setChar('alice')" class="btn-character bg-blue-900 p-2 rounded-lg flex flex-col items-center w-20" id="btn-alice">
+                <span class="text-2xl">🎀</span>
+                <span class="text-xs mt-1">Alice</span>
+            </button>
+        </div>
+
+        <!-- Camera Area -->
+        <div class="mirror-frame">
+            <div class="camera-container" id="camera-wrapper">
+                <video id="video" autoplay muted playsinline></video>
+                <canvas id="overlay"></canvas>
+                
+                <div id="loading-overlay">
+                    <div class="spinner mb-4"></div>
+                    <p class="text-xl text-center">Invocando Magia...</p>
+                    <p class="text-sm text-gray-400 mt-2 text-center" id="status-text">Carregando modelos de IA...</p>
+                </div>
+
+                <div id="error-message" class="hidden absolute inset-0 bg-red-900/90 z-50 flex flex-col items-center justify-center p-4 text-center">
+                    <p class="text-2xl mb-2">😕 Ops!</p>
+                    <p id="error-text">Não foi possível acessar a câmera.</p>
+                    <button onclick="location.reload()" class="mt-4 px-4 py-2 bg-white text-red-900 rounded-full font-bold hover:bg-gray-200">Tentar Novamente</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="mt-6 flex gap-4">
+            <button onclick="takeSnapshot()" class="bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white font-bold py-3 px-8 rounded-full shadow-lg transform transition hover:scale-105 flex items-center gap-2">
+                📸 Capturar Momento
+            </button>
+        </div>
+
+    </main>
+
+    <script>
+        // Configuração
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('overlay');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const statusText = document.getElementById('status-text');
+        const errorMsg = document.getElementById('error-message');
+        
+        let currentCharacter = 'hatter'; // Personagem inicial
+        let isModelLoaded = false;
+        let detectionInterval;
+
+        // URL base para os modelos do face-api (hospedados em CDN confiável)
+        const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
+
+        // 1. Inicialização
+        async function init() {
+            try {
+                // Carregar modelos de detecção facial
+                statusText.innerText = "Carregando cérebro digital...";
+                await Promise.all([
+                    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL)
+                ]);
+
+                isModelLoaded = true;
+                statusText.innerText = "Acessando câmera...";
+                startVideo();
+
+            } catch (err) {
+                console.error("Erro ao carregar modelos:", err);
+                showError("Erro ao carregar a IA. Verifique sua conexão.");
+            }
+        }
+
+        // 2. Iniciar Vídeo
+        function startVideo() {
+            navigator.mediaDevices.getUserMedia({ video: {} })
+                .then(stream => {
+                    video.srcObject = stream;
+                })
+                .catch(err => {
+                    console.error("Erro na câmera:", err);
+                    showError("Permissão de câmera negada ou dispositivo não encontrado.");
+                });
+        }
+
+        function showError(msg) {
+            loadingOverlay.classList.add('hidden');
+            errorMsg.classList.remove('hidden');
+            document.getElementById('error-text').innerText = msg;
+        }
+
+        // 3. Loop de Detecção e Desenho
+        video.addEventListener('play', () => {
+            // Ajustar canvas ao tamanho do vídeo
+            const displaySize = { width: video.clientWidth, height: video.clientHeight }; // Tamanho inicial aproximado
+            
+            // Loop principal
+            detectionInterval = setInterval(async () => {
+                if (!isModelLoaded) return;
+
+                // Detectar rosto
+                const detections = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks();
+
+                if (detections) {
+                    loadingOverlay.classList.add('hidden'); // Esconder loading na primeira detecção
+
+                    // Ajustar dimensões se o vídeo tiver mudado
+                    const dims = faceapi.matchDimensions(canvas, { width: video.clientWidth, height: video.clientHeight });
+                    const resizedDetections = faceapi.resizeResults(detections, dims);
+
+                    // Limpar canvas anterior
+                    const ctx = canvas.getContext('2d');
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                    // Desenhar personagem
+                    drawCharacter(ctx, resizedDetections.landmarks);
+                }
+            }, 100);
+        });
+
+        // 4. Lógica de Desenho dos Personagens
+        function drawCharacter(ctx, landmarks) {
+            const jaw = landmarks.getJawOutline();
+            const nose = landmarks.getNose();
+            const leftEye = landmarks.getLeftEye();
+            const rightEye = landmarks.getRightEye();
+            const mouth = landmarks.getMouth();
+
+            // Calcular tamanho do rosto para escalar os acessórios
+            const faceWidth = Math.abs(jaw[16].x - jaw[0].x);
+            const faceHeight = Math.abs(jaw[8].y - (leftEye[0].y + rightEye[3].y) / 2) * 2;
+            const centerX = nose[3].x;
+            const topY = (leftEye[1].y + rightEye[1].y) / 2;
+
+            ctx.save(); // Salvar estado para rotações se necessário
+
+            if (currentCharacter === 'hatter') {
+                // Chapeleiro Louco
+                const hatSize = faceWidth * 1.8;
+                ctx.font = `${hatSize}px serif`;
+                ctx.textAlign = "center";
+                ctx.textBaseline = "bottom";
+                // Desenhar Cartola um pouco acima das sobrancelhas
+                ctx.fillText("🎩", centerX, topY - (faceHeight * 0.3));
+                
+                // Texto flutuante
+                ctx.font = "20px 'Cinzel Decorative'";
+                ctx.fillStyle = "#aaffaa";
+                ctx.fillText("10/6", centerX + faceWidth/2, topY);
+            } 
+            else if (currentCharacter === 'queen') {
+                // Rainha de Copas
+                const crownSize = faceWidth * 1.2;
+                ctx.font = `${crownSize}px serif`;
+                ctx.textAlign = "center";
+                ctx.textBaseline = "bottom";
+                ctx.fillText("👑", centerX, topY - (faceHeight * 0.4));
+
+                // Corações nas bochechas
+                ctx.font = `${faceWidth * 0.3}px serif`;
+                ctx.fillText("❤️", jaw[2].x + 20, nose[6].y); // Esq
+                ctx.fillText("❤️", jaw[14].x - 20, nose[6].y); // Dir
+            }
+            else if (currentCharacter === 'cat') {
+                // Gato de Cheshire
+                // Orelhas (usando emoji de gato para simplificar, posicionado acima)
+                const earSize = faceWidth * 1.0; // Um pouco menor
+                ctx.font = `${earSize}px serif`;
+                ctx.textAlign = "center";
+                ctx.textBaseline = "bottom";
+                ctx.fillText("😼", centerX, topY - (faceHeight * 0.2));
+
+                // Bigodes desenhados manualmente
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                // Esq
+                ctx.moveTo(nose[0].x, nose[3].y); ctx.lineTo(jaw[1].x, jaw[3].y);
+                ctx.moveTo(nose[1].x, nose[4].y); ctx.lineTo(jaw[2].x, jaw[4].y);
+                // Dir
+                ctx.moveTo(nose[0].x, nose[3].y); ctx.lineTo(jaw[15].x, jaw[13].y);
+                ctx.moveTo(nose[1].x, nose[4].y); ctx.lineTo(jaw[14].x, jaw[12].y);
+                ctx.stroke();
+            }
+            else if (currentCharacter === 'alice') {
+                // Alice
+                const bowSize = faceWidth * 1.0;
+                ctx.font = `${bowSize}px serif`;
+                ctx.textAlign = "center";
+                ctx.textBaseline = "bottom";
+                ctx.fillText("🎀", centerX, topY - (faceHeight * 0.5));
+                
+                // Brilho mágico ao redor
+                ctx.shadowColor = "#00ccff";
+                ctx.shadowBlur = 20;
+                ctx.beginPath();
+                ctx.arc(centerX, topY + faceHeight/2, faceWidth/1.5, 0, 2 * Math.PI);
+                ctx.strokeStyle = "rgba(100, 200, 255, 0.3)";
+                ctx.lineWidth = 5;
+                ctx.stroke();
+                ctx.shadowBlur = 0; // Reset
+            }
+
+            ctx.restore();
+        }
+
+        // 5. Troca de Personagem
+        window.setChar = function(charName) {
+            currentCharacter = charName;
+            
+            // Atualizar UI dos botões
+            document.querySelectorAll('.btn-character').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.getElementById(`btn-${charName}`).classList.add('active');
+        };
+
+        // 6. Tirar Foto
+        window.takeSnapshot = function() {
+            // Criar um canvas temporário para fundir o vídeo e o overlay
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = video.clientWidth;
+            tempCanvas.height = video.clientHeight;
+            const ctx = tempCanvas.getContext('2d');
+
+            // 1. Desenhar o vídeo (espelhado)
+            ctx.translate(tempCanvas.width, 0);
+            ctx.scale(-1, 1);
+            ctx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
+            ctx.setTransform(1, 0, 0, 1, 0, 0); // Resetar transform
+
+            // 2. Desenhar o overlay atual (já está espelhado visualmente, mas no canvas interno não precisa inverter de novo se desenharmos direto)
+            // O overlay original já está com transform scaleX(-1) no CSS, mas seus pixels são normais. 
+            // Precisamos desenhá-lo "normal" sobre o vídeo que viramos.
+            ctx.drawImage(canvas, 0, 0, tempCanvas.width, tempCanvas.height);
+
+            // 3. Salvar
+            const dataURL = tempCanvas.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.download = `espelho-magico-${currentCharacter}-${Date.now()}.png`;
+            link.href = dataURL;
+            link.click();
+        };
+
+        // Iniciar tudo
+        window.onload = init;
+
+    </script>
+</body>
+</html>
