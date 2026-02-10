@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice no País das Maravilhas - Jogo de Mão</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700&display=swap');
+
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #2c003e 0%, #510a32 100%);
+            overflow: hidden;
+            font-family: 'Cinzel Decorative', cursive;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: white;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        canvas {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+        }
+
+        /* O vídeo da webcam fica escondido, mas precisa de existir para o MediaPipe */
+        .input_video {
+            display: none;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 3;
+            pointer-events: none; /* Deixa os cliques passarem para o canvas se necessário */
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        #score-board {
+            font-size: 2rem;
+            text-shadow: 0 0 10px #d4af37;
+            color: #fff8dc;
+        }
+
+        #lives-board {
+            font-size: 2rem;
+            color: #ff6b6b;
+            text-align: right;
+        }
+
+        #loading-screen, #start-screen, #game-over-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            pointer-events: auto;
+        }
+
+        h1 {
+            font-size: 4rem;
+            margin-bottom: 20px;
+            color: #a29bfe;
+            text-shadow: 2px 2px 0px #6c5ce7;
+        }
+
+        p {
+            font-size: 1.5rem;
+            margin-bottom: 30px;
+            max-width: 600px;
+            line-height: 1.4;
+        }
+
+        button {
+            padding: 15px 40px;
+            font-size: 1.5rem;
+            background: linear-gradient(45deg, #6c5ce7, #a29bfe);
+            border: none;
+            border-radius: 50px;
+            color: white;
+            cursor: pointer;
+            font-family: 'Cinzel Decorative', cursive;
+            transition: transform 0.2s, box-shadow 0.2s;
+            pointer-events: auto;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(162, 155, 254, 0.6);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* Animação para o loading */
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <!-- Vídeo da Webcam (Escondido) -->
+        <video class="input_video"></video>
+        
+        <!-- Canvas do Jogo -->
+        <canvas id="output_canvas"></canvas>
+
+        <!-- UI do Jogo -->
+        <div id="ui-layer">
+            <div style="display:flex; justify-content:space-between; width:100%">
+                <div id="score-board">Pontos: 0</div>
+                <div id="lives-board">❤️❤️❤️</div>
+            </div>
+        </div>
+
+        <!-- Ecrã de Loading -->
+        <div id="loading-screen">
+            <div class="spinner"></div>
+            <h2>A preparar a Toca do Coelho...</h2>
+            <p>Por favor, permite o acesso à câmara.</p>
+        </div>
+
+        <!-- Ecrã Inicial -->
+        <div id="start-screen" class="hidden">
+            <h1>Alice no País das Maravilhas</h1>
+            <p>Levanta a mão e usa o teu <strong>dedo indicador</strong> para guiar a Alice.</p>
+            <p>Apanha: 🫖 ⏱️ 🧪<br>Evita: 🂡</p>
+            <button onclick="startGame()">Começar Aventura</button>
+        </div>
+
+        <!-- Ecrã de Game Over -->
+        <div id="game-over-screen" class="hidden">
+            <h1>Fim de Jogo!</h1>
+            <p id="final-score">Pontuação Final: 0</p>
+            <p>"Cortem-lhe a cabeça!" - Rainha de Copas</p>
+            <button onclick="restartGame()">Jogar Novamente</button>
+        </div>
+    </div>
+
+    <!-- Scripts do MediaPipe -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <script>
+        // Configuração do Canvas e Elementos
+        const videoElement = document.getElementsByClassName('input_video')[0];
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        
+        // Elementos de UI
+        const loadingScreen = document.getElementById('loading-screen');
+        const startScreen = document.getElementById('start-screen');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const scoreBoard = document.getElementById('score-board');
+        const livesBoard = document.getElementById('lives-board');
+        const finalScoreDisplay = document.getElementById('final-score');
+
+        // Estado do Jogo
+        let gameState = 'loading'; // loading, menu, playing, gameover
+        let score = 0;
+        let lives = 3;
+        let gameSpeed = 3;
+        let difficultyMultiplier = 1;
+
+        // Posição da Alice (Controlada pela mão)
+        let alicePos = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+        let targetPos = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+
+        // Objetos do jogo
+        let items = []; // Itens bons e maus
+        let particles = []; // Efeitos visuais
+
+        // Assets (Emojis)
+        const goodItems = ['🫖', '⏱️', '🧪', '🔑', '🍰'];
+        const badItems = ['🂡', '💂', '🃏'];
+        const aliceSprite = '👱‍♀️';
+
+        // Configurar tamanho do canvas
+        function resizeCanvas() {
+            canvasElement.width = window.innerWidth;
+            canvasElement.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // --- Lógica do MediaPipe (Rastreamento da Mão) ---
+        
+        function onResults(results) {
+            // Se o jogo não estiver a correr ou a carregar, desenhamos apenas o vídeo espelhado (opcional)
+            // Mas aqui vamos focar na lógica do jogo.
+
+            if (gameState === 'loading' && results.multiHandLandmarks) {
+                // Primeira detecção bem sucedida
+                loadingScreen.classList.add('hidden');
+                startScreen.classList.remove('hidden');
+                gameState = 'menu';
+            }
+
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            
+            // Espelhar o canvas horizontalmente para parecer um espelho
+            canvasCtx.translate(canvasElement.width, 0);
+            canvasCtx.scale(-1, 1);
+
+            // Se quisesses ver a webcam de fundo, descomenta a linha abaixo:
+            // canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                
+                // Ponto 8 é a ponta do dedo indicador
+                const indexFingerTip = landmarks[8];
+                
+                // Converter coordenadas normalizadas (0-1) para pixéis
+                // Nota: X é invertido por causa do scale(-1, 1) acima, mas para lógica de jogo precisamos corrigir
+                // Como invertemos o contexto, desenhar no X normal vai aparecer invertido.
+                // Vamos calcular a posição "real" do ecrã para a lógica do jogo.
+                
+                let rawX = indexFingerTip.x * canvasElement.width;
+                let rawY = indexFingerTip.y * canvasElement.height;
+
+                // Suavização do movimento (Lerp)
+                targetPos.x = rawX;
+                targetPos.y = rawY;
+            }
+
+            canvasCtx.restore();
+
+            // Interpolação Linear para suavizar movimento fora do contexto espelhado
+            // Como o contexto de desenho foi restaurado, precisamos inverter o X aqui para corresponder ao espelho visual
+            let visualTargetX = canvasElement.width - targetPos.x;
+            
+            alicePos.x += (visualTargetX - alicePos.x) * 0.15;
+            alicePos.y += (targetPos.y - alicePos.y) * 0.15;
+
+            // Loop principal do jogo
+            if (gameState === 'playing') {
+                updateGame();
+                drawGame();
+            } else if (gameState === 'menu') {
+                drawBackground(); // Desenha fundo estático
+            }
+
+        }
+
+        const hands = new Hands({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }});
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        hands.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({image: videoElement});
+            },
+            width: 640,
+            height: 480
+        });
+
+        camera.start();
+
+        // --- Lógica do Jogo ---
+
+        function startGame() {
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+            score = 0;
+            lives = 3;
+            gameSpeed = 4;
+            items = [];
+            particles = [];
+            updateUI();
+            gameState = 'playing';
+        }
+
+        function restartGame() {
+            startGame();
+        }
+
+        function spawnItem() {
+            const isBad = Math.random() < 0.3 + (difficultyMultiplier * 0.05); // Chance aumenta com o tempo
+            const type = isBad 
+                ? badItems[Math.floor(Math.random() * badItems.length)]
+                : goodItems[Math.floor(Math.random() * goodItems.length)];
+            
+            items.push({
+                x: Math.random() * canvasElement.width,
+                y: -50, // Começa acima do ecrã
+                size: 40 + Math.random() * 20,
+                speed: (Math.random() * 2 + gameSpeed) * (isBad ? 1.2 : 1), // Maus são mais rápidos
+                type: type,
+                isBad: isBad,
+                rotation: Math.random() * Math.PI,
+                rotSpeed: (Math.random() - 0.5) * 0.1
+            });
+        }
+
+        function createParticles(x, y, color) {
+            for(let i=0; i<8; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 10,
+                    vy: (Math.random() - 0.5) * 10,
+                    life: 1.0,
+                    color: color
+                });
+            }
+        }
+
+        function updateGame() {
+            // Aumentar dificuldade lentamente
+            difficultyMultiplier += 0.001;
+            if(score > 0 && score % 100 === 0) gameSpeed += 0.2;
+
+            // Spawnar itens (cerca de 1 a cada 40 frames)
+            if (Math.random() < 0.03 * difficultyMultiplier) {
+                spawnItem();
+            }
+
+            // Atualizar itens
+            for (let i = items.length - 1; i >= 0; i--) {
+                let item = items[i];
+                item.y += item.speed;
+                item.rotation += item.rotSpeed;
+
+                // Colisão com Alice
+                const dist = Math.hypot(item.x - alicePos.x, item.y - alicePos.y);
+                if (dist < item.size / 2 + 30) { // 30 é o raio aproximado da Alice
+                    if (item.isBad) {
+                        lives--;
+                        createParticles(item.x, item.y, '#ff0000');
+                        // Efeito de tremer o ecrã
+                        canvasElement.style.transform = `translate(${Math.random()*10-5}px, ${Math.random()*10-5}px)`;
+                        setTimeout(() => canvasElement.style.transform = 'none', 200);
+                        
+                        if (lives <= 0) {
+                            gameOver();
+                        }
+                    } else {
+                        score += 10;
+                        createParticles(item.x, item.y, '#ffd700');
+                    }
+                    items.splice(i, 1);
+                    updateUI();
+                    continue;
+                }
+
+                // Remover se sair do ecrã
+                if (item.y > canvasElement.height + 50) {
+                    items.splice(i, 1);
+                }
+            }
+
+            // Atualizar Partículas
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.05;
+                if(p.life <= 0) particles.splice(i, 1);
+            }
+        }
+
+        function drawBackground() {
+            // Efeito de túnel psicadélico simples
+            const time = Date.now() * 0.001;
+            
+            // Fundo semi-transparente para deixar rastro suave (opcional, aqui limpamos tudo)
+            // canvasCtx.fillStyle = 'rgba(44, 0, 62, 0.3)';
+            // canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+
+            // Desenhar um padrão de grade distorcido
+            canvasCtx.strokeStyle = 'rgba(162, 155, 254, 0.1)';
+            canvasCtx.lineWidth = 2;
+            
+            for(let i=0; i<canvasElement.width; i+=100) {
+                canvasCtx.beginPath();
+                canvasCtx.moveTo(i, 0);
+                canvasCtx.lineTo(i + Math.sin(time + i)*50, canvasElement.height);
+                canvasCtx.stroke();
+            }
+        }
+
+        function drawGame() {
+            drawBackground();
+
+            // Desenhar Partículas
+            particles.forEach(p => {
+                canvasCtx.globalAlpha = p.life;
+                canvasCtx.fillStyle = p.color;
+                canvasCtx.beginPath();
+                canvasCtx.arc(p.x, p.y, 5, 0, Math.PI*2);
+                canvasCtx.fill();
+                canvasCtx.globalAlpha = 1.0;
+            });
+
+            // Desenhar Itens
+            canvasCtx.font = "40px Arial";
+            canvasCtx.textAlign = "center";
+            canvasCtx.textBaseline = "middle";
+            
+            items.forEach(item => {
+                canvasCtx.save();
+                canvasCtx.translate(item.x, item.y);
+                canvasCtx.rotate(item.rotation);
+                canvasCtx.font = `${item.size}px Arial`;
+                canvasCtx.fillText(item.type, 0, 0);
+                canvasCtx.restore();
+            });
+
+            // Desenhar Alice (Cursor)
+            canvasCtx.shadowBlur = 20;
+            canvasCtx.shadowColor = "#00d2d3";
+            canvasCtx.font = "60px Arial";
+            canvasCtx.fillText(aliceSprite, alicePos.x, alicePos.y);
+            
+            // Brilho mágico à volta da Alice
+            canvasCtx.beginPath();
+            canvasCtx.strokeStyle = "rgba(108, 92, 231, 0.5)";
+            canvasCtx.lineWidth = 3;
+            canvasCtx.arc(alicePos.x, alicePos.y - 5, 35, 0, Math.PI*2);
+            canvasCtx.stroke();
+            canvasCtx.shadowBlur = 0;
+        }
+
+        function updateUI() {
+            scoreBoard.innerText = `Pontos: ${score}`;
+            let hearts = '';
+            for(let i=0; i<lives; i++) hearts += '❤️';
+            livesBoard.innerText = hearts;
+        }
+
+        function gameOver() {
+            gameState = 'gameover';
+            finalScoreDisplay.innerText = `Pontuação Final: ${score}`;
+            gameOverScreen.classList.remove('hidden');
+        }
+
+    </script>
+</body>
+</html>
