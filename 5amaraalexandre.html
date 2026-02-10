@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Alice: Festa do Chá Caótica</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Henny+Penny&family=Roboto:wght@700&display=swap');
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #2c3e50;
+            font-family: 'Henny Penny', cursive;
+            touch-action: none;
+            user-select: none;
+        }
+
+        #gameCanvas {
+            display: block;
+            margin: 0 auto;
+            background: radial-gradient(circle, #e67e22 10%, #8e44ad 90%);
+        }
+
+        /* Interface */
+        #uiLayer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .hud {
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 24px;
+            color: #fff;
+            text-shadow: 2px 2px 0 #000;
+        }
+
+        .tray-container {
+            pointer-events: auto;
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            padding-bottom: 30px;
+            background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+        }
+
+        .tray-item {
+            width: 70px;
+            height: 70px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 3px solid #fff;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 35px;
+            cursor: pointer;
+            transition: transform 0.1s, background 0.2s;
+            position: relative;
+        }
+
+        .tray-item.selected {
+            background: #f1c40f;
+            transform: scale(1.1);
+            box-shadow: 0 0 15px #f1c40f;
+            border-color: #e67e22;
+        }
+
+        .tray-item:active { transform: scale(0.95); }
+
+        .key-hint {
+            position: absolute;
+            bottom: -20px;
+            font-family: 'Roboto', sans-serif;
+            font-size: 12px;
+            color: #ddd;
+        }
+
+        /* Telas */
+        .screen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.95);
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            border: 5px dashed #8e44ad;
+            box-shadow: 0 0 30px rgba(0,0,0,0.5);
+            pointer-events: auto;
+            max-width: 90%;
+            width: 350px;
+        }
+
+        h1 { color: #8e44ad; font-size: 36px; margin: 0 0 10px 0; }
+        p { font-family: 'Roboto', sans-serif; color: #333; margin-bottom: 20px; }
+       
+        button {
+            background: #27ae60;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-family: 'Henny Penny', cursive;
+            font-size: 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            box-shadow: 0 4px 0 #1e8449;
+        }
+        button:active { transform: translateY(4px); box-shadow: none; }
+       
+        .hidden { display: none !important; }
+
+        /* Floating text animation */
+        @keyframes floatUp {
+            0% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(-50px); }
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="uiLayer">
+        <div class="hud">
+            <div>Pontos: <span id="scoreEl">0</span></div>
+            <div>Tempo: <span id="timeEl">60</span>s</div>
+        </div>
+
+        <div class="tray-container" id="tray">
+            <div class="tray-item selected" onclick="selectItem('tea')" data-type="tea">
+                🫖
+                <span class="key-hint">1</span>
+            </div>
+            <div class="tray-item" onclick="selectItem('sugar')" data-type="sugar">
+                🍬
+                <span class="key-hint">2</span>
+            </div>
+            <div class="tray-item" onclick="selectItem('cake')" data-type="cake">
+                🍰
+                <span class="key-hint">3</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Start Screen -->
+    <div id="startScreen" class="screen">
+        <h1>Hora do Chá!</h1>
+        <p>Os convidados estão impacientes.</p>
+        <p>1. Selecione o item que eles querem (🫖 🍬 🍰).<br>
+           2. Clique no convidado para servir.<br>
+           3. Seja rápido!</p>
+        <button onclick="startGame()">Servir!</button>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="gameOverScreen" class="screen hidden">
+        <h1>Fim da Festa</h1>
+        <p>O Chapeleiro ficou louco (mais ainda)!</p>
+        <p>Pontuação Final: <span id="finalScore" style="color:#8e44ad; font-weight:bold;">0</span></p>
+        <button onclick="startGame()">Tentar De Novo</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('scoreEl');
+        const timeEl = document.getElementById('timeEl');
+        const startScreen = document.getElementById('startScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const finalScoreEl = document.getElementById('finalScore');
+        const trayItems = document.querySelectorAll('.tray-item');
+
+        let gameRunning = false;
+        let score = 0;
+        let timeLeft = 60;
+        let selectedItem = 'tea';
+        let guests = [];
+        let particles = [];
+       
+        // Posições da mesa (3 lugares)
+        let seats = [];
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+           
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+           
+            // Definir posições dos assentos em volta da mesa
+            seats = [
+                { x: centerX - 120, y: centerY - 50 }, // Esquerda
+                { x: centerX, y: centerY - 120 },      // Topo
+                { x: centerX + 120, y: centerY - 50 }  // Direita
+            ];
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Tipos de pedidos
+        const REQUESTS = ['tea', 'sugar', 'cake'];
+        const ICONS = { tea: '🫖', sugar: '🍬', cake: '🍰' };
+       
+        // Personagens
+        const CHARACTERS = [
+            { id: 'hatter', emoji: '🎩', color: '#2ecc71' },
+            { id: 'hare', emoji: '🐰', color: '#e67e22' },
+            { id: 'mouse', emoji: '🐭', color: '#9b59b6' },
+            { id: 'queen', emoji: '👑', color: '#e74c3c' }
+        ];
+
+        class Guest {
+            constructor(seatIndex) {
+                this.seatIndex = seatIndex;
+                this.char = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)];
+                this.x = seats[seatIndex].x;
+                this.y = seats[seatIndex].y;
+                this.radius = 45;
+               
+                this.request = null;
+                this.requestTimer = 0;
+                this.maxTime = 200; // Tempo para atender (frames)
+                this.patience = 100; // Barra de paciência
+               
+                this.state = 'sitting'; // sitting, waiting, eating, angry
+                this.stateTimer = 0;
+               
+                this.spawnAnimation = 0;
+            }
+
+            update() {
+                if (this.spawnAnimation < 1) this.spawnAnimation += 0.1;
+
+                if (this.state === 'sitting') {
+                    // Chance de pedir algo
+                    if (Math.random() < 0.02) {
+                        this.askForSomething();
+                    }
+                } else if (this.state === 'waiting') {
+                    this.patience -= 0.5 + (score / 500); // Fica mais difícil com o tempo
+                   
+                    if (this.patience <= 0) {
+                        this.state = 'angry';
+                        this.stateTimer = 60;
+                        score -= 50;
+                        createParticles(this.x, this.y, '#e74c3c', '🤬');
+                    }
+                } else if (this.state === 'eating' || this.state === 'angry') {
+                    this.stateTimer--;
+                    if (this.stateTimer <= 0) {
+                        // Convidado vai embora ou volta a sentar
+                        if (Math.random() > 0.5) {
+                            // Troca de personagem
+                            this.reset();
+                        } else {
+                            this.state = 'sitting';
+                        }
+                    }
+                }
+            }
+
+            reset() {
+                this.char = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)];
+                this.state = 'sitting';
+                this.request = null;
+                this.spawnAnimation = 0;
+            }
+
+            askForSomething() {
+                this.state = 'waiting';
+                this.request = REQUESTS[Math.floor(Math.random() * REQUESTS.length)];
+                this.patience = 100;
+            }
+
+            draw() {
+                const scale = Math.min(this.spawnAnimation, 1);
+               
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.scale(scale, scale);
+
+                // Cadeira
+                ctx.fillStyle = '#5d4037';
+                ctx.beginPath();
+                ctx.arc(0, 10, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Personagem
+                ctx.font = '60px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+               
+                // Shake se estiver bravo
+                let shakeX = 0;
+                if (this.state === 'angry') shakeX = (Math.random() - 0.5) * 10;
+               
+                ctx.fillText(this.char.emoji, shakeX, 0);
+
+                // Balão de Pedido
+                if (this.state === 'waiting') {
+                    // Balão
+                    ctx.fillStyle = '#fff';
+                    ctx.beginPath();
+                    ctx.arc(40, -40, 30, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.strokeStyle = '#333';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                   
+                    // Triângulo do balão
+                    ctx.beginPath();
+                    ctx.moveTo(15, -25);
+                    ctx.lineTo(40, -40);
+                    ctx.lineTo(35, -10);
+                    ctx.fill();
+                    ctx.stroke();
+
+                    // Item pedido
+                    ctx.font = '30px Arial';
+                    ctx.fillText(ICONS[this.request], 40, -40);
+
+                    // Barra de Paciência Circular
+                    ctx.beginPath();
+                    ctx.arc(40, -40, 30, -Math.PI/2, (-Math.PI/2) + (Math.PI * 2 * (this.patience / 100)), false);
+                    ctx.strokeStyle = this.patience < 30 ? '#e74c3c' : '#2ecc71';
+                    ctx.lineWidth = 4;
+                    ctx.stroke();
+                }
+
+                // Feedback visual (Comendo/Bravo)
+                if (this.state === 'eating') {
+                    ctx.font = '30px Arial';
+                    ctx.fillText('😋', 0, -50);
+                } else if (this.state === 'angry') {
+                    ctx.font = '30px Arial';
+                    ctx.fillText('😡', 0, -50);
+                }
+
+                ctx.restore();
+            }
+
+            checkClick(mx, my) {
+                const dist = Math.hypot(mx - this.x, my - this.y);
+                if (dist < this.radius + 10 && this.state === 'waiting') {
+                    if (selectedItem === this.request) {
+                        // Sucesso
+                        this.state = 'eating';
+                        this.stateTimer = 60;
+                        score += 100 + Math.floor(this.patience);
+                        createParticles(this.x, this.y, '#f1c40f', '✨');
+                        createFloatingText(this.x, this.y - 60, '+100');
+                    } else {
+                        // Erro
+                        this.patience -= 30;
+                        createParticles(this.x, this.y, '#95a5a6', '💨');
+                        createFloatingText(this.x, this.y - 60, 'Ops!', '#e74c3c');
+                        // Som de erro visual (shake screen maybe)
+                    }
+                }
+            }
+        }
+
+        function createFloatingText(x, y, text, color = '#fff') {
+            particles.push({
+                x: x, y: y, text: text, color: color, life: 60, type: 'text'
+            });
+        }
+
+        function createParticles(x, y, color, emoji = null) {
+            for(let i=0; i<8; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 5,
+                    vy: (Math.random() - 0.5) * 5,
+                    life: 30,
+                    color: color,
+                    emoji: emoji,
+                    type: 'particle'
+                });
+            }
+        }
+
+        // Seleção de Item
+        window.selectItem = function(type) {
+            selectedItem = type;
+            trayItems.forEach(item => {
+                if (item.dataset.type === type) item.classList.add('selected');
+                else item.classList.remove('selected');
+            });
+        };
+
+        // Teclado
+        window.addEventListener('keydown', (e) => {
+            if (e.key === '1') selectItem('tea');
+            if (e.key === '2') selectItem('sugar');
+            if (e.key === '3') selectItem('cake');
+        });
+
+        // Mouse click no canvas
+        canvas.addEventListener('mousedown', (e) => {
+            if (!gameRunning) return;
+            const rect = canvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+           
+            guests.forEach(g => g.checkClick(mx, my));
+        });
+       
+        // Touch no canvas
+        canvas.addEventListener('touchstart', (e) => {
+            if (!gameRunning) return;
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const mx = e.touches[0].clientX - rect.left;
+            const my = e.touches[0].clientY - rect.top;
+           
+            guests.forEach(g => g.checkClick(mx, my));
+        }, {passive: false});
+
+        function initGuests() {
+            guests = [];
+            for(let i=0; i<3; i++) {
+                guests.push(new Guest(i));
+            }
+        }
+
+        function drawTable() {
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+
+            // Toalha de mesa
+            ctx.fillStyle = '#ecf0f1';
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, 150, 80, 0, 0, Math.PI * 2);
+            ctx.fill();
+           
+            // Padrão Xadrez na mesa
+            ctx.save();
+            ctx.clip();
+            ctx.fillStyle = 'rgba(231, 76, 60, 0.1)';
+            for(let i=0; i<300; i+=20) {
+                ctx.fillRect(cx - 150 + i, cy - 80, 10, 160);
+            }
+            ctx.restore();
+
+            // Borda da mesa
+            ctx.strokeStyle = '#bdc3c7';
+            ctx.lineWidth = 5;
+            ctx.stroke();
+
+            // Bule central (decoração)
+            ctx.font = '50px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('🫖', cx, cy + 10);
+           
+            // Flores
+            ctx.font = '30px Arial';
+            ctx.fillText('🌹', cx - 60, cy);
+            ctx.fillText('🌷', cx + 60, cy + 10);
+        }
+
+        function update() {
+            if (!gameRunning) return;
+
+            // Timer do Jogo
+            if (Math.random() < 0.016) { // Aprox 1 segundo
+                timeLeft -= 1/60; // Frame based approx, mas vamos usar Date.now num jogo real. Aqui é simplificado.
+                // Correção: reduzir a cada frame é ruim. Vamos reduzir a variavel e arredondar no display.
+            }
+            timeLeft -= 1/60;
+            if (timeLeft <= 0) gameOver();
+
+            guests.forEach(g => g.update());
+
+            // Partículas
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.x += p.vx || 0;
+                p.y += (p.vy || 0) - 1; // Float up
+                p.life--;
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+
+            // UI Updates
+            scoreEl.innerText = score;
+            timeEl.innerText = Math.ceil(timeLeft);
+            if (timeLeft < 10) timeEl.style.color = '#e74c3c';
+            else timeEl.style.color = '#fff';
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+           
+            drawTable();
+
+            // Desenhar convidados "atrás" da mesa se estivessem no topo, mas aqui é top-down fake
+            // Vamos desenhar na ordem dos assentos para profundidade simples
+            // Assento 1 (topo) desenha primeiro (atrás)
+            guests.sort((a,b) => a.y - b.y);
+            guests.forEach(g => g.draw());
+
+            // Partículas
+            particles.forEach(p => {
+                ctx.globalAlpha = p.life / 30;
+                if (p.type === 'text') {
+                    ctx.fillStyle = p.color;
+                    ctx.font = 'bold 24px Roboto';
+                    ctx.fillText(p.text, p.x, p.y);
+                } else {
+                    if (p.emoji) {
+                        ctx.font = '20px Arial';
+                        ctx.fillText(p.emoji, p.x, p.y);
+                    } else {
+                        ctx.fillStyle = p.color;
+                        ctx.beginPath();
+                        ctx.arc(p.x, p.y, 4, 0, Math.PI*2);
+                        ctx.fill();
+                    }
+                }
+                ctx.globalAlpha = 1;
+            });
+
+            requestAnimationFrame(() => {
+                update();
+                draw();
+            });
+        }
+
+        window.startGame = function() {
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+            gameRunning = true;
+            score = 0;
+            timeLeft = 60;
+            particles = [];
+            initGuests();
+        };
+
+        function gameOver() {
+            gameRunning = false;
+            finalScoreEl.innerText = score;
+            gameOverScreen.classList.remove('hidden');
+        }
+
+        // Loop Visual
+        draw();
+
+    </script>
+</body>
+</html>
