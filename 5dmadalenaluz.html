@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Alice no Espaço das Maravilhas</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Lato:wght@400;700&display=swap');
+
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            /* Fundo colorido e animado - Estilo País das Maravilhas */
+            background: linear-gradient(-45deg, #2e0b36, #4a1c40, #16213e, #0f4c75, #5e2858);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            font-family: 'Lato', sans-serif;
+            touch-action: none;
+            user-select: none;
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        #gameCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .hud {
+            padding: 20px;
+            color: white;
+            text-shadow: 2px 2px 0px #000, 0 0 10px #d4af37;
+            display: flex;
+            justify-content: space-between;
+            font-size: 24px;
+            font-family: 'Cinzel', serif;
+            z-index: 10;
+        }
+
+        #start-screen, #game-over-screen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.85);
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            border: 4px solid #d4af37;
+            box-shadow: 0 0 30px rgba(212, 175, 55, 0.5);
+            color: white;
+            pointer-events: auto;
+            max-width: 90%;
+            width: 400px;
+        }
+
+        h1 {
+            font-family: 'Cinzel', serif;
+            color: #d4af37;
+            margin-bottom: 20px;
+            font-size: 32px;
+        }
+
+        p {
+            font-size: 18px;
+            line-height: 1.6;
+            margin-bottom: 30px;
+        }
+
+        .btn {
+            background: linear-gradient(to bottom, #d4af37, #aa8c2c);
+            border: none;
+            padding: 15px 40px;
+            font-size: 20px;
+            color: #0f0518;
+            border-radius: 50px;
+            cursor: pointer;
+            font-family: 'Cinzel', serif;
+            font-weight: bold;
+            transition: transform 0.2s, box-shadow 0.2s;
+            text-transform: uppercase;
+        }
+
+        .btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px #d4af37;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .powerup-indicator {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 20px;
+            color: #ffd700;
+            background: rgba(0,0,0,0.5);
+            padding: 10px 20px;
+            border-radius: 20px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="ui-layer">
+        <div class="hud">
+            <div id="score">Pontos: 0</div>
+            <div id="lives">Vidas: ❤️❤️❤️</div>
+        </div>
+        <div id="powerup-msg" class="powerup-indicator"></div>
+    </div>
+
+    <div id="start-screen">
+        <h1>Alice no Espaço</h1>
+        <p>A Alice caiu na toca do coelho e foi parar ao espaço sideral!</p>
+        <p>Desvia-te dos Planetas e Cartas.<br>Apanha Itens Mágicos!</p>
+        <button class="btn" onclick="startGame()">Jogar</button>
+    </div>
+
+    <div id="game-over-screen" class="hidden">
+        <h1>Fim da Aventura</h1>
+        <p id="final-score">Pontuação: 0</p>
+        <button class="btn" onclick="resetGame()">Tentar Novamente</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Ajuste de ecrã
+        let width, height;
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Estado do Jogo
+        let gameRunning = false;
+        let score = 0;
+        let lives = 3;
+        let frame = 0;
+        let speed = 4;
+        let difficultyMultiplier = 1;
+
+        // Efeitos de Estado
+        let isTiny = false;
+        let tinyTimer = 0;
+        let isGiant = false;
+        let giantTimer = 0;
+        let isInvincible = false;
+        let invincibleTimer = 0;
+
+        // Alice
+        const alice = {
+            x: width / 2,
+            y: height - 150,
+            baseSize: 50,
+            size: 50,
+            emoji: '👩🏼',
+            tilt: 0
+        };
+
+        // Inputs
+        let targetX = width / 2;
+        let targetY = height - 150;
+
+        // Entidades
+        let obstacles = [];
+        let items = [];
+        let stars = [];
+        let particles = [];
+
+        // Assets (Emojis)
+        const OBSTACLE_TYPES = ['🪐', '🌑', '🌍', '🃏', '🂡', '☄️'];
+        
+        // Itens Comuns
+        const ITEMS = [
+            { type: 'potion', emoji: '🧪', effect: 'tiny', duration: 300, color: '#00ffff' }, // Beba-me
+            { type: 'cake', emoji: '🍰', effect: 'invincible', duration: 300, color: '#ff69b4' }, // Coma-me
+            { type: 'clock', emoji: '⏱️', effect: 'points', val: 500, color: '#ffd700' }, // Coelho
+            { type: 'green_heart', emoji: '💚', effect: 'giant', duration: 300, color: '#32cd32' } // Coração Verde (Gigante)
+        ];
+
+        // Item Raro
+        const RARE_ITEM = { type: 'red_heart', emoji: '❤️', effect: 'mega_points', val: 1000, color: '#ff0000' };
+
+        // Inicializar Estrelas Coloridas
+        function initStars() {
+            stars = [];
+            for(let i=0; i<150; i++) {
+                stars.push({
+                    x: Math.random() * width,
+                    y: Math.random() * height,
+                    size: Math.random() * 3,
+                    speed: Math.random() * 2 + 0.5,
+                    color: `hsl(${Math.random() * 360}, 100%, 80%)` // Estrelas coloridas
+                });
+            }
+        }
+
+        // Controlo
+        function handleInput(x, y) {
+            targetX = x;
+            targetY = y;
+            // Limitar ao ecrã
+            if (targetX < 0) targetX = 0;
+            if (targetX > width) targetX = width;
+            if (targetY < 0) targetY = 0;
+            if (targetY > height) targetY = height;
+        }
+
+        window.addEventListener('mousemove', e => handleInput(e.clientX, e.clientY));
+        window.addEventListener('touchmove', e => {
+            e.preventDefault();
+            handleInput(e.touches[0].clientX, e.touches[0].clientY);
+        }, {passive: false});
+
+        function startGame() {
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-over-screen').classList.add('hidden');
+            document.getElementById('ui-layer').classList.remove('hidden');
+            
+            score = 0;
+            lives = 3;
+            speed = 4;
+            obstacles = [];
+            items = [];
+            particles = [];
+            isTiny = false;
+            isGiant = false;
+            isInvincible = false;
+            
+            // Alice começa no centro
+            alice.x = width / 2;
+            alice.y = height - 150;
+            targetX = width / 2;
+            targetY = height - 150;
+
+            initStars();
+            updateUI();
+            gameRunning = true;
+            loop();
+        }
+
+        function resetGame() {
+            startGame();
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            document.getElementById('game-over-screen').classList.remove('hidden');
+            document.getElementById('final-score').innerText = "Pontuação Final: " + Math.floor(score);
+        }
+
+        function spawnObstacle() {
+            const size = Math.random() * 40 + 40;
+            obstacles.push({
+                x: Math.random() * width,
+                y: -100,
+                size: size,
+                speed: speed + Math.random() * 2,
+                emoji: OBSTACLE_TYPES[Math.floor(Math.random() * OBSTACLE_TYPES.length)],
+                rotation: 0,
+                rotSpeed: (Math.random() - 0.5) * 0.1
+            });
+        }
+
+        function spawnItem() {
+            let type;
+            // 5% de chance de aparecer o coração vermelho raro
+            if (Math.random() < 0.05) {
+                type = RARE_ITEM;
+            } else {
+                type = ITEMS[Math.floor(Math.random() * ITEMS.length)];
+            }
+
+            items.push({
+                x: Math.random() * width,
+                y: -50,
+                size: 30,
+                speed: speed * 0.8,
+                ...type,
+                angle: 0
+            });
+        }
+
+        function createParticles(x, y, color, count) {
+            for(let i=0; i<count; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 10,
+                    vy: (Math.random() - 0.5) * 10,
+                    life: 1.0,
+                    color: color
+                });
+            }
+        }
+
+        function updateUI() {
+            document.getElementById('score').innerText = `Pontos: ${Math.floor(score)}`;
+            let livesStr = '';
+            for(let i=0; i<lives; i++) livesStr += '❤️';
+            document.getElementById('lives').innerText = `Vidas: ${livesStr}`;
+
+            const msg = document.getElementById('powerup-msg');
+            if (isInvincible) {
+                msg.style.display = 'block';
+                msg.innerText = "INVENCÍVEL! (Bolo)";
+                msg.style.color = '#ff69b4';
+            } else if (isTiny) {
+                msg.style.display = 'block';
+                msg.innerText = "PEQUENA! (Poção)";
+                msg.style.color = '#00ffff';
+            } else if (isGiant) {
+                msg.style.display = 'block';
+                msg.innerText = "GIGANTE! (Coração Verde)";
+                msg.style.color = '#32cd32';
+            } else {
+                msg.style.display = 'none';
+            }
+        }
+
+        function loop() {
+            if (!gameRunning) return;
+
+            // Limpar Canvas
+            ctx.clearRect(0, 0, width, height);
+
+            // 1. Estrelas (Fundo)
+            stars.forEach(star => {
+                star.y += star.speed;
+                if(star.y > height) star.y = 0;
+                
+                ctx.beginPath();
+                ctx.fillStyle = star.color;
+                ctx.arc(star.x, star.y, star.size, 0, Math.PI*2);
+                ctx.fill();
+                
+                // Brilho
+                if(Math.random() > 0.95) {
+                    ctx.globalAlpha = 0.5;
+                    ctx.arc(star.x, star.y, star.size * 2, 0, Math.PI*2);
+                    ctx.fill();
+                    ctx.globalAlpha = 1.0;
+                }
+            });
+
+            // 2. Alice Lógica
+            // Lerp para movimento suave
+            alice.x += (targetX - alice.x) * 0.1;
+            alice.y += (targetY - alice.y) * 0.1;
+            
+            // Inclinação
+            alice.tilt = (targetX - alice.x) * 0.05;
+
+            // Efeitos de Estado
+            if (isTiny) {
+                alice.size = alice.baseSize / 2;
+                tinyTimer--;
+                if(tinyTimer <= 0) isTiny = false;
+            } else if (isGiant) {
+                alice.size = alice.baseSize * 1.8; // Fica Gigante
+                giantTimer--;
+                if(giantTimer <= 0) isGiant = false;
+            } else {
+                alice.size = alice.baseSize;
+            }
+
+            if (isInvincible) {
+                invincibleTimer--;
+                if(invincibleTimer <= 0) isInvincible = false;
+            }
+
+            // Desenhar Alice
+            ctx.save();
+            ctx.translate(alice.x, alice.y);
+            ctx.rotate(alice.tilt * 0.02); // Rotação suave
+            
+            // Efeito de escudo/invencibilidade
+            if (isInvincible) {
+                ctx.beginPath();
+                ctx.arc(0, 0, alice.size + 10, 0, Math.PI*2);
+                ctx.strokeStyle = `rgba(255, 105, 180, ${Math.abs(Math.sin(frame * 0.1))})`;
+                ctx.lineWidth = 5;
+                ctx.stroke();
+            }
+
+            ctx.font = `${alice.size}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(alice.emoji, 0, 0);
+            ctx.restore();
+
+            // 3. Obstáculos
+            if (frame % (60 - Math.min(score/100, 40)) === 0) spawnObstacle();
+
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                let obs = obstacles[i];
+                obs.y += obs.speed;
+                obs.rotation += obs.rotSpeed;
+
+                ctx.save();
+                ctx.translate(obs.x, obs.y);
+                ctx.rotate(obs.rotation);
+                ctx.font = `${obs.size}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(obs.emoji, 0, 0);
+                ctx.restore();
+
+                // Colisão
+                let dist = Math.hypot(alice.x - obs.x, alice.y - obs.y);
+                if (dist < (alice.size/2 + obs.size/2.5) && !isInvincible) {
+                    lives--;
+                    createParticles(alice.x, alice.y, 'red', 10);
+                    obstacles.splice(i, 1);
+                    updateUI();
+                    if (lives <= 0) gameOver();
+                }
+
+                if (obs.y > height + 50) obstacles.splice(i, 1);
+            }
+
+            // 4. Itens
+            if (frame % 300 === 0) spawnItem();
+
+            for (let i = items.length - 1; i >= 0; i--) {
+                let item = items[i];
+                item.y += item.speed;
+                item.angle += 0.05;
+
+                ctx.save();
+                ctx.translate(item.x, item.y);
+                // Efeito flutuante
+                let floatY = Math.sin(frame * 0.1) * 5;
+                ctx.translate(0, floatY);
+                
+                ctx.font = `${item.size}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(item.emoji, 0, 0);
+                
+                // Anel de brilho
+                ctx.beginPath();
+                ctx.strokeStyle = item.color;
+                ctx.arc(0, 0, item.size/1.5, 0, Math.PI*2);
+                ctx.stroke();
+                ctx.restore();
+
+                // Apanhar Item
+                let dist = Math.hypot(alice.x - item.x, alice.y - item.y);
+                if (dist < (alice.size/2 + item.size/2)) {
+                    // Efeito
+                    if (item.effect === 'tiny') {
+                        isTiny = true;
+                        isGiant = false;
+                        tinyTimer = item.duration;
+                        createParticles(alice.x, alice.y, item.color, 15);
+                    } else if (item.effect === 'giant') {
+                        isGiant = true;
+                        isTiny = false;
+                        giantTimer = item.duration;
+                        createParticles(alice.x, alice.y, item.color, 15);
+                    } else if (item.effect === 'invincible') {
+                        isInvincible = true;
+                        invincibleTimer = item.duration;
+                        createParticles(alice.x, alice.y, item.color, 15);
+                    } else if (item.effect === 'points') {
+                        score += item.val;
+                        createParticles(alice.x, alice.y, item.color, 15);
+                    } else if (item.effect === 'mega_points') {
+                        score += item.val;
+                        createParticles(alice.x, alice.y, item.color, 30); // Mais partículas
+                    }
+                    items.splice(i, 1);
+                    updateUI();
+                }
+
+                if (item.y > height + 50) items.splice(i, 1);
+            }
+
+            // 5. Partículas
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+                
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 3, 0, Math.PI*2);
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+
+            // Atualização Geral
+            score += 0.1;
+            speed += 0.001; // Aumenta dificuldade
+            frame++;
+            if(frame % 10 === 0) updateUI(); // Otimização UI
+
+            requestAnimationFrame(loop);
+        }
+
+        // Iniciar
+        initStars();
+        
+    </script>
+</body>
+</html>
