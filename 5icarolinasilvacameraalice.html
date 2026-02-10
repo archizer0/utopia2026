@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wonderland Vision - 25 Filtros Mágicos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Special+Elite&display=swap');
+
+        body {
+            background: #0f0c29;
+            background: linear-gradient(to bottom, #1a1a2e, #16213e, #0f0c29);
+            color: #f3d5b5;
+            font-family: 'Cinzel', serif;
+            overflow-x: hidden;
+        }
+
+        .magic-border {
+            border: 8px double #e94560;
+            box-shadow: 0 0 40px rgba(233, 69, 96, 0.5), inset 0 0 20px rgba(0, 0, 0, 1);
+        }
+
+        canvas {
+            max-width: 100%;
+            height: auto;
+            border-radius: 0.5rem;
+            image-rendering: auto;
+        }
+
+        .btn-magic {
+            font-family: 'Special Elite', cursive;
+            transition: all 0.2s ease-in-out;
+            border: 1px solid rgba(233, 69, 96, 0.4);
+            background: rgba(22, 33, 62, 0.9);
+            font-size: 0.65rem;
+            height: 45px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            line-height: 1.1;
+            padding: 4px;
+        }
+
+        .btn-magic:hover {
+            background: #e94560;
+            color: white;
+            transform: scale(1.05);
+            z-index: 10;
+        }
+
+        .active-filter {
+            background: #e94560 !important;
+            color: white !important;
+            box-shadow: 0 0 15px #e94560;
+            border-color: #ffffff;
+        }
+
+        .wonderland-title {
+            text-shadow: 0 0 10px #e94560, 0 0 20px #e94560;
+        }
+
+        .filter-container {
+            max-height: 300px;
+            overflow-y: auto;
+            padding-right: 10px;
+        }
+
+        .filter-container::-webkit-scrollbar {
+            width: 6px;
+        }
+        .filter-container::-webkit-scrollbar-thumb {
+            background: #e94560;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center p-4 md:p-6">
+
+    <header class="text-center mb-6">
+        <h1 class="text-4xl md:text-5xl font-bold mb-2 wonderland-title tracking-tighter uppercase">Wonderland Vision</h1>
+        <p class="text-sm italic font-serif opacity-80">"25 Formas de Perder o Juízo"</p>
+    </header>
+
+    <div class="relative w-full max-w-4xl bg-black rounded-lg p-2 magic-border mb-6 overflow-hidden">
+        <video id="video" class="hidden" autoplay playsinline></video>
+        <canvas id="canvas" class="w-full h-full bg-black"></canvas>
+        
+        <div id="status" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-950 text-pink-500 z-10">
+            <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-pink-500 mb-4"></div>
+            <p class="font-mono text-xs uppercase tracking-widest text-center">Invocando Entidades do Espelho...</p>
+        </div>
+    </div>
+
+    <!-- Filtros Grid - Agora com 25 opções -->
+    <div class="filter-container w-full max-w-4xl">
+        <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+            <button onclick="setFilter('normal')" id="btn-normal" class="btn-magic active-filter rounded">REALIDADE</button>
+            <button onclick="setFilter('cheshire')" id="btn-cheshire" class="btn-magic rounded">GATO RISONHO</button>
+            <button onclick="setFilter('madhatter')" id="btn-madhatter" class="btn-magic rounded">CHÁ LOUCO</button>
+            <button onclick="setFilter('drinkme')" id="btn-drinkme" class="btn-magic rounded">ENCOLHER</button>
+            <button onclick="setFilter('queen')" id="btn-queen" class="btn-magic rounded">RAINHA COPAS</button>
+            <button onclick="setFilter('clock')" id="btn-clock" class="btn-magic rounded">RELÓGIO</button>
+            <button onclick="setFilter('absolem')" id="btn-absolem" class="btn-magic rounded">LAGARTA AZUL</button>
+            <button onclick="setFilter('cards')" id="btn-cards" class="btn-magic rounded">BARALHO</button>
+            <button onclick="setFilter('upside')" id="btn-upside" class="btn-magic rounded">INVERSO</button>
+            <button onclick="setFilter('glitch')" id="btn-glitch" class="btn-magic rounded">JABBERWOCKY</button>
+            <button onclick="setFilter('garden')" id="btn-garden" class="btn-magic rounded">JARDIM VIVO</button>
+            <button onclick="setFilter('twins')" id="btn-twins" class="btn-magic rounded">GÉMEOS</button>
+            <button onclick="setFilter('starlight')" id="btn-starlight" class="btn-magic rounded">ESTRELADO</button>
+            <button onclick="setFilter('paint')" id="btn-paint" class="btn-magic rounded">PINTAR ROSAS</button>
+            <button onclick="setFilter('dream')" id="btn-dream" class="btn-magic rounded">SONHO</button>
+            <!-- 10 NOVOS FILTROS -->
+            <button onclick="setFilter('gold')" id="btn-gold" class="btn-magic rounded">OURO LOUCO</button>
+            <button onclick="setFilter('tears')" id="btn-tears" class="btn-magic rounded">MAR LÁGRIMAS</button>
+            <button onclick="setFilter('chess')" id="btn-chess" class="btn-magic rounded">XADREZ REAL</button>
+            <button onclick="setFilter('spiral')" id="btn-spiral" class="btn-magic rounded">ESPIRAL</button>
+            <button onclick="setFilter('forest')" id="btn-forest" class="btn-magic rounded">FLORESTA TULGEY</button>
+            <button onclick="setFilter('dodo')" id="btn-dodo" class="btn-magic rounded">CORRIDA DODO</button>
+            <button onclick="setFilter('ghost')" id="btn-ghost" class="btn-magic rounded">FANTASMA</button>
+            <button onclick="setFilter('neon')" id="btn-neon" class="btn-magic rounded">NEON ALICE</button>
+            <button onclick="setFilter('etch')" id="btn-etch" class="btn-magic rounded">GRAVURA</button>
+            <button onclick="setFilter('frozen')" id="btn-frozen" class="btn-magic rounded">TEMPO PRESO</button>
+        </div>
+    </div>
+
+    <div class="mt-6 p-3 bg-black/50 rounded border border-pink-500/20 w-full max-w-4xl text-center">
+        <p id="filter-desc" class="text-xs italic text-pink-100">"Curioso, cada vez mais curioso..."</p>
+    </div>
+
+    <footer class="mt-8 text-[9px] opacity-40 text-center uppercase tracking-[0.3em] pb-10">
+        <p>Labirinto de Filtros • Versão 25-Mirror • Lewis Carroll Edition</p>
+    </footer>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const status = document.getElementById('status');
+        const filterDesc = document.getElementById('filter-desc');
+        
+        let currentFilter = 'normal';
+        const descriptions = {
+            'normal': 'A realidade banal.',
+            'cheshire': 'Contornos que brilham na sombra.',
+            'madhatter': 'Cores que perderam a razão.',
+            'drinkme': 'O mundo cresce enquanto tu ficas pequeno.',
+            'queen': 'Apenas o carmesim é tolerado.',
+            'clock': 'O tom sépia de um século passado.',
+            'absolem': 'A sabedoria envolta em fumo azul.',
+            'cards': 'A vida é apenas um baralho de cartas.',
+            'upside': 'Tudo de pernas para o ar.',
+            'glitch': 'O monstro Jabberwocky destrói a imagem.',
+            'garden': 'Saturação floral extrema.',
+            'twins': 'Simetria perfeita dos gémeos.',
+            'starlight': 'A noite mágica debaixo do céu de Londres.',
+            'paint': 'Tinta vermelha fresca a escorrer.',
+            'dream': 'Um nevoeiro de sonhos impossíveis.',
+            'gold': 'Tudo o que o Chapeleiro toca vira ouro.',
+            'tears': 'Vê o mundo através de um mar de lágrimas ondulantes.',
+            'chess': 'Transforma-te numa peça no tabuleiro da Rainha Branca.',
+            'spiral': 'O portal do espelho está a sugar a realidade.',
+            'forest': 'Cores escuras e sombras da floresta proibida.',
+            'dodo': 'Velocidade e rasto de movimento na corrida sem fim.',
+            'ghost': 'A tua alma ficou presa no espelho enquanto te moves.',
+            'neon': 'Alice numa discoteca de 1980.',
+            'etch': 'Desenho a carvão nas páginas de um livro velho.',
+            'frozen': 'Efeito de cristalização do tempo.'
+        };
+
+        async function setupCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: { ideal: 1280 }, height: { ideal: 720 } }, 
+                    audio: false 
+                });
+                video.srcObject = stream;
+                video.onloadedmetadata = () => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    status.style.display = 'none';
+                    processFrame();
+                };
+            } catch (err) {
+                status.innerHTML = `<p class="text-red-500 text-xs">Câmara indisponível.</p>`;
+            }
+        }
+
+        function setFilter(filter) {
+            currentFilter = filter;
+            filterDesc.innerText = descriptions[filter];
+            document.querySelectorAll('.btn-magic').forEach(btn => btn.classList.remove('active-filter'));
+            document.getElementById(`btn-${filter}`).classList.add('active-filter');
+        }
+
+        function processFrame() {
+            const transformFilters = ['drinkme', 'upside', 'twins', 'spiral', 'ghost', 'frozen'];
+            if (transformFilters.includes(currentFilter)) {
+                if (currentFilter !== 'ghost' && currentFilter !== 'frozen') ctx.clearRect(0, 0, canvas.width, canvas.height);
+            } else {
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            }
+
+            if (currentFilter !== 'normal') {
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const data = imageData.data;
+
+                switch(currentFilter) {
+                    case 'cheshire':
+                        for (let i = 0; i < data.length; i += 4) {
+                            let avg = (data[i] + data[i+1] + data[i+2]) / 3;
+                            if (avg > 110) { data[i] = 255; data[i+1] = 0; data[i+2] = 255; } 
+                            else { data[i] = 0; data[i+1] = 10; data[i+2] = 30; }
+                        }
+                        ctx.putImageData(imageData, 0, 0);
+                        break;
+                    case 'madhatter':
+                        const t = Date.now() * 0.005;
+                        for (let i = 0; i < data.length; i += 4) {
+                            data[i] = 255 - data[i]; 
+                            data[i+1] = (data[i+1] + Math.sin(t) * 200) % 255;
+                            data[i+2] = (data[i+2] + Math.cos(t) * 200) % 255;
+                        }
+                        ctx.putImageData(imageData, 0, 0);
+                        break;
+                    case 'drinkme':
+                        ctx.save();
+                        ctx.translate(canvas.width/2, canvas.height/2);
+                        const scale = 0.5 + Math.abs(Math.sin(Date.now() * 0.001)) * 0.4;
+                        ctx.scale(scale, scale);
+                        ctx.drawImage(video, -canvas.width/2, -canvas.height/2);
+                        ctx.restore();
+                        break;
+                    case 'queen':
+                        for (let i = 0; i < data.length; i += 4) {
+                            if (!(data[i] > data[i+1] * 1.4 && data[i] > data[i+2] * 1.4)) {
+                                let gray = (data[i] + data[i+1] + data[i+2]) / 3;
+                                data[i] = data[i+1] = data[i+2] = gray;
+                            } else { data[i] = 255; }
+                        }
+                        ctx.putImageData(imageData, 0, 0);
+                        break;
+                    case 'clock':
+                        for (let i = 0; i < data.length; i += 4) {
+                            let r = data[i], g = data[i+1], b = data[i+2];
+                            data[i] = (r * 0.393) + (g * 0.769) + (b * 0.189);
+                            data[i+1] = (r * 0.349) + (g * 0.686) + (b * 0.168);
+                            data[i+2] = (r * 0.272) + (g * 0.534) + (b * 0.131);
+                        }
+                        ctx.putImageData(imageData, 0, 0);
+                        break;
+                    case 'absolem':
+                        ctx.save();
+                        ctx.filter = 'blur(6px) hue-rotate(180deg)';
+                        ctx.drawImage(video, 0, 0);
+                        ctx.globalAlpha = 0.3;
+                        ctx.fillStyle = "cyan";
+                        ctx.fillRect(0,0, canvas.width, canvas.height);
+                        ctx.restore();
+                        break;
+                    case 'upside':
+                        ctx.save();
+                        ctx.translate(canvas.width, canvas.height); ctx.rotate(Math.PI);
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        ctx.restore();
+                        break;
+                    case 'glitch':
+                        ctx.save();
+                        ctx.drawImage(video, 0, 0);
+                        if(Math.random() > 0.8) {
+                            ctx.drawImage(video, Math.random()*20, Math.random()*20, canvas.width, canvas.height, -10, -10, canvas.width+20, canvas.height+20);
+                        }
+                        ctx.restore();
+                        break;
+                    case 'twins':
+                        ctx.save();
+                        ctx.drawImage(video, 0, 0, canvas.width/2, canvas.height, 0, 0, canvas.width/2, canvas.height);
+                        ctx.scale(-1, 1);
+                        ctx.drawImage(video, 0, 0, canvas.width/2, canvas.height, -canvas.width, 0, canvas.width/2, canvas.height);
+                        ctx.restore();
+                        break;
+                    case 'paint':
+                        ctx.drawImage(video, 0, 0);
+                        ctx.fillStyle = "rgba(255, 0, 0, 0.3)";
+                        ctx.fillRect(0, 0, canvas.width, 20 + Math.sin(Date.now()*0.002)*40);
+                        break;
+                    case 'dream':
+                        ctx.save();
+                        ctx.filter = 'blur(10px) brightness(1.3) saturate(0.5)';
+                        ctx.drawImage(video, 0, 0);
+                        ctx.globalAlpha = 0.5;
+                        ctx.drawImage(video, 0, 0);
+                        ctx.restore();
+                        break;
+                    /* NOVOS FILTROS */
+                    case 'gold':
+                        for (let i = 0; i < data.length; i += 4) {
+                            let gray = (data[i] + data[i+1] + data[i+2]) / 3;
+                            data[i] = gray + 50; data[i+1] = gray + 20; data[i+2] = 0;
+                        }
+                        ctx.putImageData(imageData, 0, 0);
+                        break;
+                    case 'tears':
+                        ctx.save();
+                        ctx.drawImage(video, 0, 0);
+                        for(let y=0; y<canvas.height; y+=10) {
+                            let shift = Math.sin(y/20 + Date.now()/200) * 15;
+                            ctx.drawImage(canvas, 0, y, canvas.width, 10, shift, y, canvas.width, 10);
+                        }
+                        ctx.globalAlpha = 0.2; ctx.fillStyle = "blue"; ctx.fillRect(0,0,canvas.width,canvas.height);
+                        ctx.restore();
+                        break;
+                    case 'chess':
+                        for (let i = 0; i < data.length; i += 4) {
+                            let x = (i/4) % canvas.width;
+                            let y = Math.floor((i/4) / canvas.width);
+                            let chess = (Math.floor(x/40) + Math.floor(y/40)) % 2 === 0;
+                            if (chess) { data[i] *= 0.5; data[i+1] *= 0.5; data[i+2] *= 0.5; }
+                            else { data[i] += 50; data[i+1] += 50; data[i+2] += 50; }
+                        }
+                        ctx.putImageData(imageData, 0, 0);
+                        break;
+                    case 'spiral':
+                        ctx.save();
+                        ctx.translate(canvas.width/2, canvas.height/2);
+                        ctx.rotate(Date.now() * 0.001);
+                        ctx.drawImage(video, -canvas.width/2, -canvas.height/2);
+                        ctx.restore();
+                        break;
+                    case 'forest':
+                        for (let i = 0; i < data.length; i += 4) {
+                            data[i] *= 0.2; data[i+1] *= 0.7; data[i+2] *= 0.2; // Dark Green
+                        }
+                        ctx.putImageData(imageData, 0, 0);
+                        break;
+                    case 'dodo':
+                        ctx.globalAlpha = 0.1;
+                        ctx.drawImage(video, Math.sin(Date.now()*0.01)*30, 0);
+                        break;
+                    case 'ghost':
+                        ctx.globalAlpha = 0.05;
+                        ctx.drawImage(video, 0, 0);
+                        break;
+                    case 'neon':
+                        for (let i = 0; i < data.length; i += 4) {
+                            data[i] = data[i] > 128 ? 255 : 0;
+                            data[i+1] = data[i+1] > 128 ? 255 : 0;
+                            data[i+2] = 255;
+                        }
+                        ctx.putImageData(imageData, 0, 0);
+                        break;
+                    case 'etch':
+                        for (let i = 0; i < data.length; i += 4) {
+                            let gray = (data[i] + data[i+1] + data[i+2]) / 3;
+                            let val = gray > 100 ? 255 : 0;
+                            data[i] = data[i+1] = data[i+2] = val;
+                        }
+                        ctx.putImageData(imageData, 0, 0);
+                        break;
+                    case 'frozen':
+                        ctx.globalCompositeOperation = 'lighter';
+                        ctx.drawImage(video, 0, 0);
+                        ctx.fillStyle = "rgba(200, 255, 255, 0.01)";
+                        ctx.fillRect(0,0, canvas.width, canvas.height);
+                        ctx.globalCompositeOperation = 'source-over';
+                        break;
+                    case 'starlight':
+                        for (let i = 0; i < data.length; i += 4) {
+                            data[i] *= 0.5; data[i+1] *= 0.5; data[i+2] *= 1.2;
+                        }
+                        ctx.putImageData(imageData, 0, 0);
+                        break;
+                    case 'garden':
+                        for (let i = 0; i < data.length; i += 4) {
+                            data[i] *= 1.4; data[i+1] *= 1.2; data[i+2] *= 1.1;
+                        }
+                        ctx.putImageData(imageData, 0, 0);
+                        break;
+                    case 'cards':
+                        for (let i = 0; i < data.length; i += 4) {
+                            for (let j = 0; j < 3; j++) data[i+j] = Math.floor(data[i+j] / 80) * 80;
+                        }
+                        ctx.putImageData(imageData, 0, 0);
+                        break;
+                }
+            }
+
+            requestAnimationFrame(processFrame);
+        }
+
+        window.onload = setupCamera;
+    </script>
+</body>
+</html>
