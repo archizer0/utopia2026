@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Espelho do País das Maravilhas</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: linear-gradient(45deg, #4a0000, #00004a);
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: white;
+        }
+
+        /* Fundo animado Vermelho e Azul */
+        .background-effect {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(120deg, #ff0000, #0000ff, #ff0000);
+            background-size: 400% 400%;
+            animation: gradientAnim 10s ease infinite;
+            opacity: 0.6;
+            z-index: 0;
+        }
+
+        @keyframes gradientAnim {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        #mainCanvas {
+            position: relative;
+            z-index: 2;
+            box-shadow: 0 0 50px rgba(255, 255, 255, 0.5);
+            border: 8px solid gold;
+            border-radius: 20px;
+            transform: scaleX(-1); /* Espelhar a câmara */
+            max-width: 90%;
+            max-height: 80%;
+            background-color: rgba(0,0,0,0.5);
+        }
+
+        #overlay {
+            position: absolute;
+            z-index: 10;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            transition: opacity 0.5s;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            text-shadow: 2px 2px 0px #ff0000, -2px -2px 0px #0000ff;
+            margin-bottom: 20px;
+        }
+
+        p {
+            font-size: 1.2rem;
+            max-width: 600px;
+            margin-bottom: 30px;
+            line-height: 1.5;
+        }
+
+        button {
+            padding: 15px 30px;
+            font-size: 1.2rem;
+            background: transparent;
+            color: white;
+            border: 2px solid white;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            box-shadow: 0 0 15px white;
+        }
+
+        button:hover {
+            background: white;
+            color: black;
+            transform: scale(1.1);
+        }
+
+        .hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* Video escondido usado para processamento */
+        video {
+            display: none;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="background-effect"></div>
+
+    <div id="overlay">
+        <h1>O Espelho das Maravilhas</h1>
+        <p>Controla o som como um Theremin Mágico!<br>
+           <span style="color: #ff5555">Esquerda (Mexe cima/baixo):</span> Controla o TOM (Agudo/Grave)<br>
+           <span style="color: #5555ff">Direita (Mexe cima/baixo):</span> Controla o VOLUME</p>
+        <button id="startButton">Entrar no País das Maravilhas</button>
+    </div>
+
+    <canvas id="mainCanvas"></canvas>
+    <video id="video" autoplay playsinline></video>
+
+    <script>
+        // Isolamento de escopo para evitar conflitos de variáveis globais
+        (function() {
+            // Configuração
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('mainCanvas');
+            const ctx = canvas.getContext('2d');
+            const overlay = document.getElementById('overlay');
+            const startButton = document.getElementById('startButton');
+
+            // Variáveis de Movimento
+            let prevFrameData = null;
+            let motionActive = false;
+           
+            // Variáveis auxiliares para o processamento de vídeo
+            let smallCanvas = null;
+            let smallCtx = null;
+
+            // A Entidade (O Coelho Branco)
+            let entity = {
+                x: 0,
+                y: 0,
+                targetX: 0,
+                targetY: 0,
+                emoji: '🐰',
+                size: 60
+            };
+
+            // Partículas (Naipes de cartas)
+            let particles = [];
+            const suits = ['♥', '♦', '♣', '♠'];
+            const colors = ['#ff0055', '#ff5555', '#aaaaaa', '#ffffff'];
+
+            // Audio Context
+            let audioCtx;
+            let oscillator;
+            let gainNode;
+            let filterNode;
+           
+            // Variáveis de Estado do Som
+            let currentFreq = 440;
+            let currentVol = 0;
+
+            // Tamanho de processamento (menor para performance)
+            const scale = 0.2;
+            let w = 0, h = 0; // Inicializados com 0 para evitar undefined
+
+            startButton.addEventListener('click', async () => {
+                try {
+                    // Iniciar Audio
+                    initAudio();
+                   
+                    // Iniciar Câmara
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                    video.srcObject = stream;
+                   
+                    video.onloadedmetadata = () => {
+                        w = video.videoWidth;
+                        h = video.videoHeight;
+                        canvas.width = w;
+                        canvas.height = h;
+                       
+                        // Inicializar entidade no centro
+                        entity.x = w / 2;
+                        entity.y = h / 2;
+                        entity.targetX = w / 2;
+                        entity.targetY = h / 2;
+
+                        overlay.classList.add('hidden');
+                        loop();
+                    };
+                } catch (err) {
+                    alert("Erro ao aceder à câmara: " + err.message);
+                }
+            });
+
+            function initAudio() {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContext();
+
+                // Oscilador principal (som de sintetizador onírico)
+                oscillator = audioCtx.createOscillator();
+                oscillator.type = 'sine'; // Onda suave
+
+                // Filtro para suavizar
+                filterNode = audioCtx.createBiquadFilter();
+                filterNode.type = 'lowpass';
+                filterNode.frequency.value = 1000;
+
+                // Controle de Volume
+                gainNode = audioCtx.createGain();
+                gainNode.gain.value = 0;
+
+                // Efeito de Eco (Delay) para ambiente "Maravilhas"
+                const delayNode = audioCtx.createDelay();
+                delayNode.delayTime.value = 0.3;
+                const delayGain = audioCtx.createGain();
+                delayGain.gain.value = 0.4;
+
+                // Conexões
+                oscillator.connect(filterNode);
+                filterNode.connect(gainNode);
+               
+                // Roteamento direto
+                gainNode.connect(audioCtx.destination);
+               
+                // Roteamento do eco
+                gainNode.connect(delayNode);
+                delayNode.connect(delayGain);
+                delayGain.connect(audioCtx.destination);
+                delayGain.connect(delayNode); // Feedback loop
+
+                oscillator.start();
+            }
+
+            function createParticle(x, y) {
+                const suit = suits[Math.floor(Math.random() * suits.length)];
+                const color = colors[Math.floor(Math.random() * colors.length)];
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 4,
+                    vy: (Math.random() - 0.5) * 4 - 2,
+                    size: Math.random() * 30 + 10,
+                    text: suit,
+                    color: color,
+                    life: 1.0,
+                    rotation: Math.random() * 360,
+                    rotSpeed: (Math.random() - 0.5) * 10
+                });
+            }
+
+            function updateParticles() {
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    let p = particles[i];
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.life -= 0.02;
+                    p.rotation += p.rotSpeed;
+
+                    ctx.save();
+                    ctx.globalAlpha = p.life;
+                    ctx.translate(p.x, p.y);
+                    ctx.rotate(p.rotation * Math.PI / 180);
+                    ctx.fillStyle = p.color;
+                    ctx.font = `${p.size}px Arial`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(p.text, 0, 0);
+                    ctx.restore();
+
+                    if (p.life <= 0) {
+                        particles.splice(i, 1);
+                    }
+                }
+            }
+
+            function playSound(leftY, rightY, leftActive, rightActive) {
+                if (!audioCtx) return;
+
+                const now = audioCtx.currentTime;
+
+                // --- LÓGICA DA ESQUERDA (PITCH / TOM) ---
+                if (leftActive) {
+                    // Mapear Y (0 a h) para Frequência (800 a 100)
+                    // Y=0 é topo (Agudo), Y=1 é fundo (Grave)
+                    // Normalizar Y de 0 a 1
+                    const normY = Math.max(0, Math.min(1, leftY / (h * scale)));
+                   
+                    // Quanto mais alto (menor Y), maior a frequência
+                    const targetFreq = 100 + (1 - normY) * 800;
+                   
+                    // Suavizar a mudança de frequência
+                    oscillator.frequency.setTargetAtTime(targetFreq, now, 0.1);
+                    currentFreq = targetFreq;
+                }
+
+                // --- LÓGICA DA DIREITA (VOLUME) ---
+                if (rightActive) {
+                    // Mapear Y para Volume
+                    // Y=0 (Topo) = Volume Max (0.5)
+                    // Y=1 (Fundo) = Volume Min (0.01)
+                    const normY = Math.max(0, Math.min(1, rightY / (h * scale)));
+                    const maxVol = 0.3;
+                    const targetVol = (1 - normY) * maxVol; // Invertido: Cima é mais alto
+
+                    gainNode.gain.setTargetAtTime(targetVol, now, 0.1);
+                    currentVol = targetVol;
+                } else {
+                    // Se não houver movimento na direita, faz fade out lento
+                    gainNode.gain.setTargetAtTime(0, now, 0.5);
+                }
+            }
+
+            function detectMotion() {
+                if (!w || !h) return null;
+
+                const smallW = Math.floor(w * scale);
+                const smallH = Math.floor(h * scale);
+               
+                if (!smallCanvas) {
+                    smallCanvas = document.createElement('canvas');
+                    smallCanvas.width = smallW;
+                    smallCanvas.height = smallH;
+                    smallCtx = smallCanvas.getContext('2d');
+                }
+
+                smallCtx.drawImage(video, 0, 0, smallW, smallH);
+                const frame = smallCtx.getImageData(0, 0, smallW, smallH);
+                const data = frame.data;
+                const len = data.length;
+
+                // Variáveis separadas para Esquerda e Direita
+                let leftTotalY = 0;
+                let leftCount = 0;
+               
+                let rightTotalY = 0;
+                let rightCount = 0;
+
+                let totalX = 0;
+                let totalY = 0;
+                let allChangedPixels = 0;
+
+                if (prevFrameData && prevFrameData.length === len) {
+                    for (let i = 0; i < len; i += 4) {
+                        const diff = Math.abs(data[i+1] - prevFrameData[i+1]);
+                       
+                        if (diff > 20) {
+                            const pixelIndex = i / 4;
+                            const x = pixelIndex % smallW;
+                            const y = Math.floor(pixelIndex / smallW);
+                           
+                            // Acumular para a entidade global (Coelho)
+                            totalX += x;
+                            totalY += y;
+                            allChangedPixels++;
+
+                            // Separar Esquerda vs Direita
+                            if (x < smallW / 2) {
+                                // Lado Esquerdo (Controlo de Tom)
+                                leftTotalY += y;
+                                leftCount++;
+                            } else {
+                                // Lado Direito (Controlo de Volume)
+                                rightTotalY += y;
+                                rightCount++;
+                            }
+                        }
+                    }
+                }
+
+                prevFrameData = new Uint8ClampedArray(data);
+
+                // Processar Som e Controlo
+                const leftActive = leftCount > 10; // Threshold mínimo
+                const rightActive = rightCount > 10;
+
+                const avgLeftY = leftActive ? leftTotalY / leftCount : 0;
+                const avgRightY = rightActive ? rightTotalY / rightCount : 0;
+
+                playSound(avgLeftY, avgRightY, leftActive, rightActive);
+
+                // Lógica Visual do Coelho e Partículas (Baseada no movimento global)
+                if (allChangedPixels > 50) {
+                    const avgX = (totalX / allChangedPixels) / scale;
+                    const avgY = (totalY / allChangedPixels) / scale;
+                   
+                    motionActive = true;
+                    entity.targetX = avgX;
+                    entity.targetY = avgY;
+                   
+                    if (Math.random() > 0.5) {
+                        createParticle(avgX + (Math.random()-0.5)*50, avgY + (Math.random()-0.5)*50);
+                    }
+                } else {
+                    motionActive = false;
+                }
+               
+                // Desenhar linhas de debug visuais (opcional, para feedback)
+                // Vamos desenhar uma linha ténue no meio do ecrã principal
+                ctx.save();
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(w/2, 0);
+                ctx.lineTo(w/2, h);
+                ctx.stroke();
+               
+                // Texto de feedback nas laterais
+                ctx.font = "20px Courier New";
+                ctx.fillStyle = "rgba(255, 100, 100, 0.5)";
+                ctx.fillText("TOM", 20, 30);
+                ctx.fillStyle = "rgba(100, 100, 255, 0.5)";
+                ctx.fillText("VOLUME", w - 100, 30);
+                ctx.restore();
+            }
+
+            function drawEntity() {
+                // Interpolação Linear (Lerp) para movimento suave
+                // O coelho move-se 10% da distância para o alvo a cada frame
+                entity.x += (entity.targetX - entity.x) * 0.1;
+                entity.y += (entity.targetY - entity.y) * 0.1;
+
+                ctx.save();
+                ctx.translate(entity.x, entity.y);
+               
+                // Efeito de pulsação suave
+                const scale = 1 + Math.sin(Date.now() / 200) * 0.1;
+                ctx.scale(scale, scale);
+               
+                ctx.font = `${entity.size}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.shadowColor = "white";
+                ctx.shadowBlur = 20;
+                ctx.fillText(entity.emoji, 0, 0);
+               
+                ctx.restore();
+            }
+
+            function loop() {
+                if (!w || !h) {
+                    requestAnimationFrame(loop);
+                    return;
+                }
+
+                // Efeito visual no canvas principal
+                // Fundo ligeiramente transparente para criar rasto (motion trail)
+                ctx.fillStyle = 'rgba(0, 0, 20, 0.2)';
+                ctx.fillRect(0, 0, w, h);
+
+                ctx.globalCompositeOperation = 'lighter';
+               
+                // Vídeo fantasma
+                ctx.globalAlpha = 0.3;
+                ctx.drawImage(video, 0, 0, w, h);
+                ctx.globalAlpha = 1.0;
+
+                detectMotion();
+
+                ctx.globalCompositeOperation = 'source-over';
+               
+                // Desenhar o coelho antes das partículas para elas ficarem "em cima"
+                drawEntity();
+                updateParticles();
+
+                requestAnimationFrame(loop);
+            }
+        })();
+    </script>
+</body>
+</html>
