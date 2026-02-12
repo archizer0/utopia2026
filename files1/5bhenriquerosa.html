@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice: Experiência Sonora Gestual</title>
+    <style>
+        :root {
+            --primary: #9b59b6; /* Roxo Cheshire */
+            --secondary: #2ecc71; /* Verde Chapeleiro */
+            --accent: #e74c3c; /* Vermelho Rainha */
+            --dark: #1a0b2e;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--dark);
+            color: white;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        #container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* Camadas de Vídeo e Canvas */
+        video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); /* Espelhar a câmara */
+            z-index: 1;
+            opacity: 0.8;
+            transition: filter 0.5s ease;
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+            transform: scaleX(-1);
+            pointer-events: none;
+        }
+
+        /* Interface UI */
+        #ui-layer {
+            position: absolute;
+            z-index: 10;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .header {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: auto;
+            text-align: left;
+            background: transparent;
+            text-shadow: 0 0 10px var(--primary);
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.5rem;
+            letter-spacing: 2px;
+            background: rgba(0,0,0,0.5);
+            padding: 10px;
+            border-radius: 5px;
+            backdrop-filter: blur(2px);
+        }
+
+        /* Barra Lateral de Trabalho (Sidebar) */
+        .sidebar {
+            position: absolute;
+            right: 0;
+            top: 0;
+            height: 100%;
+            width: 90px;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 25px;
+            pointer-events: auto; /* Permitir cliques na barra */
+            border-left: 1px solid rgba(255,255,255,0.1);
+            box-shadow: -5px 0 20px rgba(0,0,0,0.5);
+        }
+
+        .sidebar-label {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            transform: rotate(180deg);
+            color: rgba(255,255,255,0.4);
+            font-size: 0.8rem;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        /* Grupo de Filtros Vertical */
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px 8px;
+            border-radius: 50px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .filter-btn {
+            background: transparent;
+            border: none;
+            font-size: 1.8rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            opacity: 0.6;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 50%;
+            position: relative;
+        }
+
+        .filter-btn:hover {
+            opacity: 1;
+            transform: scale(1.1);
+            background: rgba(255,255,255,0.1);
+        }
+
+        .filter-btn.active {
+            opacity: 1;
+            transform: scale(1.2);
+            background: var(--primary);
+            box-shadow: 0 0 15px var(--primary);
+        }
+
+        /* Tooltip para os botões */
+        .filter-btn::after {
+            content: attr(title);
+            position: absolute;
+            right: 65px; /* Aparece à esquerda do botão */
+            background: rgba(0,0,0,0.9);
+            color: var(--secondary);
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            opacity: 0;
+            pointer-events: none;
+            white-space: nowrap;
+            transition: opacity 0.2s;
+            border: 1px solid var(--secondary);
+        }
+
+        .filter-btn:hover::after {
+            opacity: 1;
+        }
+
+        /* Medidor de Som Vertical */
+        .sound-meter-container {
+            height: 120px;
+            width: 8px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+            display: flex;
+            align-items: flex-end; /* A barra cresce de baixo para cima */
+            overflow: hidden;
+            margin-top: 10px;
+        }
+       
+        #sound-bar {
+            width: 100%;
+            height: 0%; /* Altura dinâmica */
+            background: var(--primary);
+            border-radius: 4px;
+            transition: height 0.1s linear, background-color 0.2s;
+            box-shadow: 0 0 10px var(--primary);
+        }
+
+        .status {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            max-width: 300px;
+            font-size: 0.9rem;
+            color: rgba(255,255,255,0.8);
+            background: rgba(0,0,0,0.5);
+            padding: 10px 15px;
+            border-radius: 10px;
+            line-height: 1.4;
+            backdrop-filter: blur(2px);
+        }
+
+        /* Ecrã de Início */
+        #start-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(26, 11, 46, 0.95);
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+
+        .alice-btn {
+            background: transparent;
+            color: var(--secondary);
+            border: 2px solid var(--secondary);
+            padding: 15px 40px;
+            font-size: 1.5rem;
+            font-family: 'Courier New', monospace;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            box-shadow: 0 0 15px rgba(46, 204, 113, 0.2);
+            border-radius: 5px;
+        }
+
+        .alice-btn:hover {
+            background: var(--secondary);
+            color: black;
+            box-shadow: 0 0 30px var(--secondary);
+        }
+
+        .icons-grid {
+            font-size: 3rem;
+            margin-bottom: 20px;
+            animation: float 3s infinite ease-in-out;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-20px); }
+        }
+
+        /* Classes de Filtros Visuais */
+        .filter-normal { filter: contrast(1.1) saturate(1.2); }
+        .filter-cheshire { filter: hue-rotate(270deg) contrast(1.5) blur(1px); } /* Roxo/Azul */
+        .filter-hatter { filter: invert(1) hue-rotate(180deg); } /* Invertido psicadélico */
+        .filter-queen { filter: grayscale(100%) sepia(100%) hue-rotate(-50deg) saturate(300%) contrast(1.2); } /* Vermelho intenso */
+        .filter-dream { filter: blur(2px) brightness(1.2) hue-rotate(90deg); }
+        .filter-rabbit { filter: grayscale(100%) brightness(1.3) contrast(2.0); } /* Coelho Branco: Prata Alto Contraste */
+
+    </style>
+</head>
+<body>
+
+    <div id="container">
+        <!-- Vídeo da Webcam -->
+        <video id="webcam" autoplay playsinline muted class="filter-normal"></video>
+        <!-- Canvas para processamento e efeitos -->
+        <canvas id="canvas-overlay"></canvas>
+
+        <!-- Interface do Utilizador -->
+        <div id="ui-layer">
+            <div class="header">
+                <h1>O Espelho Sonoro</h1>
+            </div>
+
+            <!-- Barra Lateral de Ferramentas -->
+            <div class="sidebar">
+                <span class="sidebar-label">Filtros</span>
+               
+                <div class="filter-group">
+                    <button class="filter-btn active" onclick="setFilter('filter-normal', this)" title="Normal">👁️</button>
+                    <button class="filter-btn" onclick="setFilter('filter-rabbit', this)" title="Coelho Branco">🐇</button>
+                    <button class="filter-btn" onclick="setFilter('filter-cheshire', this)" title="Gato de Cheshire">😼</button>
+                    <button class="filter-btn" onclick="setFilter('filter-hatter', this)" title="Chapeleiro Louco">🎩</button>
+                    <button class="filter-btn" onclick="setFilter('filter-queen', this)" title="Rainha de Copas">❤️</button>
+                    <button class="filter-btn" onclick="setFilter('filter-dream', this)" title="Sonho">🍄</button>
+                </div>
+
+                <div class="sound-meter-container" title="Nível de Som">
+                    <div id="sound-bar"></div>
+                </div>
+               
+                <span class="sidebar-label">Volume</span>
+            </div>
+
+            <div class="status">
+                Move as mãos para criar som.<br>
+                ↔️ Tom | ↕️ Magia
+            </div>
+        </div>
+
+        <!-- Ecrã de Início -->
+        <div id="start-screen">
+            <div class="icons-grid">🐇 🎩 ☕ 🍄</div>
+            <h1>Bem-vindo ao País das Maravilhas</h1>
+            <p style="max-width: 500px; margin: 20px auto; line-height: 1.5;">
+                Usa a tua câmara para controlar o som com gestos.<br><br>
+                ↔️ Esquerda/Direita: Altura do Som<br>
+                ↕️ Cima/Baixo: Distorção Mágica<br>
+                ✋ Movimento: Volume
+            </p>
+            <button class="alice-btn" onclick="startExperience()">Beba-me (Iniciar)</button>
+        </div>
+    </div>
+
+    <script>
+        // Configuração
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('canvas-overlay');
+        const ctx = canvas.getContext('2d');
+        const startScreen = document.getElementById('start-screen');
+        const soundBar = document.getElementById('sound-bar');
+       
+        // Estado do Sistema
+        let isRunning = false;
+        let audioCtx;
+        let oscillator;
+        let gainNode;
+        let filterNode;
+       
+        // Variáveis de Movimento
+        let prevFrame = null;
+        let motionThreshold = 15; // Sensibilidade
+        let width, height;
+
+        // Sons e Áudio (Web Audio API)
+        function initAudio() {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext();
+
+            // Oscilador principal
+            oscillator = audioCtx.createOscillator();
+            oscillator.type = 'sine'; // Onda suave (sonhadora)
+
+            // Nó de Ganho (Volume)
+            gainNode = audioCtx.createGain();
+            gainNode.gain.value = 0;
+
+            // Nó de Filtro (Efeito Wah-wah)
+            filterNode = audioCtx.createBiquadFilter();
+            filterNode.type = 'lowpass';
+            filterNode.frequency.value = 1000;
+
+            // Delay para efeito psicadélico
+            const delayNode = audioCtx.createDelay();
+            delayNode.delayTime.value = 0.3;
+            const delayFeedback = audioCtx.createGain();
+            delayFeedback.gain.value = 0.4;
+
+            // Cadeia de ligação: Osc -> Filter -> Gain -> Output (+ Loop de Delay)
+            oscillator.connect(filterNode);
+            filterNode.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+           
+            // Ligar delay
+            gainNode.connect(delayNode);
+            delayNode.connect(delayFeedback);
+            delayFeedback.connect(delayNode);
+            delayNode.connect(audioCtx.destination);
+
+            oscillator.start();
+        }
+
+        // Função de Início
+        async function startExperience() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: "user"
+                    },
+                    audio: false
+                });
+               
+                video.srcObject = stream;
+               
+                await new Promise(resolve => video.onloadedmetadata = resolve);
+               
+                // Configurar tamanho do canvas igual ao vídeo
+                width = video.videoWidth;
+                height = video.videoHeight;
+                canvas.width = width;
+                canvas.height = height;
+
+                // Canvas offscreen para processamento (performance)
+                const processingCanvas = document.createElement('canvas');
+                processingCanvas.width = width / 4; // Menor resolução para detetar movimento mais rápido
+                processingCanvas.height = height / 4;
+                const pCtx = processingCanvas.getContext('2d');
+
+                initAudio();
+                startScreen.style.display = 'none';
+                isRunning = true;
+
+                requestAnimationFrame(() => processLoop(pCtx));
+
+            } catch (err) {
+                alert("Erro ao aceder à câmara: " + err.message + ". Por favor verifique as permissões.");
+            }
+        }
+
+        // Seleção de Filtros (Manual)
+        function setFilter(filterClass, btnElement) {
+            // Atualizar classe do vídeo
+            video.className = filterClass;
+
+            // Atualizar UI dos botões
+            document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+            btnElement.classList.add('active');
+
+            // Tocar som de feedback
+            playMagicSound();
+        }
+
+        function playMagicSound() {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(2000, audioCtx.currentTime + 0.3);
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+           
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.3);
+        }
+
+        // Loop Principal de Processamento
+        function processLoop(pCtx) {
+            if (!isRunning) return;
+
+            // Desenhar frame atual reduzido
+            pCtx.drawImage(video, 0, 0, pCtx.canvas.width, pCtx.canvas.height);
+           
+            const frameData = pCtx.getImageData(0, 0, pCtx.canvas.width, pCtx.canvas.height);
+            const data = frameData.data;
+            const len = data.length;
+
+            let motionX = 0;
+            let motionY = 0;
+            let motionCount = 0;
+           
+            // Limpar canvas de visualização (overlay)
+            ctx.clearRect(0, 0, width, height);
+
+            // Algoritmo de Deteção de Movimento
+            if (prevFrame) {
+                for (let i = 0; i < len; i += 4) { // Pular a cada 4 bytes (RGBA)
+                    // Simplificação: verificar apenas canal Verde para performance
+                    const diff = Math.abs(data[i+1] - prevFrame[i+1]);
+
+                    if (diff > motionThreshold) {
+                        const pixelIndex = i / 4;
+                        const x = pixelIndex % pCtx.canvas.width;
+                        const y = Math.floor(pixelIndex / pCtx.canvas.width);
+
+                        motionX += x;
+                        motionY += y;
+                        motionCount++;
+
+                        // Visualização: Desenhar "poeira mágica" onde há movimento
+                        // Mapear de volta para o tamanho real
+                        if (Math.random() > 0.95) { // Apenas desenhar alguns
+                            const realX = x * 4;
+                            const realY = y * 4;
+                            ctx.fillStyle = `hsl(${Date.now() % 360}, 100%, 70%)`;
+                            ctx.beginPath();
+                            ctx.arc(realX, realY, Math.random() * 5 + 2, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                    }
+                }
+            }
+
+            // Atualizar frame anterior
+            prevFrame = new Uint8ClampedArray(data);
+
+            // --- Lógica de Áudio e Controlo --- //
+            if (motionCount > 50) { // Se houver movimento suficiente
+                const avgX = motionX / motionCount;
+                const avgY = motionY / motionCount;
+
+                // Normalizar coordenadas (0 a 1)
+                const normX = avgX / pCtx.canvas.width;
+                const normY = avgY / pCtx.canvas.height;
+
+                // X controla Pitch (Frequência)
+                // Esquerda (grave) -> Direita (agudo)
+                const freq = 150 + (normX * 650);
+                oscillator.frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.1);
+
+                // Y controla Filtro (Abertura/Brilho)
+                const filterFreq = 200 + ((1 - normY) * 3000);
+                filterNode.frequency.setTargetAtTime(filterFreq, audioCtx.currentTime, 0.1);
+
+                // Volume baseado na quantidade de movimento
+                const volume = Math.min(motionCount / 1000, 0.5);
+                gainNode.gain.setTargetAtTime(volume, audioCtx.currentTime, 0.1);
+
+                // UI Feedback (Altura da barra vertical)
+                soundBar.style.height = Math.min((motionCount / 1000) * 100, 100) + "%";
+                soundBar.style.backgroundColor = `hsl(${normX * 360}, 70%, 60%)`;
+
+            } else {
+                // Silêncio suave se parar de mover
+                gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.5);
+                soundBar.style.height = "0%";
+            }
+
+            requestAnimationFrame(() => processLoop(pCtx));
+        }
+    </script>
+</body>
+</html>

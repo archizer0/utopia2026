@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="pt">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Alice: Fuga do Tsunami</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #87CEEB;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: none;
+            user-select: none;
+        }
+
+        #gameCanvas {
+            display: block;
+            width: 100%;
+            height: 100vh;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            pointer-events: none;
+            z-index: 10;
+            display: flex;
+            gap: 20px;
+        }
+
+        /* Telas (Menu, Shop, Game Over) */
+        .screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 20;
+            text-align: center;
+            transition: opacity 0.3s;
+        }
+
+        .hidden {
+            display: none !important;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        h1 {
+            font-size: 48px;
+            margin-bottom: 10px;
+            color: #FFD700;
+            text-shadow: 0 0 15px #FF8C00;
+            font-family: 'Georgia', serif;
+        }
+
+        p {
+            font-size: 18px;
+            margin-bottom: 20px;
+            max-width: 600px;
+            line-height: 1.5;
+            color: #ddd;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        button {
+            padding: 12px 30px;
+            font-size: 20px;
+            background: linear-gradient(to bottom, #ff69b4, #c71585);
+            border: 2px solid #fff;
+            border-radius: 10px;
+            color: white;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.4);
+            transition: all 0.2s;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            background: linear-gradient(to bottom, #ff85c1, #d63396);
+            box-shadow: 0 8px 20px rgba(255, 105, 180, 0.4);
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        button.secondary {
+            background: linear-gradient(to bottom, #3498db, #2980b9);
+        }
+
+        /* Estilo da Loja */
+        #shop-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin-top: 20px;
+            max-width: 800px;
+            max-height: 60vh;
+            padding: 10px;
+            overflow-y: auto;
+            /* Scroll se houver muitos bonecos */
+        }
+
+        .shop-item {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 15px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            cursor: pointer;
+            transition: background 0.2s;
+            position: relative;
+        }
+
+        .shop-item:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .shop-item.selected {
+            border-color: #FFD700;
+            background: rgba(255, 215, 0, 0.1);
+            box-shadow: 0 0 15px rgba(255, 215, 0, 0.3);
+        }
+
+        .shop-item.locked {
+            opacity: 0.7;
+            filter: grayscale(0.8);
+        }
+
+        .char-preview {
+            font-size: 40px;
+            margin-bottom: 10px;
+            width: 60px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 50%;
+        }
+
+        .price-tag {
+            background: #27ae60;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+
+        .owned-tag {
+            background: #8e44ad;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+
+        #coin-balance {
+            font-size: 24px;
+            color: #FFD700;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        #coin-balance::before {
+            content: '🪙';
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="ui-layer">
+        <div>Distância: <span id="scoreDisplay">0</span>m</div>
+        <div style="color: #FFD700">🪙 <span id="coinDisplay">0</span></div>
+    </div>
+
+    <!-- Tela Inicial -->
+    <div id="start-screen" class="screen">
+        <h1>Fuga do Mar de Lágrimas</h1>
+        <p>A Alice encolheu! Foge do Tsunami, evita os guardas e apanha relógios.</p>
+
+        <div class="btn-group">
+            <button id="startBtn">JOGAR</button>
+            <button id="shopBtn" class="secondary">LOJA DE PERSONAGENS</button>
+        </div>
+
+        <div style="margin-top: 30px; font-size: 14px; opacity: 0.7;">
+            💻 Espaço / Seta Cima | 📱 Toque na tela
+        </div>
+    </div>
+
+    <!-- Loja -->
+    <div id="shop-screen" class="screen hidden">
+        <h1>Loja do País das Maravilhas</h1>
+        <div id="coin-balance">0</div>
+
+        <div id="shop-grid">
+            <!-- Items inseridos via JS -->
+        </div>
+
+        <button id="backBtn" class="secondary" style="margin-top: 30px;">VOLTAR AO INÍCIO</button>
+    </div>
+
+    <!-- Game Over -->
+    <div id="game-over-screen" class="screen hidden">
+        <h1 style="color: #e74c3c">Afogada!</h1>
+        <p>A Rainha de Copas apanhou-te.</p>
+        <p>Distância: <span id="finalScore">0</span>m</p>
+        <p>Moedas Ganhas: <span id="coinsEarned">0</span></p>
+
+        <div class="btn-group">
+            <button id="restartBtn">TENTAR DE NOVO</button>
+            <button id="menuBtn" class="secondary">MENU</button>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        // --- Configuração ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        let width, height;
+
+        // Estado Global
+        let savedData = JSON.parse(localStorage.getItem('aliceGameData')) || {
+            coins: 0,
+            unlocked: ['alice'],
+            selected: 'alice'
+        };
+
+        const characters = {
+            'alice': {
+                id: 'alice',
+                name: 'Alice',
+                price: 0,
+                color: '#3498db',
+                desc: 'A sonhadora original.',
+                gravityMod: 1.0,
+                emoji: '👩🏼'
+            },
+            'hatter': {
+                id: 'hatter',
+                name: 'Chapeleiro',
+                price: 50,
+                color: '#27ae60',
+                desc: 'Um pouco louco.',
+                gravityMod: 1.0,
+                emoji: '🎩'
+            },
+            'rabbit': {
+                id: 'rabbit',
+                name: 'Coelho Branco',
+                price: 100,
+                color: '#ecf0f1',
+                desc: 'Salta mais alto!',
+                gravityMod: 0.9,
+                emoji: '🐰'
+            },
+            'caterpillar': {
+                id: 'caterpillar',
+                name: 'Lagarta Azul',
+                price: 150,
+                color: '#3498db',
+                desc: 'Muitas pernas, muita calma.',
+                gravityMod: 1.0,
+                emoji: '🐛'
+            },
+            'cat': {
+                id: 'cat',
+                name: 'Gato Cheshire',
+                price: 200,
+                color: '#8e44ad',
+                desc: 'Flutua no ar (Gravidade baixa).',
+                gravityMod: 0.7,
+                emoji: '😼'
+            },
+            'queen': {
+                id: 'queen',
+                name: 'Rainha Copas',
+                price: 300,
+                color: '#c0392b',
+                desc: 'CORTEM-LHE A CABEÇA! (Pesada)',
+                gravityMod: 1.2,
+                emoji: '👑'
+            }
+        };
+
+        // --- Sistema de Loja ---
+
+        function saveData() {
+            localStorage.setItem('aliceGameData', JSON.stringify(savedData));
+            updateUI();
+        }
+
+        function updateUI() {
+            document.getElementById('coinDisplay').innerText = savedData.coins;
+            document.getElementById('coin-balance').innerText = savedData.coins;
+        }
+
+        function renderShop() {
+            const grid = document.getElementById('shop-grid');
+            grid.innerHTML = '';
+
+            Object.values(characters).forEach(char => {
+                const isUnlocked = savedData.unlocked.includes(char.id);
+                const isSelected = savedData.selected === char.id;
+               
+                const item = document.createElement('div');
+                item.className = `shop-item ${isSelected ? 'selected' : ''} ${!isUnlocked ? 'locked' : ''}`;
+               
+                let buttonHTML = '';
+                if (isSelected) {
+                    buttonHTML = `<div class="owned-tag">Selecionado</div>`;
+                } else if (isUnlocked) {
+                    buttonHTML = `<div class="owned-tag" style="background:#3498db">Selecionar</div>`;
+                } else {
+                    buttonHTML = `<div class="price-tag">🪙 ${char.price}</div>`;
+                }
+
+                item.innerHTML = `
+                    <div class="char-preview">${char.emoji}</div>
+                    <div style="font-weight:bold; font-size:18px">${char.name}</div>
+                    <div style="font-size:12px; margin-bottom:5px; opacity:0.8">${char.desc}</div>
+                    ${buttonHTML}
+                `;
+
+                item.onclick = () => {
+                    if (isUnlocked) {
+                        savedData.selected = char.id;
+                        saveData();
+                        renderShop();
+                    } else {
+                        if (savedData.coins >= char.price) {
+                            savedData.coins -= char.price;
+                            savedData.unlocked.push(char.id);
+                            savedData.selected = char.id;
+                            saveData();
+                            renderShop();
+                        } else {
+                            // Feedback visual de erro
+                            item.style.borderColor = 'red';
+                            setTimeout(() => item.style.borderColor = 'rgba(255,255,255,0.3)', 300);
+                        }
+                    }
+                };
+
+                grid.appendChild(item);
+            });
+        }
+
+        // Eventos da UI
+        document.getElementById('shopBtn').onclick = () => {
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('shop-screen').classList.remove('hidden');
+            renderShop();
+        };
+        document.getElementById('backBtn').onclick = () => {
+            document.getElementById('shop-screen').classList.add('hidden');
+            document.getElementById('start-screen').classList.remove('hidden');
+        };
+        document.getElementById('menuBtn').onclick = () => {
+            document.getElementById('game-over-screen').classList.add('hidden');
+            document.getElementById('start-screen').classList.remove('hidden');
+        };
+
+        // --- Motor do Jogo ---
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        let gameRunning = false;
+        let score = 0;
+        let sessionCoins = 0;
+        let frames = 0;
+        let gameSpeed = 6;
+        let waveOffset = 0;
+
+        const player = {
+            x: 0,
+            y: 0,
+            width: 40,
+            height: 70, // Mais alto para ser mais humano
+            dy: 0,
+            jumpPower: -18,
+            gravity: 0.8,
+            grounded: false,
+            distanceFromWave: 300,
+            runFrame: 0,
+            facingRight: true
+        };
+
+        const tsunami = {
+            x: -200,
+            color: 'rgba(0, 105, 148, 0.9)',
+            foamColor: 'rgba(240, 248, 255, 0.8)'
+        };
+
+        let obstacles = [];
+        let collectibles = [];
+        let particles = [];
+
+        // Controles
+        window.addEventListener('keydown', (e) => {
+            if ((e.code === 'Space' || e.code === 'ArrowUp') && gameRunning) jump();
+        });
+        window.addEventListener('touchstart', (e) => {
+            if (gameRunning) jump();
+        });
+        document.getElementById('startBtn').addEventListener('click', startGame);
+        document.getElementById('restartBtn').addEventListener('click', startGame);
+
+        function jump() {
+            if (player.grounded) {
+                player.dy = player.jumpPower;
+                player.grounded = false;
+                createParticles(player.x + player.width/2, player.y + player.height, 5, '#fff');
+            }
+        }
+
+        function startGame() {
+            gameRunning = true;
+            score = 0;
+            sessionCoins = 0;
+            frames = 0;
+            gameSpeed = 6;
+           
+            // Carregar atributos do personagem
+            const charData = characters[savedData.selected];
+            player.gravity = 0.8 * charData.gravityMod;
+
+            player.y = height - 150;
+            player.dy = 0;
+            player.distanceFromWave = 400;
+
+            obstacles = [];
+            collectibles = [];
+            particles = [];
+
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-over-screen').classList.add('hidden');
+            document.getElementById('scoreDisplay').innerText = "0";
+            document.getElementById('coinDisplay').innerText = savedData.coins;
+
+            gameLoop();
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            savedData.coins += sessionCoins;
+            saveData();
+           
+            document.getElementById('finalScore').innerText = Math.floor(score);
+            document.getElementById('coinsEarned').innerText = sessionCoins;
+            document.getElementById('game-over-screen').classList.remove('hidden');
+        }
+
+        // --- Sistema de Partículas ---
+        function createParticles(x, y, count, color) {
+            for(let i=0; i<count; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 8,
+                    vy: (Math.random() - 0.5) * 8,
+                    life: 1.0,
+                    color: color
+                });
+            }
+        }
+
+        // --- Spawners ---
+        function spawnObstacle() {
+            const type = Math.random() > 0.6 ? 'card' : 'mushroom';
+            const obstacle = {
+                x: width,
+                y: height - 100,
+                width: type === 'card' ? 35 : 45,
+                height: type === 'card' ? 60 : 40,
+                type: type
+            };
+            if (type === 'mushroom') obstacle.y = height - 90;
+            obstacles.push(obstacle);
+        }
+
+        function spawnCollectible() {
+            collectibles.push({
+                x: width,
+                y: height - 180 - (Math.random() * 150),
+                width: 30,
+                height: 30,
+                oscillation: Math.random() * Math.PI
+            });
+        }
+
+        // --- Desenho Detalhado dos Personagens ---
+        function drawPlayer(ctx, x, y, w, h, frame) {
+            const charId = savedData.selected;
+           
+            // Animação de corrida (oscilação de pernas/braços)
+            const runOffset = Math.sin(frame * 0.2) * 10;
+            const legAngle = Math.sin(frame * 0.3) * 0.5;
+
+            ctx.save();
+            ctx.translate(x + w/2, y + h/2);
+
+            if (charId === 'alice') {
+                // Vestido Azul
+                ctx.fillStyle = '#3498db';
+                // Saia (trapézio)
+                ctx.beginPath();
+                ctx.moveTo(-15, 0);
+                ctx.lineTo(15, 0);
+                ctx.lineTo(25, 30);
+                ctx.lineTo(-25, 30);
+                ctx.fill();
+                // Tronco
+                ctx.fillRect(-15, -15, 30, 20);
+               
+                // Avental Branco
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(-10, -10, 20, 25);
+                // Alças
+                ctx.fillRect(-12, -15, 4, 10);
+                ctx.fillRect(8, -15, 4, 10);
+
+                // Cabeça
+                ctx.fillStyle = '#ffe0bd';
+                ctx.beginPath();
+                ctx.arc(0, -25, 12, 0, Math.PI*2);
+                ctx.fill();
+
+                // Cabelo Loiro
+                ctx.fillStyle = '#f1c40f';
+                ctx.beginPath();
+                ctx.arc(0, -25, 14, Math.PI, 0);
+                ctx.fillRect(-14, -25, 28, 15);
+                ctx.fill();
+               
+                // Laço Preto
+                ctx.fillStyle = '#000';
+                ctx.beginPath();
+                ctx.moveTo(0, -35);
+                ctx.lineTo(-10, -40);
+                ctx.lineTo(-10, -30);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(0, -35);
+                ctx.lineTo(10, -40);
+                ctx.lineTo(10, -30);
+                ctx.fill();
+
+                // Pernas
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 6;
+                ctx.beginPath();
+                ctx.moveTo(-5, 25);
+                ctx.lineTo(-5 + Math.sin(frame*0.3)*15, 45);
+                ctx.moveTo(5, 25);
+                ctx.lineTo(5 - Math.sin(frame*0.3)*15, 45);
+                ctx.stroke();
+
+                // Sapatos
+                ctx.fillStyle = '#000';
+                ctx.beginPath();
+                ctx.arc(-5 + Math.sin(frame*0.3)*15, 45, 4, 0, Math.PI*2);
+                ctx.arc(5 - Math.sin(frame*0.3)*15, 45, 4, 0, Math.PI*2);
+                ctx.fill();
+            }
+            else if (charId === 'hatter') {
+                // Chapeleiro (Verde/Xadrez)
+                ctx.fillStyle = '#27ae60';
+                ctx.fillRect(-15, -10, 30, 40);
+                ctx.fillStyle = '#7f8c8d';
+                ctx.fillRect(-12, 25, 10, 20);
+                ctx.fillRect(2, 25, 10, 20);
+                ctx.fillStyle = '#ffe0bd';
+                ctx.beginPath(); ctx.arc(0, -20, 10, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = '#2c3e50';
+                ctx.fillRect(-15, -50, 30, 30);
+                ctx.fillRect(-20, -20, 40, 5);
+                ctx.fillStyle = '#e74c3c';
+                ctx.fillRect(-15, -28, 30, 8);
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(5, -45, 8, 10);
+                ctx.fillStyle = '#d35400';
+                ctx.beginPath(); ctx.arc(-12, -20, 5, 0, Math.PI*2); ctx.arc(12, -20, 5, 0, Math.PI*2); ctx.fill();
+                ctx.strokeStyle = '#27ae60';
+                ctx.lineWidth = 6;
+                ctx.beginPath();
+                ctx.moveTo(-5, 30); ctx.lineTo(-5 + Math.sin(frame*0.3)*10, 45);
+                ctx.moveTo(5, 30); ctx.lineTo(5 - Math.sin(frame*0.3)*10, 45);
+                ctx.stroke();
+            }
+            else if (charId === 'rabbit') {
+                // Coelho Branco
+                ctx.fillStyle = '#ecf0f1';
+                ctx.beginPath(); ctx.ellipse(0, 10, 20, 25, 0, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = '#c0392b';
+                ctx.fillRect(-15, -5, 30, 25);
+                ctx.fillStyle = '#fff';
+                ctx.font = "15px Arial";
+                ctx.fillText("♥", -5, 12);
+                ctx.fillStyle = '#ecf0f1';
+                ctx.beginPath(); ctx.arc(0, -20, 15, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.ellipse(-8, -45, 5, 20, -0.2, 0, Math.PI*2); ctx.ellipse(8, -45, 5, 20, 0.2, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = '#ffcccc';
+                ctx.beginPath(); ctx.ellipse(-8, -45, 2, 15, -0.2, 0, Math.PI*2); ctx.ellipse(8, -45, 2, 15, 0.2, 0, Math.PI*2); ctx.fill();
+                ctx.strokeStyle = '#f39c12';
+                ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.arc(-4, -22, 4, 0, Math.PI*2); ctx.arc(4, -22, 4, 0, Math.PI*2); ctx.stroke();
+                ctx.fillStyle = '#ecf0f1';
+                ctx.beginPath();
+                ctx.arc(-10 + Math.sin(frame*0.4)*15, 35, 8, 0, Math.PI*2);
+                ctx.arc(10 - Math.sin(frame*0.4)*15, 35, 8, 0, Math.PI*2);
+                ctx.fill();
+            }
+            else if (charId === 'cat') {
+                // Gato Cheshire
+                const grd = ctx.createLinearGradient(-20, 0, 20, 0);
+                grd.addColorStop(0, "#8e44ad"); grd.addColorStop(0.5, "#9b59b6"); grd.addColorStop(1, "#8e44ad");
+                ctx.fillStyle = grd;
+                ctx.beginPath(); ctx.ellipse(0, 5, 25, 15, 0, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.arc(0, -20, 20, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.moveTo(-15, -30); ctx.lineTo(-25, -50); ctx.lineTo(-5, -35); ctx.fill();
+                ctx.beginPath(); ctx.moveTo(15, -30); ctx.lineTo(25, -50); ctx.lineTo(5, -35); ctx.fill();
+                ctx.strokeStyle = '#f1c40f'; ctx.lineWidth = 3;
+                ctx.beginPath(); ctx.arc(0, -15, 10, 0, Math.PI, false); ctx.stroke();
+                ctx.fillStyle = '#f1c40f';
+                ctx.beginPath(); ctx.arc(-8, -25, 4, 0, Math.PI*2); ctx.arc(8, -25, 4, 0, Math.PI*2); ctx.fill();
+                ctx.lineWidth = 8; ctx.strokeStyle = '#8e44ad';
+                ctx.beginPath(); ctx.moveTo(20, 5); ctx.quadraticCurveTo(30 + Math.sin(frame*0.2)*10, -10, 40, 10); ctx.stroke();
+            }
+            else if (charId === 'caterpillar') {
+                // Lagarta Azul
+                ctx.fillStyle = '#3498db';
+                // Corpo segmentado (pilha vertical para ser humanoide/bípede)
+                for(let i=0; i<4; i++) {
+                    ctx.beginPath();
+                    // Ondulação do corpo
+                    let offsetX = Math.sin((frame * 0.2) + i) * 5;
+                    ctx.arc(offsetX, 30 - (i * 18), 12, 0, Math.PI*2);
+                    ctx.fill();
+                   
+                    // Braços/Pernas múltiplas
+                    if (i < 3) {
+                        ctx.strokeStyle = '#2980b9';
+                        ctx.lineWidth = 3;
+                        ctx.beginPath();
+                        ctx.moveTo(offsetX - 5, 30 - (i * 18));
+                        ctx.lineTo(offsetX - 15 + Math.sin(frame*0.5 + i)*5, 30 - (i * 18) + 5);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.moveTo(offsetX + 5, 30 - (i * 18));
+                        ctx.lineTo(offsetX + 15 - Math.sin(frame*0.5 + i)*5, 30 - (i * 18) + 5);
+                        ctx.stroke();
+                    }
+                }
+                // Cabeça
+                ctx.fillStyle = '#3498db';
+                ctx.beginPath(); ctx.arc(0, -25, 14, 0, Math.PI*2); ctx.fill();
+                // Olhos cansados
+                ctx.fillStyle = '#fff';
+                ctx.beginPath(); ctx.arc(-5, -28, 4, 0, Math.PI*2); ctx.arc(5, -28, 4, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = '#000';
+                ctx.beginPath(); ctx.arc(-5, -28, 1, 0, Math.PI*2); ctx.arc(5, -28, 1, 0, Math.PI*2); ctx.fill();
+                // Fumo (Hookah) - pequenas partículas simples
+                if (frame % 20 === 0) {
+                   ctx.fillStyle = 'rgba(255,255,255,0.5)';
+                   ctx.beginPath(); ctx.arc(10, -30, 3, 0, Math.PI*2); ctx.fill();
+                }
+            }
+            else if (charId === 'queen') {
+                // Rainha de Copas
+                // Vestido enorme Vermelho e Preto
+                ctx.fillStyle = '#c0392b'; // Vermelho
+                ctx.beginPath();
+                ctx.moveTo(0, -10);
+                ctx.lineTo(-25, 45); // Saia larga
+                ctx.lineTo(25, 45);
+                ctx.fill();
+               
+                // Painel central do vestido (Preto/Amarelo)
+                ctx.fillStyle = '#000';
+                ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(-10, 45); ctx.lineTo(10, 45); ctx.fill();
+               
+                // Corações no vestido
+                ctx.fillStyle = '#c0392b';
+                ctx.font = "12px Arial";
+                ctx.fillText("♥", -4, 40);
+                ctx.fillText("♥", -4, 20);
+
+                // Tronco
+                ctx.fillStyle = '#000';
+                ctx.fillRect(-15, -15, 30, 20);
+                // Gola Branca Alta
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.moveTo(-15, -15); ctx.lineTo(-25, -35); ctx.lineTo(-15, -25);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(15, -15); ctx.lineTo(25, -35); ctx.lineTo(15, -25);
+                ctx.fill();
+
+                // Cabeça
+                ctx.fillStyle = '#ffe0bd';
+                ctx.beginPath(); ctx.arc(0, -25, 13, 0, Math.PI*2); ctx.fill();
+               
+                // Cabelo Preto
+                ctx.fillStyle = '#000';
+                ctx.beginPath(); ctx.arc(0, -25, 14, Math.PI, 0); ctx.fill();
+               
+                // Coroa Dourada
+                ctx.fillStyle = '#f1c40f';
+                ctx.beginPath();
+                ctx.moveTo(-8, -32); ctx.lineTo(-5, -45); ctx.lineTo(0, -38); ctx.lineTo(5, -45); ctx.lineTo(8, -32);
+                ctx.fill();
+
+                // Pés a correr (pequenos)
+                ctx.fillStyle = '#000';
+                ctx.beginPath();
+                ctx.arc(-5 + Math.sin(frame*0.4)*10, 48, 3, 0, Math.PI*2);
+                ctx.arc(5 - Math.sin(frame*0.4)*10, 48, 3, 0, Math.PI*2);
+                ctx.fill();
+            }
+
+            ctx.restore();
+        }
+
+        function update() {
+            frames++;
+            score += 0.05; // Distância
+           
+            // Atualizar UI em tempo real
+            document.getElementById('scoreDisplay').innerText = Math.floor(score);
+            document.getElementById('coinDisplay').innerText = savedData.coins + sessionCoins;
+
+            if (frames % 600 === 0) gameSpeed += 0.5;
+
+            // Spawn
+            if (frames % Math.max(60, 140 - Math.floor(score/20)) === 0) {
+                if (Math.random() > 0.3) spawnObstacle();
+            }
+            if (frames % 200 === 0) spawnCollectible();
+
+            // Física Player
+            player.dy += player.gravity;
+            player.y += player.dy;
+
+            const groundLevel = height - 50;
+            if (player.y + player.height > groundLevel) {
+                player.y = groundLevel - player.height;
+                player.dy = 0;
+                player.grounded = true;
+            }
+
+            // Lógica da Onda
+            player.distanceFromWave -= (0.4 + (score * 0.0005));
+            player.x = 250;
+            tsunami.x = player.x - player.distanceFromWave + 50;
+
+            if (player.distanceFromWave <= 0) gameOver();
+            if (player.distanceFromWave > 600) player.distanceFromWave = 600;
+
+            // Obstáculos
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                let obs = obstacles[i];
+                obs.x -= gameSpeed;
+
+                // Hitbox simples
+                if (
+                    player.x < obs.x + obs.width &&
+                    player.x + player.width - 10 > obs.x && // Margem de erro visual
+                    player.y < obs.y + obs.height &&
+                    player.y + player.height > obs.y
+                ) {
+                    createParticles(player.x, player.y + 40, 10, '#e74c3c');
+                    player.distanceFromWave -= 120; // Tropeça e onda avança
+                    obstacles.splice(i, 1);
+                    // Shake
+                    ctx.save();
+                    ctx.translate((Math.random()-0.5)*10, (Math.random()-0.5)*10);
+                    ctx.restore();
+                }
+                if (obs.x + obs.width < 0) obstacles.splice(i, 1);
+            }
+
+            // Colecionáveis
+            for (let i = collectibles.length - 1; i >= 0; i--) {
+                let col = collectibles[i];
+                col.x -= gameSpeed;
+                col.y += Math.sin(frames * 0.1 + col.oscillation) * 0.5; // Flutuar
+
+                if (
+                    player.x < col.x + col.width &&
+                    player.x + player.width > col.x &&
+                    player.y < col.y + col.height &&
+                    player.y + player.height > col.y
+                ) {
+                    player.distanceFromWave += 100; // Tempo
+                    sessionCoins += 1; // Dinheiro
+                    createParticles(col.x, col.y, 8, '#f1c40f');
+                    collectibles.splice(i, 1);
+                }
+                if (col.x + col.width < 0) collectibles.splice(i, 1);
+            }
+
+            // Partículas
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.05;
+                if(p.life <= 0) particles.splice(i, 1);
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, width, height);
+
+            // Cenário (Chão e Fundo)
+            // Chão Xadrez com perspectiva simples
+            const groundY = height - 50;
+            const tileSize = 40;
+            const offset = (frames * gameSpeed) % (tileSize * 2);
+           
+            // Grama/Fundo abaixo do xadrez
+            ctx.fillStyle = '#2ecc71';
+            ctx.fillRect(0, groundY, width, 50);
+
+            for (let x = -offset; x < width; x += tileSize) {
+                if (Math.floor((x + offset) / tileSize) % 2 === 0) {
+                     ctx.fillStyle = '#27ae60';
+                     ctx.fillRect(x, groundY, tileSize + 1, 50);
+                }
+            }
+
+            // Desenhando Obstáculos "Mais Reais"
+            obstacles.forEach(obs => {
+                if (obs.type === 'card') {
+                    // Carta Soldado
+                    ctx.fillStyle = '#fff';
+                    // Corpo curvado como uma carta a correr
+                    ctx.beginPath();
+                    ctx.moveTo(obs.x, obs.y);
+                    ctx.lineTo(obs.x + obs.width, obs.y);
+                    ctx.lineTo(obs.x + obs.width - 5, obs.y + obs.height);
+                    ctx.lineTo(obs.x + 5, obs.y + obs.height);
+                    ctx.fill();
+                    ctx.strokeStyle = '#000';
+                    ctx.stroke();
+
+                    // Naipe
+                    ctx.fillStyle = '#c0392b';
+                    ctx.font = "20px Arial";
+                    ctx.fillText("♥", obs.x + 8, obs.y + 25);
+                    ctx.fillText("♥", obs.x + 18, obs.y + 45);
+
+                    // Lança
+                    ctx.strokeStyle = '#7f8c8d';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(obs.x + obs.width, obs.y + 20);
+                    ctx.lineTo(obs.x - 10, obs.y - 10);
+                    ctx.stroke();
+
+                } else {
+                    // Cogumelo Detalhado
+                    // Caule
+                    ctx.fillStyle = '#ecf0f1';
+                    ctx.fillRect(obs.x + 10, obs.y + 15, 20, 25);
+                    // Chapéu
+                    const grad = ctx.createRadialGradient(obs.x+20, obs.y+10, 2, obs.x+20, obs.y+10, 25);
+                    grad.addColorStop(0, '#9b59b6');
+                    grad.addColorStop(1, '#8e44ad');
+                    ctx.fillStyle = grad;
+                   
+                    ctx.beginPath();
+                    ctx.arc(obs.x + 20, obs.y + 15, 25, Math.PI, 0);
+                    ctx.fill();
+                   
+                    // Pintas
+                    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+                    ctx.beginPath(); ctx.arc(obs.x+10, obs.y+5, 4, 0, Math.PI*2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(obs.x+30, obs.y+8, 3, 0, Math.PI*2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(obs.x+20, obs.y-2, 2, 0, Math.PI*2); ctx.fill();
+                }
+            });
+
+            // Relógios
+            collectibles.forEach(col => {
+                ctx.save();
+                ctx.translate(col.x + col.width/2, col.y + col.height/2);
+                ctx.rotate(frames * 0.05); // Rodar relógio
+               
+                ctx.fillStyle = '#f1c40f';
+                ctx.beginPath();
+                ctx.arc(0, 0, 14, 0, Math.PI*2);
+                ctx.fill();
+                ctx.strokeStyle = '#d35400';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+               
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(0, 0, 10, 0, Math.PI*2);
+                ctx.fill();
+               
+                ctx.strokeStyle = '#000';
+                ctx.beginPath();
+                ctx.moveTo(0,0); ctx.lineTo(0, -8);
+                ctx.moveTo(0,0); ctx.lineTo(5, 0);
+                ctx.stroke();
+               
+                ctx.restore();
+            });
+
+            // Desenhar Personagem Selecionado
+            drawPlayer(ctx, player.x, player.y, player.width, player.height, frames);
+
+            // Tsunami melhorado
+            waveOffset += 0.08;
+            ctx.fillStyle = tsunami.color;
+            ctx.beginPath();
+            ctx.moveTo(0, height);
+           
+            let waveX = tsunami.x;
+            ctx.lineTo(waveX, height);
+            ctx.lineTo(waveX - 100, 0);
+            ctx.lineTo(0, 0);
+           
+            const crestX = waveX + 100;
+           
+            // Corpo da onda
+            ctx.bezierCurveTo(
+                waveX + 60, height * 0.8,
+                crestX + Math.sin(waveOffset)*30, height * 0.5,
+                crestX + 40, height * 0.1
+            );
+           
+            // Quebra
+            ctx.bezierCurveTo(
+                crestX + 80, height * -0.1, // Vai acima da tela
+                waveX + 20, height * 0.2,
+                waveX - 80, 0
+            );
+            ctx.fill();
+
+            // Espuma
+            ctx.fillStyle = tsunami.foamColor;
+            for(let i=0; i<8; i++) {
+                ctx.beginPath();
+                let foamX = (crestX + 30) - (i*12) + Math.cos(waveOffset + i)*15;
+                let foamY = (height * 0.15) + (i*15) + Math.sin(waveOffset + i*2)*12;
+                let size = 15 - i;
+                if (size > 0) {
+                    ctx.arc(foamX, foamY, size, 0, Math.PI*2);
+                    ctx.fill();
+                }
+            }
+           
+            // Partículas
+            particles.forEach(p => {
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 3, 0, Math.PI*2);
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+            });
+        }
+
+        function gameLoop() {
+            if (gameRunning) {
+                update();
+                draw();
+                requestAnimationFrame(gameLoop);
+            }
+        }
+       
+        // Renderizar a loja inicialmente para ter algo pronto
+        updateUI();
+
+    </script>
+</body>
+
+</html>

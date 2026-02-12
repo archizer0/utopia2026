@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <title>País das Maravilhas: Fuga da Rainha</title>
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background: radial-gradient(circle, #2a002a 0%, #000000 100%);
+            font-family: 'Georgia', 'Times New Roman', serif; 
+            user-select: none;
+        }
+        
+        #ui-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            padding: 30px;
+            box-sizing: border-box;
+            z-index: 10;
+        }
+
+        .hud-text {
+            color: #fff;
+            text-shadow: 0 0 5px #ff0000, 2px 2px 0 #000;
+            font-weight: bold;
+            letter-spacing: 1px;
+            font-style: italic;
+        }
+
+        #score { font-size: 3em; color: #gold; }
+        #high-score { font-size: 1.5em; color: #eebb99; margin-top: 5px; }
+        
+        #danger-msg {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 5em;
+            color: #ff0000;
+            opacity: 0;
+            font-weight: bold;
+            text-transform: uppercase;
+            text-shadow: 0 0 30px #ff0000, 0 0 10px white;
+            transition: opacity 0.1s;
+            text-align: center;
+            font-family: 'Impact', fantasy;
+        }
+
+        #start-screen {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(10, 0, 10, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            color: #ffffff;
+            border: 20px solid #550000;
+            box-sizing: border-box;
+        }
+
+        h1 { 
+            font-size: 5em; margin: 0; 
+            color: #ff0000;
+            text-shadow: 2px 2px 0px #fff;
+            font-family: 'Georgia', serif;
+            letter-spacing: -2px;
+        }
+
+        p { color: #ccc; font-size: 1.4em; margin-bottom: 40px; text-align: center; font-style: italic; }
+
+        button {
+            padding: 15px 40px;
+            font-size: 1.8em;
+            background: #fff;
+            border: 4px solid #ff0000;
+            color: #ff0000;
+            cursor: pointer;
+            font-family: 'Georgia', serif;
+            font-weight: bold;
+            box-shadow: 0 0 20px #ff0000;
+            transition: 0.3s;
+            border-radius: 10px;
+        }
+
+        button:hover {
+            background: #ff0000;
+            color: white;
+            transform: scale(1.1);
+        }
+
+        .hidden { opacity: 0; pointer-events: none; transition: opacity 0.5s; }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <div id="score" class="hud-text">0 🐇</div>
+        <div id="high-score" class="hud-text">Melhor Sonho: 0</div>
+        <div id="danger-msg">CORTEM-LHE A CABEÇA!</div>
+    </div>
+
+    <div id="start-screen">
+        <h1>PAÍS DAS MARAVILHAS</h1>
+        <p>Salva os Coelhos Brancos.<br>Foge da Rainha de Copas.</p>
+        <button id="start-btn">CAIR NA TOCA</button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        // --- CONFIGURAÇÃO ---
+        const COLORS = {
+            bg: 0x110011,
+            fog: 0x220022,
+            rabbit: 0xffffff,
+            queen: 0xcc0000, 
+            cardBody: 0xffffff,
+            floor1: 0x111111,
+            floor2: 0xeeeeee
+        };
+
+        // --- ESTADO DO JOGO ---
+        let scene, camera, renderer;
+        let player, queen, floor;
+        let rabbits = [];
+        let particles = []; // Naipes flutuantes
+        let score = 0;
+        let highScore = localStorage.getItem('alice_wonderland_highscore') || 0;
+        let isPlaying = false;
+        let mouseX = 0, mouseY = 0;
+        
+        // --- ÁUDIO ---
+        let audioCtx;
+        let droneOsc, droneGain;
+
+        const startScreen = document.getElementById('start-screen');
+        const startBtn = document.getElementById('start-btn');
+        const scoreEl = document.getElementById('score');
+        const highScoreEl = document.getElementById('high-score');
+        const dangerEl = document.getElementById('danger-msg');
+        const titleEl = document.querySelector('h1');
+        const subEl = document.querySelector('p');
+
+        highScoreEl.innerText = "Melhor Sonho: " + highScore;
+
+        // --- INICIALIZAÇÃO ---
+        startBtn.addEventListener('click', initGame);
+
+        function initGame() {
+            if (!audioCtx) setupAudio();
+            isPlaying = true;
+            score = 0;
+            scoreEl.innerText = "0 🐇";
+            startScreen.classList.add('hidden');
+            
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            droneGain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+
+            if (player) {
+                resetPositions();
+            } else {
+                setup3D();
+            }
+        }
+
+        function resetPositions() {
+            player.position.set(0, 2, 0);
+            queen.position.set(0, 3, -40);
+            rabbits.forEach(c => scene.remove(c));
+            rabbits = [];
+            spawnRabbit();
+        }
+
+        // --- TEXTURAS PROCEDURAIS ---
+        function createCheckerTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512; canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0,0,512,512);
+            
+            ctx.fillStyle = '#000000';
+            const size = 64;
+            for(let y=0; y<512; y+=size) {
+                for(let x=0; x<512; x+=size) {
+                    if((x/size + y/size) % 2 === 0) ctx.fillRect(x,y,size,size);
+                }
+            }
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = THREE.RepeatWrapping;
+            tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(10, 20);
+            return tex;
+        }
+
+        function createCardTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256; canvas.height = 400;
+            const ctx = canvas.getContext('2d');
+            
+            // Fundo Branco
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0,0,256,400);
+            
+            // Borda
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 10;
+            ctx.strokeRect(5,5,246,390);
+            
+            // Coração
+            ctx.fillStyle = '#cc0000';
+            ctx.font = '150px serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('♥', 128, 200);
+            
+            // Letra Q
+            ctx.font = '40px serif';
+            ctx.fillText('Q', 30, 40);
+            ctx.fillText('Q', 226, 360);
+
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        // --- ÁUDIO ---
+        function setupAudio() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            droneOsc = audioCtx.createOscillator();
+            droneGain = audioCtx.createGain();
+            
+            droneOsc.type = 'triangle'; // Som mais místico
+            droneOsc.frequency.value = 100;
+            
+            droneOsc.connect(droneGain);
+            droneGain.connect(audioCtx.destination);
+            droneGain.gain.value = 0;
+            droneOsc.start();
+        }
+
+        function playSound(type) {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            const now = audioCtx.currentTime;
+
+            if (type === 'catch') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(800, now);
+                osc.frequency.linearRampToValueAtTime(1200, now + 0.1);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.linearRampToValueAtTime(0, now + 0.3);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            } else if (type === 'die') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(100, now);
+                osc.frequency.exponentialRampToValueAtTime(20, now + 1);
+                gain.gain.setValueAtTime(0.5, now);
+                gain.gain.linearRampToValueAtTime(0, now + 1);
+                osc.start(now);
+                osc.stop(now + 1);
+            }
+        }
+
+        // --- 3D SETUP ---
+        function setup3D() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(COLORS.bg);
+            scene.fog = new THREE.FogExp2(COLORS.fog, 0.035);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+            camera.position.z = 8;
+            camera.position.y = 2;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // Luzes
+            const ambi = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambi);
+            const point = new THREE.PointLight(0xff0000, 1, 20);
+            point.position.set(0, 5, 5);
+            scene.add(point);
+
+            // Chão (Tabuleiro de Xadrez)
+            const floorGeo = new THREE.PlaneGeometry(200, 200);
+            const floorMat = new THREE.MeshPhongMaterial({ 
+                map: createCheckerTexture(),
+                color: 0xaaaaaa
+            });
+            floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.y = 0;
+            scene.add(floor);
+
+            // RAINHA DE COPAS (Inimigo)
+            const cardGeo = new THREE.BoxGeometry(3, 4.5, 0.2);
+            const cardMat = new THREE.MeshPhongMaterial({ map: createCardTexture() });
+            
+            const headGeo = new THREE.SphereGeometry(1, 16, 16);
+            const headMat = new THREE.MeshPhongMaterial({ color: 0x000000 }); // Cabeça preta estilizada
+
+            const crownGeo = new THREE.ConeGeometry(0.5, 0.8, 8);
+            const crownMat = new THREE.MeshPhongMaterial({ color: 0xffd700 }); // Ouro
+
+            queen = new THREE.Group();
+            
+            const cardMesh = new THREE.Mesh(cardGeo, cardMat);
+            cardMesh.position.y = 2.25;
+            
+            const headMesh = new THREE.Mesh(headGeo, headMat);
+            headMesh.position.y = 5;
+            
+            const crownMesh = new THREE.Mesh(crownGeo, crownMat);
+            crownMesh.position.y = 6;
+
+            // Braços (Palitos)
+            const armGeo = new THREE.CylinderGeometry(0.1, 0.1, 2);
+            const armMat = new THREE.MeshBasicMaterial({color: 0x000000});
+            const armL = new THREE.Mesh(armGeo, armMat);
+            armL.position.set(-1.8, 3, 0);
+            armL.rotation.z = 0.5;
+            
+            const armR = new THREE.Mesh(armGeo, armMat);
+            armR.position.set(1.8, 3, 0);
+            armR.rotation.z = -0.5;
+
+            // Lança
+            const spearGeo = new THREE.CylinderGeometry(0.05, 0.05, 6);
+            const spear = new THREE.Mesh(spearGeo, new THREE.MeshPhongMaterial({color: 0x666666}));
+            spear.position.set(2.5, 3, 0.5);
+            
+            queen.add(cardMesh, headMesh, crownMesh, armL, armR, spear);
+            queen.position.set(0, 0, -40);
+            scene.add(queen);
+
+            // JOGADOR (Webcam - Gato Cheshire?)
+            const video = document.createElement('video');
+            video.autoplay = true;
+            if (navigator.mediaDevices.getUserMedia) {
+                navigator.mediaDevices.getUserMedia({ video: true })
+                    .then(stream => { video.srcObject = stream; })
+                    .catch(e => console.log("Sem webcam"));
+            }
+            const tex = new THREE.VideoTexture(video);
+            player = new THREE.Mesh(
+                new THREE.SphereGeometry(1.2, 32, 32),
+                new THREE.MeshBasicMaterial({ map: tex, color: 0xffaaff }) // Tom rosado mágico
+            );
+            scene.add(player);
+
+            // Partículas (Naipes Flutuantes)
+            createParticles();
+
+            // Eventos
+            document.addEventListener('mousemove', (e) => {
+                mouseX = (e.clientX - window.innerWidth / 2) / 20;
+                mouseY = (e.clientY - window.innerHeight / 2) / 20;
+            });
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+
+            spawnRabbit();
+            animate();
+        }
+
+        function createParticles() {
+            const geom = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+            const mat = new THREE.MeshBasicMaterial({color: 0xff0000});
+            
+            for(let i=0; i<30; i++) {
+                const p = new THREE.Mesh(geom, mat);
+                p.position.set(
+                    (Math.random()-0.5)*50,
+                    Math.random()*10,
+                    (Math.random()-0.5)*50
+                );
+                scene.add(p);
+                particles.push(p);
+            }
+        }
+
+        function spawnRabbit() {
+            if (!isPlaying) return;
+
+            const group = new THREE.Group();
+            const matWhite = new THREE.MeshLambertMaterial({ color: 0xffffff });
+
+            // Coelho minimalista
+            const body = new THREE.Mesh(new THREE.SphereGeometry(0.4, 12, 12), matWhite);
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.25, 12, 12), matWhite);
+            head.position.set(0, 0.4, 0.2);
+            
+            const earGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.5, 8);
+            const ear1 = new THREE.Mesh(earGeo, matWhite);
+            ear1.position.set(-0.15, 0.8, 0.1);
+            ear1.rotation.z = 0.3;
+            
+            const ear2 = new THREE.Mesh(earGeo, matWhite);
+            ear2.position.set(0.15, 0.8, 0.1);
+            ear2.rotation.z = -0.3;
+
+            // Relógio de Bolso (Dourado)
+            const watch = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.05, 12), new THREE.MeshPhongMaterial({color: 0xffd700}));
+            watch.position.set(0, 0, 0.5);
+            watch.rotation.x = Math.PI/2;
+
+            group.add(body, head, ear1, ear2, watch);
+
+            group.position.set(
+                (Math.random() - 0.5) * 22,
+                (Math.random() * 4) + 1,
+                -60
+            );
+
+            // Física de movimento aleatório
+            group.userData = { 
+                speedZ: 0.6 + Math.random() * 0.4,
+                wobble: Math.random() * Math.PI
+            };
+
+            rabbits.push(group);
+            scene.add(group);
+
+            let delay = 1500 - (score * 40);
+            if (delay < 500) delay = 500;
+            setTimeout(spawnRabbit, delay);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (!isPlaying) return;
+
+            const time = Date.now() * 0.001;
+
+            // Jogador
+            player.position.x += (mouseX - player.position.x) * 0.1;
+            player.position.y += (-mouseY + 2 - player.position.y) * 0.1;
+            player.position.x = Math.max(-12, Math.min(12, player.position.x));
+            player.position.y = Math.max(0.5, Math.min(10, player.position.y));
+
+            // Rainha de Copas (Perseguição)
+            let speed = 0.03 + (score * 0.002);
+            if (speed > 0.15) speed = 0.15;
+
+            queen.position.x += (player.position.x - queen.position.x) * speed;
+            queen.position.y += (player.position.y - queen.position.y) * (speed * 0.5);
+            
+            // Flutuar
+            let targetZ = player.position.z - 7 - (Math.sin(time * 2) * 2);
+            queen.position.z += (targetZ - queen.position.z) * 0.05;
+            queen.rotation.y = Math.sin(time) * 0.1; // Balançar
+
+            // Colisão Morte
+            let dist = player.position.distanceTo(queen.position);
+            handleTension(dist);
+            if (dist < 3.5) gameOver();
+
+            // Ambiente
+            // Mover Chão (ilusão)
+            floor.material.map.offset.y -= 0.02;
+
+            // Partículas
+            particles.forEach((p, idx) => {
+                p.position.z += 0.2;
+                p.rotation.x += 0.05;
+                p.rotation.y += 0.05;
+                if(p.position.z > 10) p.position.z = -50;
+            });
+
+            // Coelhos
+            for (let i = rabbits.length - 1; i >= 0; i--) {
+                let r = rabbits[i];
+                r.position.z += r.userData.speedZ + (score * 0.03);
+                r.position.y += Math.sin(time * 5 + r.userData.wobble) * 0.02; 
+                r.rotation.y += 0.05;
+
+                if (r.position.distanceTo(player.position) < 2.5) {
+                    scene.remove(r);
+                    rabbits.splice(i, 1);
+                    score++;
+                    scoreEl.innerText = score + " 🐇";
+                    playSound('catch');
+                } else if (r.position.z > 10) {
+                    scene.remove(r);
+                    rabbits.splice(i, 1);
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        function handleTension(dist) {
+            let intensity = 0;
+            if (dist < 15) {
+                intensity = 1 - (dist / 15);
+                
+                // Tremor
+                if (Math.random() < intensity * 0.5) {
+                    player.position.x += (Math.random() - 0.5) * 0.5;
+                }
+
+                // Efeito visual de perigo
+                dangerEl.style.opacity = intensity > 0.7 ? 1 : 0;
+                
+                // Áudio Tensão
+                if(audioCtx) {
+                    droneGain.gain.setTargetAtTime(intensity * 0.3, audioCtx.currentTime, 0.1);
+                    droneOsc.frequency.setTargetAtTime(100 + (intensity * 200), audioCtx.currentTime, 0.1);
+                }
+            } else {
+                dangerEl.style.opacity = 0;
+                if(audioCtx) droneGain.gain.setTargetAtTime(0.05, audioCtx.currentTime, 0.5);
+            }
+        }
+
+        function gameOver() {
+            isPlaying = false;
+            playSound('die');
+            
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('alice_wonderland_highscore', highScore);
+                titleEl.innerText = "RECORDE REAL";
+                highScoreEl.innerText = "Melhor Sonho: " + highScore;
+            } else {
+                titleEl.innerText = "CABEÇA CORTADA";
+            }
+
+            subEl.innerText = `A Rainha apanhou-te com ${score} coelhos.`;
+            startBtn.innerText = "TENTAR ACORDAR";
+            
+            if(audioCtx) droneGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
+            startScreen.classList.remove('hidden');
+        }
+
+    </script>
+</body>
+</html>

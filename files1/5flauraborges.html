@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A Fuga do Coelho Branco</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #2c0e37;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            color: white;
+        }
+
+        #game-container {
+            position: relative;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            border: 4px solid #d4af37; /* Cor dourada */
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            background: linear-gradient(to bottom, #87CEEB, #E0F7FA); /* Céu padrão */
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Permite clicar no canvas */
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .hud {
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 2px 2px 0 #000;
+        }
+
+        #start-screen, #game-over-screen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 30px;
+            border-radius: 15px;
+            border: 2px solid #d4af37;
+            pointer-events: auto;
+            min-width: 300px;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        h1 {
+            color: #ff69b4;
+            margin-top: 0;
+            font-size: 32px;
+        }
+
+        p {
+            font-size: 18px;
+            line-height: 1.5;
+        }
+
+        button {
+            background: #ff69b4;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: transform 0.1s, background 0.2s;
+            margin-top: 15px;
+            font-weight: bold;
+        }
+
+        button:hover {
+            background: #ff1493;
+            transform: scale(1.05);
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        .controls-hint {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #ddd;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+   
+    <div id="ui-layer">
+        <div class="hud">
+            <span id="score-display">Bolinhos: 0</span>
+        </div>
+    </div>
+
+    <!-- Ecrã Inicial -->
+    <div id="start-screen">
+        <h1>🐰 Fuga no País das Maravilhas</h1>
+        <p>A Rainha de Copas está furiosa!</p>
+        <p>Ajuda o Coelho Branco a fugir.</p>
+        <p>Salta sobre as cartas e apanha bolinhos.</p>
+        <button id="start-btn">Começar Aventura</button>
+        <div class="controls-hint">Usa a tecla <b>ESPAÇO</b> ou <b>SETA CIMA</b> para saltar</div>
+    </div>
+
+    <!-- Ecrã de Game Over -->
+    <div id="game-over-screen" class="hidden">
+        <h1>Oh não! Cortem-lhe a cabeça!</h1>
+        <p>Foste apanhado por uma carta.</p>
+        <p>Pontuação Final: <span id="final-score">0</span></p>
+        <button id="restart-btn">Tentar Novamente</button>
+    </div>
+</div>
+
+<script>
+    // Configuração do Canvas
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+   
+    // Elementos da UI
+    const scoreDisplay = document.getElementById('score-display');
+    const startScreen = document.getElementById('start-screen');
+    const gameOverScreen = document.getElementById('game-over-screen');
+    const finalScoreDisplay = document.getElementById('final-score');
+    const startBtn = document.getElementById('start-btn');
+    const restartBtn = document.getElementById('restart-btn');
+
+    // Variáveis do Jogo
+    let gameRunning = false;
+    let score = 0;
+    let gameSpeed = 5;
+    let frame = 0;
+    let animationId;
+
+    // Configuração do Coelho
+    const rabbit = {
+        x: 100,
+        y: 280,
+        width: 50,
+        height: 50,
+        dy: 0, // velocidade vertical
+        jumpPower: -13, // Força do salto (médio)
+        gravity: 0.6,
+        grounded: false,
+        sprite: "🐰"
+    };
+
+    // Arrays para objetos
+    let obstacles = [];
+    let collectibles = [];
+    let clouds = [];
+
+    // Definições do Chão
+    const groundHeight = 60;
+    const groundY = canvas.height - groundHeight;
+
+    // Input Handling
+    function jump() {
+        if (rabbit.grounded && gameRunning) {
+            rabbit.dy = rabbit.jumpPower;
+            rabbit.grounded = false;
+        }
+    }
+
+    document.addEventListener('keydown', (e) => {
+        if ((e.code === 'Space' || e.code === 'ArrowUp') && gameRunning) {
+            jump();
+        }
+    });
+
+    // Suporte para toque (telemóvel)
+    canvas.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        jump();
+    });
+
+    canvas.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        jump();
+    });
+
+    // Classes / Objetos
+    class Obstacle {
+        constructor() {
+            this.x = canvas.width;
+            this.y = groundY - 55; // Altura da carta
+            this.width = 40;
+            this.height = 60;
+            this.sprite = Math.random() > 0.5 ? "🂡" : "🃏"; // Ás ou Joker
+            this.color = "red";
+            this.markedForDeletion = false;
+        }
+
+        update() {
+            this.x -= gameSpeed;
+            if (this.x + this.width < 0) this.markedForDeletion = true;
+        }
+
+        draw() {
+            ctx.font = "50px Arial";
+            ctx.fillStyle = "black"; // Sombra leve
+            ctx.fillText(this.sprite, this.x, this.y + 50);
+           
+            // Debug Hitbox (descomentar para ver)
+            // ctx.strokeStyle = "red";
+            // ctx.strokeRect(this.x + 10, this.y + 10, this.width - 20, this.height - 10);
+        }
+    }
+
+    class Collectible {
+        constructor() {
+            this.x = canvas.width;
+            // Altura aleatória para o salto médio
+            // Pode aparecer no chão ou no ar (exigindo salto)
+            this.y = groundY - 40 - (Math.random() * 100);
+            this.width = 30;
+            this.height = 30;
+            this.sprite = "🧁";
+            this.markedForDeletion = false;
+            this.oscillation = Math.random() * Math.PI; // Para flutuar um pouco
+        }
+
+        update() {
+            this.x -= gameSpeed;
+            this.oscillation += 0.1;
+            this.y += Math.sin(this.oscillation) * 0.5; // Flutuação suave
+
+            if (this.x + this.width < 0) this.markedForDeletion = true;
+        }
+
+        draw() {
+            ctx.font = "35px Arial";
+            ctx.fillText(this.sprite, this.x, this.y + 30);
+           
+            // Debug Hitbox
+            // ctx.strokeStyle = "blue";
+            // ctx.strokeRect(this.x, this.y, this.width, this.height);
+        }
+    }
+
+    class Cloud {
+        constructor() {
+            this.x = canvas.width + Math.random() * 200;
+            this.y = Math.random() * (canvas.height / 2);
+            this.speed = Math.random() * 0.5 + 0.2;
+            this.size = Math.random() * 20 + 30;
+            this.sprite = "☁️";
+        }
+       
+        update() {
+            this.x -= this.speed;
+            if (this.x < -100) {
+                this.x = canvas.width + 100;
+                this.y = Math.random() * (canvas.height / 2);
+            }
+        }
+
+        draw() {
+            ctx.font = `${this.size}px Arial`;
+            ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
+            ctx.fillText(this.sprite, this.x, this.y);
+        }
+    }
+
+    // Inicialização
+    function init() {
+        score = 0;
+        gameSpeed = 5;
+        frame = 0;
+        obstacles = [];
+        collectibles = [];
+        clouds = [];
+       
+        // Criar algumas nuvens iniciais
+        for(let i=0; i<5; i++) {
+            let c = new Cloud();
+            c.x = Math.random() * canvas.width;
+            clouds.push(c);
+        }
+
+        rabbit.y = groundY - rabbit.height;
+        rabbit.dy = 0;
+        rabbit.grounded = true;
+       
+        scoreDisplay.innerText = "Bolinhos: 0";
+        gameRunning = true;
+       
+        startScreen.classList.add('hidden');
+        gameOverScreen.classList.add('hidden');
+       
+        animate();
+    }
+
+    // Lógica principal
+    function update() {
+        // Física do Coelho
+        rabbit.dy += rabbit.gravity;
+        rabbit.y += rabbit.dy;
+
+        // Colisão com o chão
+        if (rabbit.y + rabbit.height > groundY) {
+            rabbit.y = groundY - rabbit.height;
+            rabbit.dy = 0;
+            rabbit.grounded = true;
+        } else {
+            rabbit.grounded = false;
+        }
+
+        // Aumentar dificuldade
+        frame++;
+        if (frame % 500 === 0) gameSpeed += 0.5;
+
+        // Gerar Inimigos (Cartas)
+        // Intervalo aleatório entre 90 e 140 frames
+        if (frame % Math.floor(Math.random() * 50 + 90) === 0) {
+            obstacles.push(new Obstacle());
+        }
+
+        // Gerar Bolinhos
+        if (frame % Math.floor(Math.random() * 60 + 60) === 0) {
+            // Evitar sobreposição exata com obstáculo (simples check)
+            let safeToSpawn = true;
+            obstacles.forEach(obs => {
+                if (obs.x > canvas.width - 50) safeToSpawn = false;
+            });
+           
+            if (safeToSpawn) {
+                collectibles.push(new Collectible());
+            }
+        }
+
+        // Atualizar Nuvens
+        clouds.forEach(cloud => cloud.update());
+
+        // Atualizar Obstáculos
+        obstacles.forEach(obs => {
+            obs.update();
+            // Colisão AABB simples (ajustada para os emojis)
+            if (
+                rabbit.x < obs.x + obs.width - 15 &&
+                rabbit.x + rabbit.width - 15 > obs.x + 10 &&
+                rabbit.y < obs.y + obs.height - 10 &&
+                rabbit.y + rabbit.height > obs.y + 10
+            ) {
+                gameOver();
+            }
+        });
+
+        // Atualizar Colecionáveis
+        collectibles.forEach((item, index) => {
+            item.update();
+            // Colisão com bolinho
+            if (
+                rabbit.x < item.x + item.width &&
+                rabbit.x + rabbit.width > item.x &&
+                rabbit.y < item.y + item.height &&
+                rabbit.y + rabbit.height > item.y
+            ) {
+                score++;
+                scoreDisplay.innerText = "Bolinhos: " + score;
+                collectibles.splice(index, 1);
+            }
+        });
+
+        // Limpar objetos fora do ecrã
+        obstacles = obstacles.filter(obs => !obs.markedForDeletion);
+        collectibles = collectibles.filter(item => !item.markedForDeletion);
+    }
+
+    function draw() {
+        // Limpar tela
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Desenhar Céu (Gradient) - Fundo psicodélico suave
+        let gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+        gradient.addColorStop(0, "#4B0082"); // Indigo
+        gradient.addColorStop(1, "#8A2BE2"); // BlueViolet
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Desenhar Nuvens
+        clouds.forEach(cloud => cloud.draw());
+
+        // Desenhar Chão (Xadrez)
+        const tileSize = 40;
+        const cols = canvas.width / tileSize;
+        const rows = groundHeight / tileSize; // Apenas para a altura do chão
+       
+        // Offset para animar o chão movendo-se
+        const xOffset = -(frame * gameSpeed) % (tileSize * 2);
+
+        for (let c = -2; c < cols + 2; c++) {
+            for (let r = 0; r < 2; r++) { // 2 linhas de xadrez
+                ctx.fillStyle = (c + r) % 2 === 0 ? "#eeeeee" : "#333333";
+                ctx.fillRect((c * tileSize) + xOffset, groundY + (r * tileSize), tileSize, tileSize);
+            }
+        }
+       
+        // Linha verde no topo do chão (relva)
+        ctx.fillStyle = "#32CD32";
+        ctx.fillRect(0, groundY, canvas.width, 5);
+
+        // Desenhar Itens
+        collectibles.forEach(item => item.draw());
+
+        // Desenhar Inimigos
+        obstacles.forEach(obs => obs.draw());
+
+        // Desenhar Coelho
+        ctx.font = "50px Arial";
+        // Efeito simples de "esmagar" quando salta
+        let spriteY = rabbit.y + 45;
+        if (!rabbit.grounded) {
+             ctx.fillText(rabbit.sprite, rabbit.x, spriteY - 5);
+        } else {
+             ctx.fillText(rabbit.sprite, rabbit.x, spriteY);
+        }
+    }
+
+    function animate() {
+        if (!gameRunning) return;
+        update();
+        draw();
+        animationId = requestAnimationFrame(animate);
+    }
+
+    function gameOver() {
+        gameRunning = false;
+        cancelAnimationFrame(animationId);
+        finalScoreDisplay.innerText = score;
+        gameOverScreen.classList.remove('hidden');
+    }
+
+    // Listeners de Botões
+    startBtn.addEventListener('click', init);
+    restartBtn.addEventListener('click', init);
+
+    // Desenho inicial (apenas o cenário estático antes de começar)
+    function drawStatic() {
+        ctx.fillStyle = "#4B0082";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#FFF";
+        ctx.font = "20px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText("Prepara-te para saltar...", canvas.width/2, canvas.height/2);
+    }
+    drawStatic();
+
+</script>
+
+</body>
+</html>

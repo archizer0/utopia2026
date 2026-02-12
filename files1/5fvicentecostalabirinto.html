@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>O Labirinto de Rosas 3D</title>
+    <!-- Carregar Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #87CEEB; /* Céu azul */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        #ui-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Deixa cliques passarem para o jogo quando não há botões */
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        header {
+            background: rgba(255, 255, 255, 0.8);
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 3px solid #1b5e20;
+            pointer-events: auto;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.2rem;
+            color: #1b5e20;
+        }
+
+        #level-badge {
+            background: #d32f2f;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            pointer-events: auto;
+            backdrop-filter: blur(5px);
+        }
+
+        #overlay.hidden {
+            display: none;
+        }
+
+        #message {
+            font-size: 2.5rem;
+            color: #fff;
+            margin-bottom: 10px;
+            text-align: center;
+            font-weight: bold;
+            text-shadow: 0 4px 0 #d32f2f;
+        }
+
+        #sub-message {
+            font-size: 1.2rem;
+            color: #ddd;
+            margin-bottom: 25px;
+            text-align: center;
+        }
+
+        button {
+            background-color: #d32f2f;
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.5rem;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 6px #b71c1c;
+            transition: transform 0.1s, box-shadow 0.1s;
+            pointer-events: auto;
+        }
+
+        button:active {
+            transform: translateY(4px);
+            box-shadow: 0 2px #b71c1c;
+        }
+
+        /* Mobile Controls */
+        #controls {
+            padding: 20px;
+            display: grid;
+            grid-template-columns: repeat(3, 70px);
+            grid-template-rows: repeat(2, 70px);
+            gap: 10px;
+            justify-content: center;
+            pointer-events: auto;
+            margin-bottom: 20px;
+        }
+
+        .d-pad {
+            width: 70px;
+            height: 70px;
+            background-color: rgba(255, 255, 255, 0.8);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 30px;
+            cursor: pointer;
+            box-shadow: 0 4px rgba(0,0,0,0.3);
+            color: #333;
+            user-select: none;
+        }
+
+        .d-pad:active {
+            transform: scale(0.9);
+            background-color: white;
+        }
+
+        .up { grid-column: 2; grid-row: 1; }
+        .left { grid-column: 1; grid-row: 2; }
+        .down { grid-column: 2; grid-row: 2; }
+        .right { grid-column: 3; grid-row: 2; }
+
+        @media (min-width: 768px) {
+            #controls { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Container 3D -->
+    <div id="canvas-container"></div>
+
+    <!-- UI Overlay -->
+    <div id="ui-container">
+        <header>
+            <h1>🐰 Labirinto 3D</h1>
+            <div id="level-badge">Nível 1</div>
+        </header>
+
+        <div id="controls">
+            <div class="d-pad up" onpointerdown="handleInput(0, -1)">⬆️</div>
+            <div class="d-pad left" onpointerdown="handleInput(-1, 0)">⬅️</div>
+            <div class="d-pad down" onpointerdown="handleInput(0, 1)">⬇️</div>
+            <div class="d-pad right" onpointerdown="handleInput(1, 0)">➡️</div>
+        </div>
+    </div>
+
+    <!-- Menus -->
+    <div id="overlay">
+        <div id="message">Labirinto de Rosas 3D</div>
+        <div id="sub-message">Encontra o caminho e evita os Espinhos 🥀<br>Usa as setas ou botões para mover.</div>
+        <button onclick="startGame()">Começar</button>
+    </div>
+
+    <script>
+        // --- Variáveis Globais ---
+        let scene, camera, renderer;
+        let mazeGroup, entitiesGroup;
+        let playerMesh, goalMesh;
+        // let enemyMeshes = []; // Removido
+        let thornMeshes = [];
+        
+        // Estado do Jogo
+        let cols = 15;
+        let rows = 15;
+        let grid = [];
+        let player = { x: 1, y: 1 };
+        let goal = { x: 0, y: 0 };
+        // let enemies = []; // Removido
+        let thorns = [];
+        let level = 1;
+        let isGameRunning = false;
+        let isMoving = false; // Animação de movimento
+        
+        // Configurações 3D
+        const UNIT_SIZE = 2; // Tamanho de cada célula do labirinto
+        const WALL_HEIGHT = 2;
+        
+        // Elementos DOM
+        const overlay = document.getElementById('overlay');
+        const messageEl = document.getElementById('message');
+        const subMessageEl = document.getElementById('sub-message');
+        const levelBadge = document.getElementById('level-badge');
+        const btn = overlay.querySelector('button');
+
+        // --- Inicialização Three.js ---
+        function initThreeJS() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB); // Céu
+            // Nevoeiro para dar atmosfera
+            scene.fog = new THREE.Fog(0x87CEEB, 10, 50);
+
+            // Câmara
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            // Luzes
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(10, 20, 10);
+            dirLight.castShadow = true;
+            dirLight.shadow.camera.left = -20;
+            dirLight.shadow.camera.right = 20;
+            dirLight.shadow.camera.top = 20;
+            dirLight.shadow.camera.bottom = -20;
+            scene.add(dirLight);
+
+            // Chão (Relva)
+            const groundGeometry = new THREE.PlaneGeometry(100, 100);
+            const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x4caf50 });
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            mazeGroup = new THREE.Group();
+            scene.add(mazeGroup);
+            
+            entitiesGroup = new THREE.Group();
+            scene.add(entitiesGroup);
+
+            window.addEventListener('resize', onWindowResize, false);
+            
+            // Loop de Animação
+            animate();
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- Criação dos Modelos 3D ---
+
+        function createWall(x, z) {
+            // A parede base (sebe)
+            const geometry = new THREE.BoxGeometry(UNIT_SIZE, WALL_HEIGHT, UNIT_SIZE);
+            const material = new THREE.MeshLambertMaterial({ color: 0x2e7d32 }); // Verde escuro
+            const wall = new THREE.Mesh(geometry, material);
+            wall.position.set(x * UNIT_SIZE, WALL_HEIGHT/2, z * UNIT_SIZE);
+            wall.castShadow = true;
+            wall.receiveShadow = true;
+
+            // Adicionar Rosas (esferas vermelhas aleatórias)
+            const roseCount = Math.floor(Math.random() * 4) + 2; // 2 a 5 rosas por bloco
+            const roseGeo = new THREE.SphereGeometry(0.2, 8, 8);
+            const roseMat = new THREE.MeshLambertMaterial({ color: 0xd32f2f });
+
+            for(let i=0; i<roseCount; i++) {
+                const rose = new THREE.Mesh(roseGeo, roseMat);
+                // Posicionar na superfície da parede
+                rose.position.set(
+                    (Math.random() - 0.5) * UNIT_SIZE,
+                    (Math.random() - 0.5) * WALL_HEIGHT,
+                    (Math.random() - 0.5) * UNIT_SIZE
+                );
+                // Empurrar para a face
+                if (Math.abs(rose.position.x) > Math.abs(rose.position.z)) {
+                    rose.position.x = Math.sign(rose.position.x) * (UNIT_SIZE/2);
+                } else {
+                    rose.position.z = Math.sign(rose.position.z) * (UNIT_SIZE/2);
+                }
+                wall.add(rose);
+            }
+
+            mazeGroup.add(wall);
+        }
+
+        function createPlayer() {
+            const group = new THREE.Group();
+
+            // Corpo
+            const bodyGeo = new THREE.SphereGeometry(0.4 * UNIT_SIZE, 16, 16);
+            const bodyMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 0.4 * UNIT_SIZE;
+            body.castShadow = true;
+            group.add(body);
+
+            // Orelhas
+            const earGeo = new THREE.CylinderGeometry(0.1, 0.1, 0.6, 8);
+            const ear1 = new THREE.Mesh(earGeo, bodyMat);
+            ear1.position.set(0.2, 1.2, 0);
+            ear1.rotation.x = 0.2;
+            
+            const ear2 = new THREE.Mesh(earGeo, bodyMat);
+            ear2.position.set(-0.2, 1.2, 0);
+            ear2.rotation.x = 0.2;
+
+            group.add(ear1);
+            group.add(ear2);
+
+            // Cauda
+            const tailGeo = new THREE.SphereGeometry(0.15 * UNIT_SIZE, 8, 8);
+            const tail = new THREE.Mesh(tailGeo, bodyMat);
+            tail.position.set(0, 0.4 * UNIT_SIZE, -0.35 * UNIT_SIZE);
+            group.add(tail);
+
+            entitiesGroup.add(group);
+            return group;
+        }
+
+        // Função createEnemy removida
+
+        function createGoal() {
+            const group = new THREE.Group();
+
+            // Cenoura (Cone Laranja)
+            const carrotGeo = new THREE.ConeGeometry(0.3, 1, 16);
+            const carrotMat = new THREE.MeshLambertMaterial({ color: 0xff9800 });
+            const carrot = new THREE.Mesh(carrotGeo, carrotMat);
+            carrot.rotation.x = Math.PI; // Virada para baixo (ponta)
+            carrot.position.y = 0.5;
+            group.add(carrot);
+
+            // Folhas (Cilindros verdes)
+            const leafGeo = new THREE.CylinderGeometry(0.05, 0.02, 0.5);
+            const leafMat = new THREE.MeshLambertMaterial({ color: 0x4caf50 });
+            
+            const l1 = new THREE.Mesh(leafGeo, leafMat);
+            l1.position.y = 1;
+            l1.rotation.z = 0.3;
+            group.add(l1);
+
+            const l2 = new THREE.Mesh(leafGeo, leafMat);
+            l2.position.y = 1;
+            l2.rotation.z = -0.3;
+            group.add(l2);
+
+            entitiesGroup.add(group);
+            return group;
+        }
+
+        function createThorn() {
+            // Pequenos espinhos escuros no chão
+            const group = new THREE.Group();
+            const geo = new THREE.ConeGeometry(0.1, 0.4, 6);
+            const mat = new THREE.MeshLambertMaterial({ color: 0x3e2723 }); // Castanho escuro
+
+            for(let i=0; i<3; i++) {
+                const thorn = new THREE.Mesh(geo, mat);
+                thorn.position.set(
+                    (Math.random()-0.5)*0.5, 
+                    0.2, 
+                    (Math.random()-0.5)*0.5
+                );
+                thorn.rotation.x = (Math.random()-0.5);
+                thorn.rotation.z = (Math.random()-0.5);
+                group.add(thorn);
+            }
+            
+            entitiesGroup.add(group);
+            return group;
+        }
+
+        // --- Lógica do Jogo (cópia adaptada da versão 2D) ---
+
+        function generateLevel() {
+            // Limpar cena 3D antiga
+            while(mazeGroup.children.length > 0){ 
+                mazeGroup.remove(mazeGroup.children[0]); 
+            }
+            while(entitiesGroup.children.length > 0){ 
+                entitiesGroup.remove(entitiesGroup.children[0]); 
+            }
+            // enemyMeshes = []; // Removido
+            thornMeshes = [];
+
+            // Aumentar tamanho com nível
+            cols = 9 + (level * 2);
+            rows = 9 + (level * 2);
+            if(cols > 25) cols = 25; // Limite
+            if(rows > 25) rows = 25;
+
+            // Gerar Grid (Recursive Backtracker)
+            grid = [];
+            for (let r = 0; r < rows; r++) {
+                let row = [];
+                for (let c = 0; c < cols; c++) {
+                    row.push(1); 
+                }
+                grid.push(row);
+            }
+
+            const directions = [
+                { x: 0, y: -2 }, { x: 2, y: 0 }, { x: 0, y: 2 }, { x: -2, y: 0 }
+            ];
+
+            function shuffle(array) {
+                for (let i = array.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [array[i], array[j]] = [array[j], array[i]];
+                }
+            }
+
+            function carve(x, y) {
+                grid[y][x] = 0; 
+                shuffle(directions);
+                for (let dir of directions) {
+                    const nx = x + dir.x;
+                    const ny = y + dir.y;
+                    if (nx > 0 && nx < cols - 1 && ny > 0 && ny < rows - 1 && grid[ny][nx] === 1) {
+                        grid[y + dir.y / 2][x + dir.x / 2] = 0;
+                        carve(nx, ny);
+                    }
+                }
+            }
+
+            carve(1, 1);
+            
+            // Definir posições
+            player = { x: 1, y: 1 };
+            goal = { x: cols - 2, y: rows - 2 };
+            grid[goal.y][goal.x] = 0;
+
+            // Construir Labirinto 3D
+            // Centralizar labirinto no mundo
+            const offsetX = (cols * UNIT_SIZE) / 2;
+            const offsetZ = (rows * UNIT_SIZE) / 2;
+
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    if (grid[r][c] === 1) {
+                        createWall(c - cols/2, r - rows/2);
+                    }
+                }
+            }
+
+            // Criar Jogador 3D
+            playerMesh = createPlayer();
+            updateEntityPosition(playerMesh, player.x, player.y);
+
+            // Criar Meta 3D
+            goalMesh = createGoal();
+            updateEntityPosition(goalMesh, goal.x, goal.y);
+
+            // Gerar Espinhos APENAS (Sem Inimigos)
+            // enemies = []; // Removido
+            thorns = [];
+            
+            const thornCount = Math.ceil(level * 1.5); // Um pouco mais de espinhos já que não há inimigos
+
+            // spawnEntities(enemies, enemyCount, 'enemy'); // Removido
+            spawnEntities(thorns, thornCount, 'thorn');
+        }
+
+        function spawnEntities(array, count, type) {
+            let attempts = 0;
+            while (array.length < count && attempts < 500) {
+                let rx = Math.floor(Math.random() * cols);
+                let ry = Math.floor(Math.random() * rows);
+
+                // Validar posição
+                if (grid[ry][rx] === 0 && 
+                    !(rx === player.x && ry === player.y) && 
+                    !(rx === goal.x && ry === goal.y) &&
+                    // !enemies.some(e => e.x === rx && e.y === ry) && // Removido check de inimigos
+                    !thorns.some(t => t.x === rx && t.y === ry) &&
+                    (Math.abs(rx - player.x) + Math.abs(ry - player.y) > 3)) {
+                    
+                    const entityData = { x: rx, y: ry };
+                    array.push(entityData);
+
+                    if (type === 'thorn') {
+                        const mesh = createThorn();
+                        updateEntityPosition(mesh, rx, ry);
+                        thornMeshes.push(mesh);
+                    }
+                }
+                attempts++;
+            }
+        }
+
+        // Helper para converter coordenadas da Grid para Mundo 3D
+        function updateEntityPosition(mesh, gridX, gridY) {
+            mesh.position.x = (gridX - cols/2) * UNIT_SIZE;
+            mesh.position.z = (gridY - rows/2) * UNIT_SIZE;
+        }
+
+        // --- Gameplay Loop ---
+
+        function handleInput(dx, dy) {
+            if (!isGameRunning || isMoving) return;
+
+            const newX = player.x + dx;
+            const newY = player.y + dy;
+
+            if (newX >= 0 && newX < cols && newY >= 0 && newY < rows) {
+                if (grid[newY][newX] === 0) {
+                    isMoving = true;
+                    
+                    // Lógica de Movimento
+                    player.x = newX;
+                    player.y = newY;
+                    
+                    // Rodar jogador para a direção
+                    if (dx === 1) playerMesh.rotation.y = Math.PI / 2;
+                    if (dx === -1) playerMesh.rotation.y = -Math.PI / 2;
+                    if (dy === 1) playerMesh.rotation.y = 0;
+                    if (dy === -1) playerMesh.rotation.y = Math.PI;
+
+                    // Verificar Espinhos
+                    if (checkThornCollision()) {
+                        animateMove(playerMesh, player.x, player.y, () => gameOver("Espinhado!"));
+                        return;
+                    }
+                    
+                    // Animar movimento do jogador
+                    animateMove(playerMesh, player.x, player.y, () => {
+                        // Após mover jogador:
+                        
+                        if (checkWinCondition()) return;
+
+                        // Não há verificação de colisão com inimigos nem movimento deles
+                    });
+                }
+            }
+        }
+
+        // Função moveEnemies removida
+
+        // Animação suave (interpolação simples)
+        function animateMove(mesh, targetGridX, targetGridY, callback) {
+            const targetX = (targetGridX - cols/2) * UNIT_SIZE;
+            const targetZ = (targetGridY - rows/2) * UNIT_SIZE;
+            
+            const startX = mesh.position.x;
+            const startZ = mesh.position.z;
+            const startTime = Date.now();
+            const duration = 200; // ms
+
+            function step() {
+                const now = Date.now();
+                const progress = Math.min((now - startTime) / duration, 1);
+                
+                mesh.position.x = startX + (targetX - startX) * progress;
+                mesh.position.z = startZ + (targetZ - startZ) * progress;
+                
+                // Salto do coelho
+                if (mesh === playerMesh) {
+                    mesh.position.y = (0.4 * UNIT_SIZE) + Math.sin(progress * Math.PI) * 0.5;
+                }
+
+                if (progress < 1) {
+                    requestAnimationFrame(step);
+                } else {
+                    if (callback) callback();
+                }
+            }
+            step();
+        }
+
+        function checkThornCollision() {
+            return thorns.some(t => t.x === player.x && t.y === player.y);
+        }
+
+        function checkWinCondition() {
+            if (player.x === goal.x && player.y === goal.y) {
+                levelComplete();
+                return true;
+            }
+            return false;
+        }
+
+        function levelComplete() {
+            isGameRunning = false;
+            level++;
+            
+            messageEl.innerText = "Nível Completo! 🎉";
+            subMessageEl.innerHTML = `Sobreviveste ao Nível ${level-1}.<br>Próximo Nível: Labirinto maior!`;
+            messageEl.style.color = "#4caf50";
+            
+            btn.innerText = "Próximo Nível >>";
+            btn.onclick = startLevel;
+            
+            overlay.classList.remove('hidden');
+        }
+
+        function gameOver(reason) {
+            isGameRunning = false;
+            
+            messageEl.innerText = "Game Over! 💀";
+            subMessageEl.innerText = "Picaste-te numa rosa murcha. Cuidado onde pisas!";
+            messageEl.style.color = "#d32f2f";
+            
+            btn.innerText = "Tentar Novamente";
+            btn.onclick = restartLevel;
+            
+            overlay.classList.remove('hidden');
+        }
+
+        function restartLevel() { startLevel(); }
+        function startGame() { level = 1; startLevel(); }
+
+        function startLevel() {
+            levelBadge.innerText = "Nível " + level;
+            generateLevel();
+            isGameRunning = true;
+            isMoving = false;
+            overlay.classList.add('hidden');
+        }
+
+        // --- Render Loop ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (playerMesh && isGameRunning) {
+                // Câmara Top-Down (Vista de Cima)
+                // Posiciona a câmara exatamente sobre o jogador, mas bem alto
+                const targetCamX = playerMesh.position.x;
+                const targetCamZ = playerMesh.position.z + 2; // Ligeiro offset em Z para dar perspetiva 3D
+                
+                // Interpolação da câmara (segue suavemente)
+                camera.position.x += (targetCamX - camera.position.x) * 0.1;
+                camera.position.z += (targetCamZ - camera.position.z) * 0.1;
+                camera.position.y = 18; // Altura elevada para ver o labirinto de cima
+                
+                // Olha para o jogador
+                camera.lookAt(playerMesh.position.x, 0, playerMesh.position.z);
+            } else if (!isGameRunning && mazeGroup) {
+                // Rotação lenta no menu
+                scene.rotation.y += 0.002;
+            } else {
+                // Reset rotação quando joga
+                scene.rotation.y = 0;
+            }
+
+            // Animar metas e items
+            if (goalMesh) {
+                goalMesh.rotation.y += 0.02;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // --- Inputs ---
+        window.addEventListener('keydown', (e) => {
+            switch(e.key) {
+                case 'ArrowUp': handleInput(0, -1); break;
+                case 'ArrowDown': handleInput(0, 1); break;
+                case 'ArrowLeft': handleInput(-1, 0); break;
+                case 'ArrowRight': handleInput(1, 0); break;
+            }
+        });
+
+        // Iniciar
+        initThreeJS();
+
+    </script>
+</body>
+</html>

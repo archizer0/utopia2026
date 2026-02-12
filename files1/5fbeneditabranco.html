@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Alice: Fuga dos Bolos</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1a1a1a;
+            overflow: hidden; /* Previne rolagem */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: none; /* Previne zoom e scroll no telemóvel */
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: radial-gradient(circle, #3e2723 0%, #1a0000 100%); /* Fundo escuro atrás do canvas */
+        }
+
+        canvas {
+            /* --- ESTILO COZINHA DA RAINHA --- */
+            background-color: #fff0f0; /* Branco rosado de fundo */
+           
+            /* Padrão de Xadrez (Tiles) Vermelho e Branco */
+            background-image:
+                linear-gradient(45deg, #b71c1c 25%, transparent 25%, transparent 75%, #b71c1c 75%, #b71c1c),
+                linear-gradient(45deg, #b71c1c 25%, transparent 25%, transparent 75%, #b71c1c 75%, #b71c1c);
+           
+            background-position: 0 0, 40px 40px;
+            background-size: 80px 80px;
+
+            /* Sombra interna para dar profundidade (Vignette) */
+            box-shadow:
+                inset 0 0 100px rgba(0,0,0,0.6),
+                0 0 30px rgba(0,0,0,0.8);
+           
+            /* Borda de madeira da cozinha */
+            border: 12px solid #5d4037;
+            border-radius: 4px;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            pointer-events: none;
+            text-shadow: 3px 3px 0 #000, -1px -1px 0 #000; /* Borda mais forte no texto para ler no xadrez */
+            z-index: 10;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 24px;
+            color: #FFD700;
+        }
+
+        p {
+            margin: 5px 0 0 0;
+            font-size: 18px;
+        }
+
+        #start-screen, #game-over-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(40, 0, 0, 0.9); /* Fundo avermelhado escuro nas telas */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 20;
+            text-align: center;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        button {
+            background: #D32F2F; /* Vermelho Rainha */
+            color: white;
+            border: 2px solid #fff;
+            padding: 15px 30px;
+            font-size: 20px;
+            border-radius: 10px; /* Botão mais quadrado estilo carta */
+            cursor: pointer;
+            margin-top: 20px;
+            font-weight: bold;
+            transition: transform 0.1s, background 0.2s;
+            box-shadow: 0 4px 0 #8B0000;
+        }
+
+        button:active {
+            transform: translateY(4px);
+            box-shadow: 0 0 0 #8B0000;
+        }
+
+        button:hover {
+            background: #FF5252;
+        }
+
+        .controls-hint {
+            margin-top: 20px;
+            color: #ccc;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="ui-layer">
+        <h1>Pontos: <span id="score">0</span></h1>
+        <p>Recorde: <span id="high-score">0</span></p>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Tela Inicial -->
+    <div id="start-screen">
+        <h1 style="font-size: 40px; color: #FFD700; margin-bottom: 10px; text-shadow: 2px 2px #b71c1c;">Cozinha da Rainha</h1>
+        <p>Roube os bolos antes que a Rainha chegue!</p>
+        <div style="font-size: 50px; margin: 20px;">🍰🏃‍♀️👑</div>
+        <button onclick="startGame()">ENTRAR NA COZINHA</button>
+        <div class="controls-hint">
+            PC: Use as Setas ou WASD<br>
+            Telemóvel: Toque e arraste para mover
+        </div>
+    </div>
+
+    <!-- Tela de Game Over -->
+    <div id="game-over-screen" class="hidden">
+        <h1 style="color: #FF5252; font-size: 40px;">CORTEM-LHE A CABEÇA!</h1>
+        <p>Apanhada a roubar tartes.</p>
+        <h2 style="margin: 20px 0;">Sua Pontuação: <span id="final-score">0</span></h2>
+        <button onclick="startGame()">TENTAR DE NOVO</button>
+    </div>
+</div>
+
+<script>
+    // Configuração do Canvas
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+   
+    // Elementos da UI
+    const scoreEl = document.getElementById('score');
+    const highScoreEl = document.getElementById('high-score');
+    const finalScoreEl = document.getElementById('final-score');
+    const startScreen = document.getElementById('start-screen');
+    const gameOverScreen = document.getElementById('game-over-screen');
+
+    // Variáveis de Estado do Jogo
+    let gameLoopId;
+    let score = 0;
+    let highScore = localStorage.getItem('alice_highscore') || 0;
+    highScoreEl.innerText = highScore;
+    let isGameOver = false;
+    let frameCount = 0;
+
+    // Dimensões do Jogo
+    let width, height;
+
+    function resizeCanvas() {
+        width = window.innerWidth;
+        height = window.innerHeight;
+        // Limita o tamanho máximo para não ficar estranho em monitores ultrawide
+        if (width > 800) width = 800;
+        if (height > 600) height = 600;
+       
+        canvas.width = width;
+        canvas.height = height;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // Entidades
+    const alice = {
+        x: 0, y: 0,
+        size: 45, // Aumentei um pouco para caber o detalhe
+        speed: 5
+    };
+
+    const queen = {
+        x: 0, y: 0,
+        size: 50,
+        baseSpeed: 2.0,
+        currentSpeed: 2.0
+    };
+
+    const cake = {
+        x: 0, y: 0,
+        size: 35 // Um pouco maior para ser mais visível
+    };
+
+    // Input
+    const keys = {
+        ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false,
+        w: false, s: false, a: false, d: false
+    };
+
+    // Mouse/Touch input
+    const touchInput = {
+        active: false,
+        x: 0,
+        y: 0
+    };
+
+    window.addEventListener('keydown', (e) => {
+        if (keys.hasOwnProperty(e.key) || keys.hasOwnProperty(e.key.toLowerCase())) {
+            keys[e.key] = true;
+        }
+    });
+
+    window.addEventListener('keyup', (e) => {
+        if (keys.hasOwnProperty(e.key) || keys.hasOwnProperty(e.key.toLowerCase())) {
+            keys[e.key] = false;
+        }
+    });
+
+    // Touch controls
+    canvas.addEventListener('touchstart', handleTouchStart, {passive: false});
+    canvas.addEventListener('touchmove', handleTouchMove, {passive: false});
+    canvas.addEventListener('touchend', handleTouchEnd);
+   
+    // Mouse controls (para testar no PC como se fosse touch)
+    let isMouseDown = false;
+    canvas.addEventListener('mousedown', (e) => {
+        isMouseDown = true;
+        handleTouchMove(e);
+    });
+    canvas.addEventListener('mousemove', (e) => {
+        if(isMouseDown) handleTouchMove(e);
+    });
+    canvas.addEventListener('mouseup', () => {
+        isMouseDown = false;
+        touchInput.active = false;
+    });
+
+    function handleTouchStart(e) {
+        e.preventDefault();
+        touchInput.active = true;
+        const touch = e.touches[0];
+        updateTouchPos(touch.clientX, touch.clientY);
+    }
+
+    function handleTouchMove(e) {
+        e.preventDefault();
+        touchInput.active = true;
+        // Suporte para mouse ou touch
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        updateTouchPos(clientX, clientY);
+    }
+
+    function handleTouchEnd(e) {
+        e.preventDefault();
+        touchInput.active = false;
+    }
+
+    function updateTouchPos(clientX, clientY) {
+        const rect = canvas.getBoundingClientRect();
+        touchInput.x = clientX - rect.left;
+        touchInput.y = clientY - rect.top;
+    }
+
+    // Lógica do Jogo
+    function startGame() {
+        startScreen.classList.add('hidden');
+        gameOverScreen.classList.add('hidden');
+       
+        score = 0;
+        scoreEl.innerText = score;
+        isGameOver = false;
+
+        // Resetar Posições
+        alice.x = width / 2;
+        alice.y = height / 2;
+
+        // Rainha começa longe da Alice
+        queen.x = 50;
+        queen.y = 50;
+        queen.currentSpeed = queen.baseSpeed;
+
+        respawnCake();
+
+        if (gameLoopId) cancelAnimationFrame(gameLoopId);
+        gameLoop();
+    }
+
+    function respawnCake() {
+        // Margem de 40px para não aparecer na borda
+        cake.x = 40 + Math.random() * (width - 80);
+        cake.y = 40 + Math.random() * (height - 80);
+    }
+
+    function update() {
+        if (isGameOver) return;
+
+        // 1. Movimento da Alice
+        let dx = 0;
+        let dy = 0;
+
+        if (keys.ArrowUp || keys.w) dy = -1;
+        if (keys.ArrowDown || keys.s) dy = 1;
+        if (keys.ArrowLeft || keys.a) dx = -1;
+        if (keys.ArrowRight || keys.d) dx = 1;
+
+        // Controlo por Toque/Mouse (Alice corre para onde o dedo está)
+        if (touchInput.active) {
+            const angle = Math.atan2(touchInput.y - alice.y, touchInput.x - alice.x);
+            const dist = Math.hypot(touchInput.x - alice.x, touchInput.y - alice.y);
+           
+            // Só move se estiver longe do dedo (para evitar tremedeira)
+            if (dist > 10) {
+                dx = Math.cos(angle);
+                dy = Math.sin(angle);
+            }
+        }
+
+        // Normalizar vetor (para não andar mais rápido na diagonal com teclado)
+        if (dx !== 0 || dy !== 0) {
+            // Se for teclado, normaliza. Se for touch, já está (cos/sin).
+            if (!touchInput.active) {
+                const length = Math.sqrt(dx*dx + dy*dy);
+                dx /= length;
+                dy /= length;
+            }
+           
+            alice.x += dx * alice.speed;
+            alice.y += dy * alice.speed;
+        }
+
+        // Manter Alice no ecrã
+        alice.x = Math.max(alice.size/2, Math.min(width - alice.size/2, alice.x));
+        alice.y = Math.max(alice.size/2, Math.min(height - alice.size/2, alice.y));
+
+        // 2. Movimento da Rainha (IA Simples de Perseguição)
+        const angleToAlice = Math.atan2(alice.y - queen.y, alice.x - queen.x);
+        queen.x += Math.cos(angleToAlice) * queen.currentSpeed;
+        queen.y += Math.sin(angleToAlice) * queen.currentSpeed;
+
+        // 3. Colisões
+
+        // Alice apanha o Bolo
+        const distToCake = Math.hypot(alice.x - cake.x, alice.y - cake.y);
+        if (distToCake < (alice.size/2 + cake.size/2)) {
+            score += 10;
+            scoreEl.innerText = score;
+            respawnCake();
+           
+            // Dificuldade: Rainha fica mais rápida a cada 50 pontos (5 bolos)
+            if (score % 50 === 0) {
+                queen.currentSpeed += 0.3;
+                showFloatingText("A Rainha está Furiosa!", alice.x, alice.y - 40);
+            } else {
+                showFloatingText("+10", alice.x, alice.y - 20);
+            }
+        }
+
+        // Rainha apanha Alice
+        const distToQueen = Math.hypot(alice.x - queen.x, alice.y - queen.y);
+        // Margem de colisão um pouco menor para ser justo
+        if (distToQueen < (alice.size/2 + queen.size/2 - 15)) {
+            gameOver();
+        }
+    }
+
+    // Sistema simples de partículas de texto
+    let floatingTexts = [];
+    function showFloatingText(text, x, y) {
+        floatingTexts.push({ text, x, y, life: 30, color: '#FFF' });
+    }
+
+    // --- FUNÇÕES DE DESENHO (SPRITES) ---
+
+    function drawAliceSprite(ctx, x, y, size) {
+        const s = size * 0.8; // Escala interna
+       
+        ctx.save();
+        ctx.translate(x, y);
+       
+        // Sombra
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.beginPath();
+        ctx.ellipse(0, s*0.8, s*0.4, s*0.1, 0, 0, Math.PI*2);
+        ctx.fill();
+
+        // Cabelo (trás)
+        ctx.fillStyle = '#FFD700'; // Ouro
+        ctx.beginPath();
+        ctx.arc(0, -s*0.2, s*0.55, 0, Math.PI*2);
+        ctx.fill();
+
+        // Vestido (Corpo)
+        ctx.fillStyle = '#3498DB'; // Azul Alice
+        ctx.beginPath();
+        ctx.moveTo(0, -s*0.2);
+        ctx.lineTo(s*0.5, s*0.8);
+        ctx.quadraticCurveTo(0, s*0.9, -s*0.5, s*0.8);
+        ctx.lineTo(0, -s*0.2);
+        ctx.fill();
+       
+        // Avental Branco
+        ctx.fillStyle = '#FFF';
+        ctx.beginPath();
+        ctx.moveTo(-s*0.2, -s*0.1);
+        ctx.lineTo(s*0.2, -s*0.1);
+        ctx.lineTo(s*0.25, s*0.6);
+        ctx.lineTo(-s*0.25, s*0.6);
+        ctx.fill();
+
+        // Cabeça
+        ctx.fillStyle = '#FFE0BD'; // Pele
+        ctx.beginPath();
+        ctx.arc(0, -s*0.3, s*0.35, 0, Math.PI*2);
+        ctx.fill();
+
+        // Cabelo (franja/frente)
+        ctx.fillStyle = '#FFD700';
+        ctx.beginPath();
+        ctx.arc(0, -s*0.38, s*0.35, Math.PI, 0);
+        ctx.fill();
+       
+        // Laço Preto
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(0, -s*0.65, s*0.15, 0, Math.PI*2);
+        ctx.fill();
+
+        // Olhos
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(-s*0.12, -s*0.3, s*0.05, 0, Math.PI*2);
+        ctx.arc(s*0.12, -s*0.3, s*0.05, 0, Math.PI*2);
+        ctx.fill();
+
+        ctx.restore();
+    }
+
+    function drawQueenSprite(ctx, x, y, size) {
+        const s = size * 0.85;
+        ctx.save();
+        ctx.translate(x, y);
+
+        // Sombra
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.beginPath();
+        ctx.ellipse(0, s*0.8, s*0.5, s*0.15, 0, 0, Math.PI*2);
+        ctx.fill();
+
+        // Vestido Vermelho e Preto
+        ctx.fillStyle = '#C0392B'; // Vermelho
+        ctx.beginPath();
+        ctx.moveTo(0, -s*0.3);
+        ctx.lineTo(s*0.6, s*0.9);
+        ctx.lineTo(-s*0.6, s*0.9);
+        ctx.fill();
+       
+        // Painel central do vestido
+        ctx.fillStyle = '#000'; // Preto
+        ctx.beginPath();
+        ctx.moveTo(0, -s*0.3);
+        ctx.lineTo(s*0.2, s*0.9);
+        ctx.lineTo(-s*0.2, s*0.9);
+        ctx.fill();
+
+        // Cabeça
+        ctx.fillStyle = '#FFF0E0';
+        ctx.beginPath();
+        ctx.arc(0, -s*0.4, s*0.32, 0, Math.PI*2);
+        ctx.fill();
+
+        // Coroa Dourada
+        ctx.fillStyle = '#F1C40F';
+        ctx.beginPath();
+        ctx.moveTo(-s*0.3, -s*0.5); // Esquerda base
+        ctx.lineTo(-s*0.4, -s*0.8); // Ponta esq
+        ctx.lineTo(-s*0.15, -s*0.6); // Vale esq
+        ctx.lineTo(0, -s*0.9);      // Ponta meio
+        ctx.lineTo(s*0.15, -s*0.6);  // Vale dir
+        ctx.lineTo(s*0.4, -s*0.8);   // Ponta dir
+        ctx.lineTo(s*0.3, -s*0.5);   // Dir base
+        ctx.lineTo(-s*0.3, -s*0.5);  // Fechar
+        ctx.fill();
+
+        // Olhos irritados
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.moveTo(-s*0.2, -s*0.45); // Sobrancelha esq
+        ctx.lineTo(-s*0.05, -s*0.4);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(s*0.2, -s*0.45); // Sobrancelha dir
+        ctx.lineTo(s*0.05, -s*0.4);
+        ctx.stroke();
+       
+        // Olhos
+        ctx.beginPath();
+        ctx.arc(-s*0.12, -s*0.35, s*0.05, 0, Math.PI*2);
+        ctx.arc(s*0.12, -s*0.35, s*0.05, 0, Math.PI*2);
+        ctx.fill();
+
+        ctx.restore();
+    }
+
+    function drawCakeSprite(ctx, x, y, size) {
+        const s = size * 0.9;
+        ctx.save();
+        ctx.translate(x, y);
+
+        // Sombra
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.beginPath();
+        ctx.ellipse(0, s*0.5, s*0.5, s*0.15, 0, 0, Math.PI*2);
+        ctx.fill();
+
+        // Camada Inferior (Massa)
+        ctx.fillStyle = '#E8C39E'; // Bege bolo
+        ctx.beginPath();
+        ctx.moveTo(-s*0.4, -s*0.1);
+        ctx.lineTo(-s*0.4, s*0.4);
+        ctx.lineTo(s*0.4, s*0.4);
+        ctx.lineTo(s*0.4, -s*0.1);
+        ctx.fill();
+
+        // Recheio Rosa
+        ctx.fillStyle = '#FF80AB';
+        ctx.fillRect(-s*0.4, s*0.1, s*0.8, s*0.1);
+
+        // Cobertura Branca (Topo fofo)
+        ctx.fillStyle = '#FFF';
+        ctx.beginPath();
+        ctx.moveTo(-s*0.45, -s*0.1);
+        ctx.quadraticCurveTo(-s*0.2, -s*0.3, 0, -s*0.1);
+        ctx.quadraticCurveTo(s*0.2, -s*0.3, s*0.45, -s*0.1);
+        ctx.lineTo(s*0.45, s*0.1);
+        ctx.lineTo(-s*0.45, s*0.1);
+        ctx.fill();
+
+        // Morango no topo
+        ctx.fillStyle = '#D50000';
+        ctx.beginPath();
+        // Formato morango
+        ctx.moveTo(0, -s*0.5);
+        ctx.bezierCurveTo(s*0.2, -s*0.5, s*0.2, -s*0.1, 0, 0);
+        ctx.bezierCurveTo(-s*0.2, -s*0.1, -s*0.2, -s*0.5, 0, -s*0.5);
+        ctx.fill();
+
+        // Folha verde morango
+        ctx.fillStyle = '#4CAF50';
+        ctx.beginPath();
+        ctx.moveTo(0, -s*0.5);
+        ctx.lineTo(s*0.1, -s*0.6);
+        ctx.lineTo(0, -s*0.55);
+        ctx.lineTo(-s*0.1, -s*0.6);
+        ctx.fill();
+
+        ctx.restore();
+    }
+
+    function draw() {
+        // Limpar tela
+        ctx.clearRect(0, 0, width, height);
+
+        // Desenhar Bolo (Agora com desenho realista em vez de emoji)
+        drawCakeSprite(ctx, cake.x, cake.y, cake.size);
+       
+        // Brilho do bolo (Opcional, para destacar)
+        ctx.beginPath();
+        ctx.arc(cake.x, cake.y, cake.size/2 + 5, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255, 255, 255, ${0.3 + Math.sin(Date.now() / 200) * 0.2})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // Desenhar Alice (Novo Sprite)
+        drawAliceSprite(ctx, alice.x, alice.y, alice.size);
+       
+        // Desenhar Rainha (Novo Sprite)
+        drawQueenSprite(ctx, queen.x, queen.y, queen.size);
+       
+        // Indicador de raiva da Rainha
+        ctx.beginPath();
+        ctx.ellipse(queen.x, queen.y + queen.size/2 - 5, queen.size/2, queen.size/6, 0, 0, Math.PI*2);
+        ctx.strokeStyle = `rgba(255, 0, 0, ${0.3 + Math.sin(Date.now() / 100) * 0.3})`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Desenhar Textos Flutuantes
+        ctx.font = 'bold 16px Arial';
+        ctx.textAlign = 'center';
+        for (let i = floatingTexts.length - 1; i >= 0; i--) {
+            const ft = floatingTexts[i];
+            ctx.fillStyle = `rgba(255, 255, 255, ${ft.life / 30})`;
+            ctx.fillText(ft.text, ft.x, ft.y);
+            ft.y -= 1;
+            ft.life--;
+            if (ft.life <= 0) floatingTexts.splice(i, 1);
+        }
+    }
+
+    function gameLoop() {
+        update();
+        draw();
+        if (!isGameOver) {
+            gameLoopId = requestAnimationFrame(gameLoop);
+        }
+    }
+
+    function gameOver() {
+        isGameOver = true;
+        finalScoreEl.innerText = score;
+       
+        if (score > highScore) {
+            highScore = score;
+            localStorage.setItem('alice_highscore', highScore);
+            highScoreEl.innerText = highScore;
+        }
+
+        gameOverScreen.classList.remove('hidden');
+    }
+
+</script>
+</body>
+</html>

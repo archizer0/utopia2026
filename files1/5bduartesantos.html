@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>O Jardim Sonoro da Alice: Escolha a Sua Máscara</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700&family=Playfair+Display:ital@1&display=swap');
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Playfair Display', serif;
+            color: #e0e0e0;
+            user-select: none;
+        }
+
+        /* Fundo */
+        #bg-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            background-size: cover;
+            background-position: center;
+            transition: background-image 1s ease-in-out;
+            opacity: 0.4;
+            transform: scale(1.1);
+        }
+
+        #bg-overlay-color {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            background: rgba(0, 0, 0, 0.5);
+            transition: background-color 0.5s;
+        }
+
+        /* Interface Inicial */
+        #intro-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle, #2a0a3a 0%, #000000 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            transition: opacity 1s ease;
+        }
+
+        h1 {
+            font-family: 'Cinzel Decorative', cursive;
+            font-size: 3rem;
+            text-align: center;
+            color: #d4af37;
+            text-shadow: 0 0 10px #d4af37, 0 0 20px #ff00de;
+            margin-bottom: 20px;
+            pointer-events: none;
+            padding: 0 20px;
+        }
+
+        p {
+            font-size: 1.2rem;
+            text-align: center;
+            max-width: 600px;
+            line-height: 1.6;
+            margin-bottom: 30px;
+            padding: 0 20px;
+        }
+
+        .start-btn {
+            padding: 15px 40px;
+            font-size: 1.5rem;
+            background: transparent;
+            border: 2px solid #d4af37;
+            color: #d4af37;
+            border-radius: 50px;
+            cursor: pointer;
+            font-family: 'Cinzel Decorative', cursive;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);
+            margin-top: 10px;
+        }
+
+        .start-btn:hover {
+            background: #d4af37;
+            color: #1a0526;
+            box-shadow: 0 0 30px rgba(212, 175, 55, 0.8);
+            transform: scale(1.1);
+        }
+
+        /* Canvas e Video */
+        #canvas-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        #webcam { display: none; }
+
+        /* Etiquetas das Zonas */
+        .zone-label {
+            position: absolute;
+            font-family: 'Cinzel Decorative', cursive;
+            opacity: 0.4;
+            pointer-events: none;
+            font-size: 2rem;
+            text-transform: uppercase;
+            text-align: center;
+            width: 50%;
+            height: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: opacity 0.3s, transform 0.3s;
+            z-index: 20;
+            text-shadow: 0 0 10px black;
+        }
+
+        .zone-active {
+            opacity: 1;
+            transform: scale(1.1);
+            text-shadow: 0 0 20px currentColor;
+        }
+
+        #z1 { top: 0; left: 0; color: #ff7eb3; }
+        #z2 { top: 0; right: 0; color: #7afcff; }
+        #z3 { bottom: 0; left: 0; color: #feff9c; }
+        #z4 { bottom: 0; right: 0; color: #ff6550; }
+
+        #controls-hint {
+            position: absolute;
+            bottom: 80px; /* Subi um pouco por causa dos botões */
+            width: 100%;
+            text-align: center;
+            font-size: 1rem;
+            color: white;
+            opacity: 0.8;
+            pointer-events: none;
+            z-index: 30;
+            text-shadow: 0 0 5px black;
+        }
+
+        /* Painel de Avatar */
+        #avatar-panel {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 40;
+            display: flex;
+            gap: 10px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 10px 20px;
+            border-radius: 50px;
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            flex-wrap: wrap;
+            justify-content: center;
+            width: 90%;
+            max-width: 600px;
+        }
+
+        .avatar-btn {
+            background: transparent;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            font-size: 1.5rem;
+            padding: 5px 15px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .avatar-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            transform: scale(1.1);
+        }
+
+        .avatar-btn.active {
+            background: #d4af37;
+            color: #000;
+            border-color: #d4af37;
+            box-shadow: 0 0 10px #d4af37;
+        }
+
+        .loading-text {
+            font-size: 0.9rem;
+            color: #aaa;
+            margin-top: 10px;
+            min-height: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="bg-layer"></div>
+    <div id="bg-overlay-color"></div>
+
+    <div id="intro-overlay">
+        <h1>O Espelho da Alice</h1>
+        <p>Mexe-te para criar som e magia.<br>
+        Usa os botões abaixo para te transformares.<br>
+        <small>Ativa o som e permite a câmara.</small></p>
+        <button class="start-btn" id="start-btn">Entrar no País das Maravilhas</button>
+        <div class="loading-text" id="status-msg"></div>
+    </div>
+
+    <video id="webcam" autoplay playsinline muted></video>
+
+    <div id="canvas-container">
+        <div id="z1" class="zone-label">Gato<br><small>Mistério</small></div>
+        <div id="z2" class="zone-label">Chapeleiro<br><small>Loucura</small></div>
+        <div id="z3" class="zone-label">Coelho<br><small>Tempo</small></div>
+        <div id="z4" class="zone-label">Rainha<br><small>Ordem</small></div>
+       
+        <canvas id="visualizer"></canvas>
+        <div id="controls-hint" id="hint-text">Aguardando início...</div>
+
+        <!-- Botões de Avatar -->
+        <div id="avatar-panel">
+            <button class="avatar-btn active" onclick="setAvatar('mirror')" title="Espelho Mágico">👁️</button>
+            <button class="avatar-btn" onclick="setAvatar('cat')" title="Gato de Cheshire">😺</button>
+            <button class="avatar-btn" onclick="setAvatar('hatter')" title="Chapeleiro">🎩</button>
+            <button class="avatar-btn" onclick="setAvatar('rabbit')" title="Coelho Branco">🐇</button>
+            <button class="avatar-btn" onclick="setAvatar('queen')" title="Rainha de Copas">👑</button>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURAÇÃO GLOBAL ---
+        const video = document.getElementById('webcam');
+        const statusMsg = document.getElementById('status-msg');
+        const bgLayer = document.getElementById('bg-layer');
+        const hintText = document.getElementById('controls-hint');
+        let width, height;
+        let isRunning = false;
+        let usingWebcam = false;
+       
+        // --- ÁUDIO ---
+        let audioCtx;
+        let masterGain, oscillator, lfo, lfoGain, filter, delay;
+
+        // --- VISUAL ---
+        const canvas = document.getElementById('visualizer');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+       
+        const motionCanvas = document.createElement('canvas');
+        const motionCtx = motionCanvas.getContext('2d', { willReadFrequently: true });
+       
+        let particles = [];
+        let shockwaves = [];
+        let prevFrameData = null;
+       
+        let targetX = 0, targetY = 0;
+        let curX = 0, curY = 0;
+        let motionAmount = 0;
+        let hueRotation = 0;
+
+        // --- SISTEMA DE AVATAR ---
+        let currentAvatar = 'mirror'; // 'mirror', 'cat', 'hatter', 'rabbit', 'queen'
+       
+        const avatars = {
+            'mirror': { emoji: null, scale: 1 },
+            'cat': { emoji: '😺', scale: 150, color: '#ff7eb3' },
+            'hatter': { emoji: '🎩', scale: 150, color: '#7afcff' },
+            'rabbit': { emoji: '🐇', scale: 150, color: '#feff9c' },
+            'queen': { emoji: '👑', scale: 150, color: '#ff6550' }
+        };
+
+        window.setAvatar = function(type) {
+            currentAvatar = type;
+            // Atualizar botões
+            document.querySelectorAll('.avatar-btn').forEach(btn => btn.classList.remove('active'));
+            // Encontrar o botão certo (logica simples baseada no onclick)
+            const btns = document.querySelectorAll('.avatar-btn');
+            if(type === 'mirror') btns[0].classList.add('active');
+            if(type === 'cat') btns[1].classList.add('active');
+            if(type === 'hatter') btns[2].classList.add('active');
+            if(type === 'rabbit') btns[3].classList.add('active');
+            if(type === 'queen') btns[4].classList.add('active');
+        };
+
+        // Zonas e Emojis
+        const zones = {
+            1: {
+                type: 'sine',
+                color: '#ff7eb3',
+                img: 'https://images.unsplash.com/photo-1572098020583-774f88127393?q=80&w=1600&auto=format&fit=crop',
+                emojis: ['😺', '😼', '🌙']
+            },
+            2: {
+                type: 'sawtooth',
+                color: '#7afcff',
+                img: 'https://images.unsplash.com/photo-1533423797685-6178a9959f93?q=80&w=1600&auto=format&fit=crop',
+                emojis: ['🎩', '☕', '🫖']
+            },
+            3: {
+                type: 'square',
+                color: '#feff9c',
+                img: 'https://images.unsplash.com/photo-1508006830768-e4eb9f333f2b?q=80&w=1600&auto=format&fit=crop',
+                emojis: ['🐇', '⏱️', '🥕']
+            },
+            4: {
+                type: 'triangle',
+                color: '#ff6550',
+                img: 'https://images.unsplash.com/photo-1599824426533-875225c9b63c?q=80&w=1600&auto=format&fit=crop',
+                emojis: ['👑', '🌹', '💔']
+            }
+        };
+        let currentZone = 1;
+
+        // Pré-carregar
+        function preloadImages() {
+            Object.values(zones).forEach(zone => { const img = new Image(); img.src = zone.img; });
+        }
+        preloadImages();
+
+        // --- REDIMENSIONAR ---
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            motionCanvas.width = 64;
+            motionCanvas.height = 48;
+           
+            targetX = width / 2; targetY = height / 2;
+            curX = width / 2; curY = height / 2;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // --- INICIAR ---
+        async function init() {
+            statusMsg.textContent = "A inicializar sistemas...";
+           
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContext();
+                setupAudioNodes();
+                await audioCtx.resume();
+            } catch (e) {
+                console.error("Erro Audio:", e);
+            }
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
+                    audio: false
+                });
+                video.srcObject = stream;
+                await new Promise(resolve => video.onloadedmetadata = resolve);
+                usingWebcam = true;
+                hintText.textContent = "Mova-se rápido para criar ondas de choque";
+            } catch (err) {
+                console.warn("Webcam falhou ou negada.", err);
+                usingWebcam = false;
+                hintText.textContent = "Modo Rato: Mova o cursor e CLIQUE para interagir";
+               
+                window.addEventListener('mousemove', e => {
+                    targetX = e.clientX;
+                    targetY = e.clientY;
+                    motionAmount = 30;
+                });
+                window.addEventListener('mousedown', () => {
+                    motionAmount = 150;
+                    shockwaves.push(new Shockwave(curX, curY, zones[currentZone].color));
+                });
+                window.addEventListener('mouseup', () => {
+                    motionAmount = 30;
+                });
+            }
+
+            statusMsg.textContent = "A entrar...";
+            document.getElementById('intro-overlay').style.opacity = 0;
+            bgLayer.style.backgroundImage = `url(${zones[1].img})`;
+           
+            setTimeout(() => {
+                document.getElementById('intro-overlay').style.display = 'none';
+                isRunning = true;
+                animate();
+            }, 1000);
+        }
+
+        function setupAudioNodes() {
+            masterGain = audioCtx.createGain(); masterGain.gain.value = 0;
+            delay = audioCtx.createDelay(); delay.delayTime.value = 0.3;
+            const delayFb = audioCtx.createGain(); delayFb.gain.value = 0.4;
+           
+            delay.connect(delayFb); delayFb.connect(delay); delay.connect(masterGain);
+           
+            filter = audioCtx.createBiquadFilter(); filter.type = "lowpass"; filter.frequency.value = 1000;
+           
+            oscillator = audioCtx.createOscillator(); oscillator.type = 'sine';
+           
+            lfo = audioCtx.createOscillator(); lfo.frequency.value = 5;
+            lfoGain = audioCtx.createGain(); lfoGain.gain.value = 0;
+            lfo.connect(lfoGain); lfoGain.connect(oscillator.frequency);
+           
+            oscillator.connect(filter); filter.connect(masterGain); filter.connect(delay);
+            masterGain.connect(audioCtx.destination);
+           
+            oscillator.start(); lfo.start();
+        }
+
+        // --- DETEÇÃO ---
+        function detectMotion() {
+            if (!usingWebcam || video.readyState !== 4) return;
+
+            motionCtx.save(); motionCtx.scale(-1, 1);
+            motionCtx.drawImage(video, -motionCanvas.width, 0, motionCanvas.width, motionCanvas.height);
+            motionCtx.restore();
+
+            const frame = motionCtx.getImageData(0, 0, motionCanvas.width, motionCanvas.height);
+            const data = frame.data;
+            if (!prevFrameData) { prevFrameData = new Uint8ClampedArray(data); return; }
+
+            let sumX = 0, sumY = 0, count = 0;
+            for (let i = 0; i < data.length; i += 8) {
+                if (Math.abs(data[i+1] - prevFrameData[i+1]) > 25) {
+                    const idx = i/4;
+                    sumX += idx % motionCanvas.width;
+                    sumY += Math.floor(idx / motionCanvas.width);
+                    count++;
+                }
+            }
+            prevFrameData.set(data);
+            motionAmount = count;
+
+            if (count > 10) {
+                targetX = (sumX / count / motionCanvas.width) * width;
+                targetY = (sumY / count / motionCanvas.height) * height;
+            }
+        }
+
+        // --- LÓGICA ---
+        function updatePhysicsAndAudio() {
+            curX += (targetX - curX) * 0.1;
+            curY += (targetY - curY) * 0.1;
+
+            const pX = Math.max(0, Math.min(1, curX / width));
+            const pY = Math.max(0, Math.min(1, curY / height));
+           
+            let newZone = 1;
+            if (pX < 0.5 && pY < 0.5) newZone = 1;
+            else if (pX >= 0.5 && pY < 0.5) newZone = 2;
+            else if (pX < 0.5 && pY >= 0.5) newZone = 3;
+            else newZone = 4;
+
+            if (newZone !== currentZone) {
+                currentZone = newZone;
+                oscillator.type = zones[currentZone].type;
+                updateZoneVisuals();
+            }
+
+            if (audioCtx && audioCtx.state === 'running') {
+                const freq = 100 + (pX * 1100);
+                oscillator.frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.05);
+                filter.frequency.setTargetAtTime(200 + (pY * 3000), audioCtx.currentTime, 0.05);
+                lfoGain.gain.setTargetAtTime(pY * 20, audioCtx.currentTime, 0.05);
+               
+                const vol = motionAmount > 15 ? 0.3 : 0;
+                masterGain.gain.setTargetAtTime(vol, audioCtx.currentTime, 0.1);
+            }
+
+            if (usingWebcam && motionAmount > 100 && Math.random() > 0.9) {
+                shockwaves.push(new Shockwave(curX, curY, zones[currentZone].color));
+            }
+        }
+
+        function updateZoneVisuals() {
+            document.querySelectorAll('.zone-label').forEach((el, index) => {
+                el.classList.toggle('zone-active', index + 1 === currentZone);
+            });
+            bgLayer.style.backgroundImage = `url(${zones[currentZone].img})`;
+        }
+
+        class Particle {
+            constructor(x, y, color, zoneEmojis) {
+                this.x = x; this.y = y;
+                this.size = Math.random() * 25 + 10;
+                this.speedX = (Math.random() - 0.5) * 4;
+                this.speedY = (Math.random() - 0.5) * 4;
+                this.color = color;
+                this.life = 1.0;
+               
+                if (Math.random() > 0.5 && zoneEmojis && zoneEmojis.length > 0) {
+                    this.char = zoneEmojis[Math.floor(Math.random() * zoneEmojis.length)];
+                } else {
+                    this.char = ['♥', '♦', '♣', '♠', '✨'][Math.floor(Math.random() * 5)];
+                }
+            }
+            update() {
+                this.x += this.speedX; this.y += this.speedY;
+                this.life -= 0.02; this.size *= 0.96;
+            }
+            draw() {
+                ctx.globalAlpha = this.life; ctx.fillStyle = this.color;
+                ctx.font = `${this.size}px serif`; ctx.fillText(this.char, this.x, this.y);
+                ctx.globalAlpha = 1.0;
+            }
+        }
+
+        class Shockwave {
+            constructor(x, y, color) {
+                this.x = x; this.y = y;
+                this.radius = 1;
+                this.color = color;
+                this.alpha = 0.8;
+            }
+            update() {
+                this.radius += 8;
+                this.alpha -= 0.03;
+            }
+            draw() {
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.lineWidth = 5;
+                ctx.strokeStyle = this.color;
+                ctx.globalAlpha = this.alpha;
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+
+        // --- RENDERIZAR AVATAR ---
+        function drawAvatar() {
+            if (currentAvatar === 'mirror') return; // Se for espelho, não desenha avatar extra aqui
+
+            const avatar = avatars[currentAvatar];
+            ctx.save();
+            ctx.translate(curX, curY);
+           
+            // Ligeira oscilação para dar vida
+            const wobble = Math.sin(Date.now() / 200) * 0.1;
+            ctx.rotate(wobble);
+
+            ctx.font = `${avatar.scale}px serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+           
+            // Sombra/Brilho
+            ctx.shadowColor = avatar.color;
+            ctx.shadowBlur = 20;
+           
+            ctx.fillText(avatar.emoji, 0, 0);
+            ctx.restore();
+        }
+
+        // --- LOOP DE ANIMAÇÃO ---
+        function animate() {
+            if (!isRunning) return;
+
+            detectMotion();
+            updatePhysicsAndAudio();
+
+            // 1. Rasto (mais escuro se não for espelho para destacar o avatar)
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.fillStyle = currentAvatar === 'mirror' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(0, 0, 0, 0.4)';
+            ctx.fillRect(0, 0, width, height);
+
+            // 2. Filtros
+            ctx.save();
+            if (currentZone === 1) ctx.filter = 'blur(2px) brightness(1.2)';
+            else if (currentZone === 2) {
+                hueRotation = (hueRotation + 5) % 360;
+                ctx.filter = `hue-rotate(${hueRotation}deg) saturate(1.5)`;
+            }
+            else if (currentZone === 3) ctx.filter = 'sepia(1) contrast(1.2)';
+            else if (currentZone === 4) ctx.filter = 'saturate(3) contrast(1.5)';
+
+            // 3. Desenhar Webcam (Espelho)
+            if (usingWebcam && video.readyState === 4) {
+                // Se tiver avatar selecionado, deixa o video quase transparente
+                const alpha = currentAvatar === 'mirror' ? 0.6 : 0.1;
+               
+                ctx.scale(-1, 1);
+                ctx.translate(-width, 0);
+                ctx.globalCompositeOperation = 'screen';
+                ctx.globalAlpha = alpha;
+               
+                const vRatio = video.videoWidth / video.videoHeight;
+                const cRatio = canvas.width / canvas.height;
+                let dw, dh, sx, sy;
+                if (vRatio > cRatio) { dh = canvas.height; dw = canvas.height * vRatio; sx = (canvas.width - dw)/2; sy = 0; }
+                else { dw = canvas.width; dh = canvas.width / vRatio; sx = 0; sy = (canvas.height - dh)/2; }
+               
+                if (currentZone === 3 && Math.random() > 0.9 && currentAvatar === 'mirror') {
+                    ctx.drawImage(video, sx + (Math.random()*20-10), sy, dw, dh);
+                } else {
+                    ctx.drawImage(video, sx, sy, dw, dh);
+                }
+            }
+            ctx.restore();
+
+            // 4. Desenhar Avatar (Se selecionado)
+            ctx.globalCompositeOperation = 'source-over';
+            drawAvatar();
+
+            // 5. Efeitos e Partículas
+            ctx.globalCompositeOperation = 'lighter';
+           
+            if (motionAmount > 20) {
+                const count = usingWebcam ? 1 : 2;
+                for(let k=0; k<count; k++) {
+                    particles.push(new Particle(curX, curY, zones[currentZone].color, zones[currentZone].emojis));
+                }
+            }
+
+            for (let i = 0; i < particles.length; i++) {
+                particles[i].update(); particles[i].draw();
+                if (particles[i].life <= 0) { particles.splice(i, 1); i--; }
+            }
+
+            for (let i = 0; i < shockwaves.length; i++) {
+                shockwaves[i].update(); shockwaves[i].draw();
+                if (shockwaves[i].alpha <= 0) { shockwaves.splice(i, 1); i--; }
+            }
+
+            // Cursor Mágico (Sempre visível se não houver avatar)
+            if (currentAvatar === 'mirror') {
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.beginPath();
+                ctx.arc(curX, curY, 15 + (motionAmount/4), 0, Math.PI*2);
+                ctx.strokeStyle = zones[currentZone].color;
+                ctx.lineWidth = 3;
+                ctx.stroke();
+            }
+
+            // Grade
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(width/2, 0); ctx.lineTo(width/2, height);
+            ctx.moveTo(0, height/2); ctx.lineTo(width, height/2);
+            ctx.stroke();
+
+            requestAnimationFrame(animate);
+        }
+
+        document.getElementById('start-btn').addEventListener('click', init);
+    </script>
+</body>
+</html>

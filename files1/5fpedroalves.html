@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="pt-pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aventura no País das Maravilhas</title>
+    <style>
+        :root {
+            --primary: #ff69b4;
+            --secondary: #8a2be2;
+            --bg: #1a1a2e;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background-color: var(--bg);
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            touch-action: none;
+        }
+        #game-container {
+            position: relative;
+            box-shadow: 0 0 50px rgba(138, 43, 226, 0.5);
+            border-radius: 12px;
+            overflow: hidden;
+            background: linear-gradient(to bottom, #4b0082, #000000);
+        }
+        canvas {
+            display: block;
+            max-width: 100vw;
+            max-height: 80vh;
+        }
+        .ui-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            pointer-events: none;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+        }
+        .stats {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+        .controls-hint {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.6);
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            text-align: center;
+        }
+        #message-box {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.9);
+            color: #333;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            display: none;
+            z-index: 10;
+            min-width: 300px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        button {
+            background: var(--primary);
+            border: none;
+            padding: 10px 20px;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-top: 15px;
+            transition: transform 0.2s;
+        }
+        button:hover {
+            transform: scale(1.05);
+            background: #ff1493;
+        }
+        .touch-controls {
+            display: none;
+            position: fixed;
+            bottom: 20px;
+            width: 100%;
+            justify-content: space-around;
+            padding: 0 20px;
+        }
+        @media (max-width: 768px) {
+            .touch-controls { display: flex; }
+            .controls-hint { display: none; }
+        }
+        .btn-circle {
+            width: 60px;
+            height: 60px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            user-select: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div class="ui-overlay">
+            <div class="stats">Chás: <span id="score">0</span>/5</div>
+        </div>
+        <div id="message-box">
+            <h2 id="msg-title">Curioso...</h2>
+            <p id="msg-body">Bem-vinda ao País das Maravilhas!</p>
+            <button onclick="closeMessage()">Continuar</button>
+        </div>
+        <div class="controls-hint">
+            Setas ou <b>Espaço</b> para mover e saltar. Pegue o Bolo (🎂) para crescer e o Chá (☕) para marcar pontos!
+        </div>
+    </div>
+
+    <div class="touch-controls">
+        <div class="btn-circle" id="btn-left">⬅️</div>
+        <div class="btn-circle" id="btn-jump">⬆️</div>
+        <div class="btn-circle" id="btn-right">➡️</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const messageBox = document.getElementById('message-box');
+        const msgTitle = document.getElementById('msg-title');
+        const msgBody = document.getElementById('msg-body');
+
+        // Configuração do Jogo
+        canvas.width = 800;
+        canvas.height = 450;
+
+        let score = 0;
+        let gameActive = true;
+        let keys = {};
+
+        // Alice (Jogador)
+        const player = {
+            x: 50,
+            y: 300,
+            width: 40,
+            height: 60,
+            color: '#87CEEB',
+            dy: 0,
+            jumpForce: 12,
+            gravity: 0.6,
+            speed: 5,
+            isJumping: false,
+            scale: 1, // 1 = normal, 1.5 = grande, 0.6 = pequena
+            targetScale: 1
+        };
+
+        // Plataformas
+        const platforms = [
+            { x: 0, y: 400, width: 800, height: 50, color: '#228B22' }, // Chão
+            { x: 200, y: 300, width: 150, height: 20, color: '#8B4513' },
+            { x: 450, y: 220, width: 150, height: 20, color: '#8B4513' },
+            { x: 100, y: 150, width: 120, height: 20, color: '#8B4513' },
+            { x: 650, y: 320, width: 100, height: 20, color: '#8B4513' }
+        ];
+
+        // Itens
+        const items = [
+            { x: 250, y: 260, type: 'tea', collected: false, emoji: '☕' },
+            { x: 500, y: 180, type: 'tea', collected: false, emoji: '☕' },
+            { x: 150, y: 110, type: 'tea', collected: false, emoji: '☕' },
+            { x: 700, y: 280, type: 'cake', collected: false, emoji: '🎂' },
+            { x: 30, y: 360, type: 'drink', collected: false, emoji: '🧪' },  
+            { x: 750, y: 150, type: 'tea', collected: false, emoji: '☕' },
+            { x: 400, y: 360, type: 'tea', collected: false, emoji: '☕' }
+        ];
+
+        // Inimigos (Cartas)
+        const enemies = [
+            { x: 300, y: 370, width: 30, height: 45, speed: 2, range: 100, startX: 300 },
+            { x: 500, y: 370, width: 30, height: 45, speed: -2.5, range: 150, startX: 500 }
+        ];
+
+        // Coisas do Coelho
+        const rabbit = { x: 740, y: 340, width: 40, height: 60, emoji: '🐇' };
+
+        function showMessage(title, body) {
+            msgTitle.innerText = title;
+            msgBody.innerText = body;
+            messageBox.style.display = 'block';
+            gameActive = false;
+        }
+
+        function closeMessage() {
+            messageBox.style.display = 'none';
+            if (msgTitle.innerText === "Vitória!" || msgTitle.innerText === "Oh não!") {
+                resetGame();
+            } else {
+                gameActive = true;
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        function resetGame() {
+            score = 0;
+            scoreEl.innerText = score;
+            player.x = 50;
+            player.y = 300;
+            player.dy = 0;
+            player.targetScale = 1;
+            player.scale = 1;
+            player.speed = 5;
+            items.forEach(i => i.collected = false);
+            enemies[0].x = 300;
+            enemies[1].x = 500;
+            gameActive = true;
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Input Handling
+        window.addEventListener('keydown', e => {
+            keys[e.code] = true;
+            // Evitar scroll com Espaço
+            if (e.code === 'Space') e.preventDefault();
+        });
+        window.addEventListener('keyup', e => keys[e.code] = false);
+
+        // Touch handling
+        const setupTouch = (id, code) => {
+            const btn = document.getElementById(id);
+            if(btn) {
+                btn.addEventListener('touchstart', (e) => { e.preventDefault(); keys[code] = true; });
+                btn.addEventListener('touchend', (e) => { e.preventDefault(); keys[code] = false; });
+            }
+        };
+        setupTouch('btn-left', 'ArrowLeft');
+        setupTouch('btn-right', 'ArrowRight');
+        setupTouch('btn-jump', 'ArrowUp');
+
+        function update() {
+            if (!gameActive) return;
+
+            // Movimento Horizontal
+            if (keys['ArrowLeft']) player.x -= player.speed;
+            if (keys['ArrowRight']) player.x += player.speed;
+
+            // Gravidade e Pulo (Seta Cima OU Espaço)
+            player.dy += player.gravity;
+            player.y += player.dy;
+
+            if ((keys['ArrowUp'] || keys['Space']) && !player.isJumping) {
+                player.dy = -player.jumpForce;
+                player.isJumping = true;
+            }
+
+            // Colisões com Paredes
+            if (player.x < 0) player.x = 0;
+            if (player.x + player.width * player.scale > canvas.width) player.x = canvas.width - player.width * player.scale;
+
+            // Colisões com Plataformas
+            player.isJumping = true;
+            platforms.forEach(p => {
+                const pW = player.width * player.scale;
+                const pH = player.height * player.scale;
+
+                if (player.x < p.x + p.width &&
+                    player.x + pW > p.x &&
+                    player.y + pH > p.y &&
+                    player.y + pH < p.y + p.height + player.dy) {
+                    player.y = p.y - pH;
+                    player.dy = 0;
+                    player.isJumping = false;
+                }
+            });
+
+            // Suavizar mudança de tamanho
+            if (player.scale < player.targetScale) player.scale += 0.02;
+            if (player.scale > player.targetScale) player.scale -= 0.02;
+
+            // Colisão com Itens
+            items.forEach(item => {
+                if (!item.collected) {
+                    const dist = Math.hypot(player.x + (player.width*player.scale)/2 - item.x, player.y + (player.height*player.scale)/2 - item.y);
+                    if (dist < 30) {
+                        item.collected = true;
+                        if (item.type === 'tea') {
+                            score++;
+                            scoreEl.innerText = score;
+                        } else if (item.type === 'cake') {
+                            player.targetScale = 1.5;
+                            player.speed = 3;
+                        } else if (item.type === 'drink') {
+                            player.targetScale = 0.6;
+                            player.speed = 7;
+                        }
+                    }
+                }
+            });
+
+            // Inimigos e Morte
+            enemies.forEach(en => {
+                en.x += en.speed;
+                if (Math.abs(en.x - en.startX) > en.range) en.speed *= -1;
+
+                const pW = player.width * player.scale;
+                const pH = player.height * player.scale;
+                if (player.x < en.x + en.width && player.x + pW > en.x &&
+                    player.y < en.y + en.height && player.y + pH > en.y) {
+                    if (player.targetScale > 1) {
+                        en.y = -1000;
+                    } else {
+                        showMessage("Oh não!", "Uma carta prendeu-te! Acordaste do sonho... Tenta novamente?");
+                    }
+                }
+            });
+
+            // Encontrar o Coelho
+            const rabbitDist = Math.hypot(player.x - rabbit.x, player.y - (rabbit.y + 20));
+            if (rabbitDist < 50) {
+                if (score >= 5) {
+                    showMessage("Vitória!", "Seguiste o Coelho Branco e encontraste a saída do País das Maravilhas! Parabéns, Alice!");
+                } else {
+                    ctx.save();
+                    ctx.fillStyle = "white";
+                    ctx.font = "14px Arial";
+                    ctx.textAlign = "center";
+                    ctx.fillText("Recolhe todos os bules primeiro!", rabbit.x + 20, rabbit.y - 10);
+                    ctx.restore();
+                }
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Fundo
+            ctx.fillStyle = "#4B0082";
+            ctx.beginPath();
+            ctx.arc(100, 400, 80, 0, Math.PI * 2);
+            ctx.arc(700, 400, 100, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Plataformas
+            platforms.forEach(p => {
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x, p.y, p.width, p.height);
+                ctx.fillStyle = 'rgba(255,255,255,0.1)';
+                ctx.fillRect(p.x, p.y, p.width, 5);
+            });
+
+            // Alice
+            ctx.save();
+            ctx.translate(player.x, player.y);
+            ctx.scale(player.scale, player.scale);
+            ctx.fillStyle = player.color;
+            ctx.fillRect(0, 20, 40, 40);
+            ctx.fillStyle = "white";
+            ctx.fillRect(10, 25, 20, 30);
+            ctx.fillStyle = "#FFDAB9";
+            ctx.fillRect(10, 0, 20, 20);
+            ctx.fillStyle = "#FFD700";
+            ctx.fillRect(5, 0, 30, 10);
+            ctx.restore();
+
+            // Itens
+            ctx.font = "24px serif";
+            items.forEach(item => {
+                if (!item.collected) {
+                    ctx.fillText(item.emoji, item.x, item.y);
+                }
+            });
+
+            // Inimigos
+            enemies.forEach(en => {
+                ctx.fillStyle = "white";
+                ctx.fillRect(en.x, en.y, en.width, en.height);
+                ctx.strokeStyle = "red";
+                ctx.strokeRect(en.x, en.y, en.width, en.height);
+                ctx.fillStyle = "red";
+                ctx.font = "12px Arial";
+                ctx.fillText("♥", en.x + 10, en.y + 15);
+            });
+
+            // Coelho
+            ctx.font = "40px serif";
+            ctx.fillText(rabbit.emoji, rabbit.x, rabbit.y + 50);
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            if (gameActive) {
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        window.onload = () => {
+            showMessage("O País das Maravilhas", "Alice, recolhe 5 bules de chá e encontra o Coelho Branco para escapar. Cuidado com as cartas da Rainha!");
+        };
+    </script>
+</body>
+</html>
+

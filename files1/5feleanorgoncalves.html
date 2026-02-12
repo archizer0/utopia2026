@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A Fuga de Alice</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #0f172a;
+            font-family: 'Palatino', serif;
+            color: white;
+        }
+        canvas {
+            display: block;
+            image-rendering: pixelated;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            pointer-events: none;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.7);
+        }
+        #game-over-screen {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+        }
+        .heart {
+            color: #ef4444;
+            display: inline-block;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <div class="bg-black/40 p-4 rounded-xl border border-white/20">
+            <p class="text-2xl font-bold">Pontos: <span id="score-val">0</span></p>
+            <p class="text-lg">Distância da Rainha: <span id="dist-val">Segura</span></p>
+        </div>
+    </div>
+
+    <div id="game-over-screen">
+        <h1 class="text-6xl font-black text-red-600 mb-4 italic">CORTEM-LHE A CABEÇA!</h1>
+        <p class="text-2xl mb-8">A Rainha de Copas alcançou-te no labirinto.</p>
+        <div class="text-xl mb-8">Pontuação Final: <span id="final-score">0</span></div>
+        <button onclick="resetGame()" class="bg-red-600 hover:bg-red-700 text-white px-10 py-4 rounded-full font-bold text-2xl transition-transform hover:scale-110">
+            Tentar Escapar Novamente
+        </button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreVal = document.getElementById('score-val');
+        const distVal = document.getElementById('dist-val');
+        const finalScore = document.getElementById('final-score');
+        const gameOverScreen = document.getElementById('game-over-screen');
+
+        // Configurações e Estado
+        let gameActive = false;
+        let score = 0;
+        let speed = 4;
+        let alice = { x: 100, y: 0, size: 50 };
+        let queenX = -200; // Rainha começa atrás
+        let obstacles = [];
+        let items = [];
+        let particles = [];
+        let frameCount = 0;
+
+        const EMOJIS = {
+            ALICE: "👧🏼",
+            QUEEN: "👸🏼",
+            CARD: "🃏",
+            DRINK: "🧪",
+            CAKE: "🧁",
+            FLOWER: "🌹"
+        };
+
+        function init() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            alice.y = canvas.height / 2;
+            gameActive = true;
+            score = 0;
+            speed = 5;
+            queenX = -250;
+            obstacles = [];
+            items = [];
+            particles = [];
+            gameOverScreen.style.display = 'none';
+            animate();
+        }
+
+        window.addEventListener('mousemove', (e) => {
+            if (gameActive) {
+                // Suavização do movimento vertical
+                const targetY = e.clientY;
+                alice.y += (targetY - alice.y) * 0.15;
+            }
+        });
+
+        function spawnObjects() {
+            if (frameCount % 60 === 0) {
+                // Obstáculo (Carta)
+                obstacles.push({
+                    x: canvas.width + 100,
+                    y: Math.random() * (canvas.height - 100) + 50,
+                    type: EMOJIS.CARD,
+                    size: 60
+                });
+            }
+
+            if (frameCount % 100 === 0) {
+                // Item (Bebida ou Bolo)
+                const isCake = Math.random() > 0.5;
+                items.push({
+                    x: canvas.width + 100,
+                    y: Math.random() * (canvas.height - 100) + 50,
+                    type: isCake ? EMOJIS.CAKE : EMOJI_DRINK_LOGIC(),
+                    isCake: isCake,
+                    size: 40
+                });
+            }
+        }
+
+        function EMOJI_DRINK_LOGIC() { return EMOJIS.DRINK; }
+
+        function update() {
+            frameCount++;
+            score += 1;
+            scoreVal.innerText = Math.floor(score / 10);
+
+            // Movimento da Rainha (Aproxima-se lentamente se fores devagar)
+            const dangerLevel = alice.x - queenX;
+            if (dangerLevel < 100) {
+                distVal.innerText = "PERIGO!";
+                distVal.style.color = "#ff4444";
+            } else {
+                distVal.innerText = "Segura";
+                distVal.style.color = "#44ff44";
+            }
+
+            queenX += 0.8; // Velocidade constante da perseguição
+
+            // Atualizar Obstáculos
+            obstacles.forEach((obs, index) => {
+                obs.x -= speed;
+                if (obs.x < -100) obstacles.splice(index, 1);
+
+                // Colisão com Carta (Atrasa a Alice)
+                if (Math.hypot(alice.x - obs.x, alice.y - obs.y) < 50) {
+                    obstacles.splice(index, 1);
+                    queenX += 50; // Rainha aproxima-se no impacto
+                    speed = 3; // Perda de fôlego
+                }
+            });
+
+            // Atualizar Itens
+            items.forEach((item, index) => {
+                item.x -= speed;
+                if (item.x < -100) items.splice(index, 1);
+
+                if (Math.hypot(alice.x - item.x, alice.y - item.y) < 40) {
+                    if (item.isCake) {
+                        score += 500;
+                    } else {
+                        queenX -= 40; // Ganhas distância da Rainha
+                    }
+                    items.splice(index, 1);
+                }
+            });
+
+            // Verificar se a Rainha apanhou a Alice
+            if (queenX >= alice.x - 20) {
+                endGame();
+            }
+
+            // Aceleração gradual do jogo
+            speed += 0.001;
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Fundo: Chão de Tabuleiro
+            ctx.fillStyle = "#1e293b";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+           
+            ctx.strokeStyle = "rgba(255,255,255,0.05)";
+            for(let i=0; i<canvas.width; i+=80) {
+                ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height); ctx.stroke();
+            }
+
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            // Desenhar Obstáculos e Itens
+            obstacles.forEach(o => {
+                ctx.font = o.size + "px serif";
+                ctx.fillText(o.type, o.x, o.y);
+            });
+
+            items.forEach(i => {
+                ctx.font = i.size + "px serif";
+                ctx.fillText(i.type, i.x, i.y);
+            });
+
+            // Desenhar Alice
+            ctx.font = "60px serif";
+            ctx.fillText(EMOJIS.ALICE, alice.x, alice.y);
+
+            // Desenhar Rainha de Copas (Seguindo a Alice)
+            ctx.font = "90px serif";
+            ctx.fillText(EMOJIS.QUEEN, queenX, alice.y + Math.sin(frameCount * 0.1) * 20);
+           
+            // Efeito de fumo/raiva atrás da Rainha
+            if (frameCount % 5 === 0) {
+                particles.push({x: queenX - 20, y: alice.y + (Math.random()-0.5)*100, r: 10, l: 1});
+            }
+            particles.forEach((p, index) => {
+                p.x -= speed; p.l -= 0.02; p.r += 0.5;
+                ctx.fillStyle = `rgba(239, 68, 68, ${p.l})`;
+                ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2); ctx.fill();
+                if (p.l <= 0) particles.splice(index, 1);
+            });
+        }
+
+        function animate() {
+            if (!gameActive) return;
+            spawnObjects();
+            update();
+            draw();
+            requestAnimationFrame(animate);
+        }
+
+        function endGame() {
+            gameActive = false;
+            finalScore.innerText = Math.floor(score / 10);
+            gameOverScreen.style.display = 'flex';
+        }
+
+        function resetGame() {
+            init();
+        }
+
+        window.onload = init;
+        window.onresize = () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        };
+    </script>
+</body>
+</html>
+

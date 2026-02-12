@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice: Sinfonia das Mãos</title>
+    <style>
+        /* Tipografia mágica */
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700&display=swap');
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Cinzel Decorative', cursive;
+            /* Fundo pedido: Rosa, Lilás e Amarelo */
+            background: linear-gradient(120deg, #ffb7b2 0%, #c7ceea 50%, #fff2cc 100%);
+            background-size: 400% 400%;
+            animation: dreamGradient 15s ease infinite;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        /* Animação suave do fundo */
+        @keyframes dreamGradient {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        #container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        video { display: none; } /* Esconder vídeo raw */
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            transform: scaleX(-1); /* Efeito espelho */
+        }
+
+        /* Overlay de Instruções */
+        #overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 255, 255, 0.4);
+            backdrop-filter: blur(5px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            transition: opacity 0.5s;
+        }
+
+        h1 {
+            color: #6a0dad; /* Roxo escuro */
+            font-size: 3rem;
+            text-shadow: 2px 2px 0px #fff;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        p {
+            color: #333;
+            font-size: 1.2rem;
+            margin-bottom: 30px;
+            text-align: center;
+            max-width: 600px;
+            line-height: 1.5;
+        }
+
+        button {
+            padding: 15px 40px;
+            font-size: 1.5rem;
+            background: #ff69b4;
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(255, 105, 180, 0.4);
+            font-family: inherit;
+            transition: transform 0.2s;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+            background: #ff1493;
+        }
+
+        #loading {
+            margin-top: 20px;
+            font-weight: bold;
+            color: #6a0dad;
+        }
+
+    </style>
+    <!-- MediaPipe para deteção de mãos -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+</head>
+<body>
+
+<div id="container">
+    <video id="input_video"></video>
+    <canvas id="output_canvas"></canvas>
+   
+    <div id="overlay">
+        <h1>Concerto no País das Maravilhas</h1>
+        <p>
+            🐇 <b>Mão Esquerda (O Coelho):</b> Controla os Graves e o Tempo.<br>
+            🎩 <b>Mão Direita (O Chapeleiro):</b> Controla a Melodia e a Loucura.
+        </p>
+        <button id="startBtn">Bebe-me para Começar 🧪</button>
+        <div id="loading">A carregar feitiços...</div>
+    </div>
+</div>
+
+<script>
+    // --- CONFIGURAÇÃO ---
+    const videoElement = document.getElementById('input_video');
+    const canvasElement = document.getElementById('output_canvas');
+    const ctx = canvasElement.getContext('2d');
+    const startBtn = document.getElementById('startBtn');
+    const overlay = document.getElementById('overlay');
+    const loadingText = document.getElementById('loading');
+
+    // Variáveis de Estado
+    let audioCtx;
+    let isRunning = false;
+    let particles = [];
+   
+    // Configuração de Audio (Osciladores)
+    const synthLeft = { osc: null, gain: null, panner: null };
+    const synthRight = { osc: null, gain: null, panner: null };
+
+    // --- SISTEMA DE ÁUDIO (Web Audio API) ---
+    function initAudio() {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContext();
+
+        // Criar efeito de Delay (Eco) para dar ambiente de sonho
+        const delayNode = audioCtx.createDelay();
+        delayNode.delayTime.value = 0.3;
+       
+        const feedbackNode = audioCtx.createGain();
+        feedbackNode.gain.value = 0.4; // 40% feedback
+
+        const masterGain = audioCtx.createGain();
+        masterGain.gain.value = 0.4; // Volume geral seguro
+
+        // Ligar o delay
+        delayNode.connect(feedbackNode);
+        feedbackNode.connect(delayNode);
+        delayNode.connect(masterGain);
+        masterGain.connect(audioCtx.destination);
+
+        // Inicializar sintetizadores
+        setupSynth(synthLeft, 'triangle', -0.8, masterGain, delayNode); // Grave
+        setupSynth(synthRight, 'sine', 0.8, masterGain, delayNode);    // Agudo
+    }
+
+    function setupSynth(synthObj, type, pan, output, effect) {
+        synthObj.osc = audioCtx.createOscillator();
+        synthObj.osc.type = type;
+       
+        synthObj.gain = audioCtx.createGain();
+        synthObj.gain.gain.value = 0; // Começa mudo
+
+        synthObj.panner = audioCtx.createStereoPanner();
+        synthObj.panner.pan.value = pan;
+
+        // Ligar: Osc -> Gain -> Panner -> (Master + Effect)
+        synthObj.osc.connect(synthObj.gain);
+        synthObj.gain.connect(synthObj.panner);
+        synthObj.panner.connect(output);
+        synthObj.panner.connect(effect); // Enviar também para o echo
+
+        synthObj.osc.start();
+    }
+
+    function updateAudio(synthObj, yPos, isActive, isLowFreq) {
+        if (!audioCtx) return;
+        const now = audioCtx.currentTime;
+
+        if (isActive) {
+            // Volume suave (fade in)
+            synthObj.gain.gain.setTargetAtTime(0.5, now, 0.1);
+
+            // Mapear Y (altura) para Frequência
+            // Y=0 (topo) é agudo, Y=1 (fundo) é grave
+            let freq;
+            if (isLowFreq) {
+                // Graves: 60Hz a 200Hz
+                freq = 200 - (yPos * 140);
+            } else {
+                // Melodia: 200Hz a 800Hz
+                freq = 800 - (yPos * 600);
+            }
+            synthObj.osc.frequency.setTargetAtTime(freq, now, 0.05);
+
+        } else {
+            // Fade out
+            synthObj.gain.gain.setTargetAtTime(0, now, 0.2);
+        }
+    }
+
+    // --- SISTEMA VISUAL ---
+    function resizeCanvas() {
+        canvasElement.width = window.innerWidth;
+        canvasElement.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // Classes de Partículas (Cartas e Chávenas)
+    const suitSymbols = ['♥', '♦', '♣', '♠', '☕', '🍄'];
+   
+    function createParticle(x, y, color) {
+        particles.push({
+            x: x * canvasElement.width,
+            y: y * canvasElement.height,
+            vx: (Math.random() - 0.5) * 4,
+            vy: (Math.random() - 0.5) * 4,
+            life: 1.0,
+            symbol: suitSymbols[Math.floor(Math.random() * suitSymbols.length)],
+            color: color,
+            size: Math.random() * 20 + 10
+        });
+    }
+
+    function drawParticles() {
+        for (let i = particles.length - 1; i >= 0; i--) {
+            let p = particles[i];
+           
+            ctx.font = `${p.size}px Arial`;
+            ctx.fillStyle = p.color;
+            ctx.globalAlpha = p.life;
+            ctx.fillText(p.symbol, p.x, p.y);
+           
+            p.x += p.vx;
+            p.y += p.vy;
+            p.life -= 0.02; // Velocidade de desaparecimento
+
+            if (p.life <= 0) particles.splice(i, 1);
+        }
+        ctx.globalAlpha = 1.0;
+    }
+
+    // --- LÓGICA MEDIAPIPE ---
+    function onResults(results) {
+        // Limpar canvas
+        ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+        // Desenhar imagem da câmara com filtro "Sonho" (ligeiramente translúcida para ver o fundo)
+        ctx.save();
+        ctx.globalAlpha = 0.6; // Deixar o gradiente de fundo transparecer
+        ctx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+        ctx.restore();
+
+        let leftActive = false;
+        let rightActive = false;
+
+        if (results.multiHandLandmarks && results.multiHandedness) {
+            for (let index = 0; index < results.multiHandLandmarks.length; index++) {
+                const landmarks = results.multiHandLandmarks[index];
+                const classification = results.multiHandedness[index];
+               
+                // Nota: MediaPipe em modo selfie, "Left" é a tua mão esquerda visual
+                const isRightHand = classification.label === 'Right';
+               
+                // Ponta do dedo indicador
+                const x = landmarks[8].x;
+                const y = landmarks[8].y;
+
+                // Desenhar Ícone Principal na mão
+                const icon = isRightHand ? '🎩' : '🐇'; // Chapeleiro vs Coelho
+                const color = isRightHand ? '#ffd700' : '#ffffff'; // Ouro vs Branco
+
+                // Desenhar o Ícone
+                ctx.font = "60px Arial";
+                ctx.textAlign = "center";
+                ctx.fillText(icon, x * canvasElement.width, y * canvasElement.height);
+
+                // Criar rastro de partículas
+                if (Math.random() > 0.5) createParticle(x, y, isRightHand ? '#ffcc00' : '#ffb7b2');
+
+                // Controlar Audio
+                if (isRightHand) {
+                    rightActive = true;
+                    updateSoundUI(x, y, '#ffd700');
+                    updateAudio(synthRight, y, true, false); // Agudo
+                } else {
+                    leftActive = true;
+                    updateSoundUI(x, y, '#ffb7b2');
+                    updateAudio(synthLeft, y, true, true); // Grave
+                }
+            }
+        }
+
+        // Desligar som se as mãos não forem detetadas
+        if (!leftActive) updateAudio(synthLeft, 0, false, true);
+        if (!rightActive) updateAudio(synthRight, 0, false, false);
+
+        drawParticles();
+    }
+
+    // Desenha linhas visuais que ligam a mão ao som
+    function updateSoundUI(x, y, color) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x * canvasElement.width, y * canvasElement.height);
+        ctx.lineTo(x * canvasElement.width, canvasElement.height); // Linha para o chão
+        ctx.stroke();
+    }
+
+    // --- INICIALIZAÇÃO ---
+    const hands = new Hands({locateFile: (file) => {
+        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+    }});
+
+    hands.setOptions({
+        maxNumHands: 2,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+    });
+
+    hands.onResults(onResults);
+
+    const camera = new Camera(videoElement, {
+        onFrame: async () => {
+            await hands.send({image: videoElement});
+        },
+        width: 1280,
+        height: 720
+    });
+
+    // Event Listener do Botão
+    startBtn.addEventListener('click', () => {
+        initAudio();
+        audioCtx.resume();
+        loadingText.innerText = "A ligar à câmara...";
+       
+        camera.start()
+            .then(() => {
+                overlay.style.opacity = 0;
+                setTimeout(() => overlay.style.display = 'none', 500);
+                isRunning = true;
+            })
+            .catch(err => {
+                console.error(err);
+                loadingText.innerText = "Erro: Permite o acesso à câmara!";
+                loadingText.style.color = "red";
+            });
+    });
+
+</script>
+</body>
+</html>

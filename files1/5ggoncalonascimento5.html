@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice's Card Game - Hand Tracking</title>
+    <!-- Bibliotecas Essenciais -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000b1a; color: #e0f2fe; font-family: 'Georgia', serif; }
+        canvas { display: block; position: absolute; top: 0; left: 0; z-index: 5; }
+        .video-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 160px;
+            height: 120px;
+            border-radius: 15px;
+            overflow: hidden;
+            border: 2px solid #0ea5e9;
+            transform: scaleX(-1);
+            z-index: 50;
+            background: #000;
+        }
+        #ui-layer { position: absolute; top: 20px; left: 20px; pointer-events: none; z-index: 100; }
+        #lyrics-display {
+            position: fixed;
+            bottom: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 1.8rem;
+            color: #7dd3fc;
+            text-shadow: 0 0 15px rgba(125, 211, 252, 0.9);
+            text-align: center;
+            font-style: italic;
+            background: rgba(0,0,0,0.7);
+            padding: 15px 30px;
+            border-radius: 30px;
+            opacity: 0;
+            transition: opacity 0.5s;
+            z-index: 100;
+        }
+        #status-log {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            font-size: 11px;
+            color: #38bdf8;
+            background: rgba(0,0,0,0.5);
+            padding: 8px;
+            border-radius: 8px;
+            max-width: 200px;
+            z-index: 1000;
+            border: 1px solid #0ea5e9;
+        }
+        #input_video { width: 100%; height: 100%; object-fit: cover; }
+    </style>
+</head>
+<body>
+
+    <div id="status-log">Inicie para ativar a câmara...</div>
+
+    <div id="ui-layer">
+        <h1 class="text-2xl font-bold text-sky-400">Alice: Sueca Mágica</h1>
+        <div class="mt-2 text-sm text-sky-200 opacity-80">Alegria: <span id="speed-val">0</span>%</div>
+        <div class="w-48 h-2 bg-sky-900 rounded-full mt-1">
+            <div id="speed-bar" class="h-full bg-sky-400 w-0 transition-all duration-100"></div>
+        </div>
+    </div>
+
+    <div id="lyrics-display"></div>
+
+    <div id="setup-screen" class="fixed inset-0 flex items-center justify-center bg-black/95 z-[200]">
+        <div class="text-center p-10 bg-blue-900/20 border border-sky-500/40 rounded-3xl backdrop-blur-xl max-w-lg">
+            <h1 class="text-5xl font-bold text-sky-300 mb-6 italic">Alice Azul</h1>
+            <p class="text-xl text-sky-100 mb-4">"Mova as mãos rapidamente para despertar a música e as cartas!"</p>
+            <p class="text-sm text-sky-400/80 mb-8">Permita o acesso à câmara quando solicitado.</p>
+            <button id="startBtn" class="bg-sky-600 hover:bg-sky-400 text-white px-12 py-4 rounded-full text-xl font-bold transition-all shadow-[0_0_30px_rgba(14,165,233,0.4)] hover:scale-105">
+                ENTRAR NO PAÍS
+            </button>
+        </div>
+    </div>
+
+    <div class="video-container">
+        <video id="input_video" playsinline></video>
+    </div>
+    
+    <canvas id="canvas_output"></canvas>
+
+    <script>
+        const videoElement = document.getElementById('input_video');
+        const canvasElement = document.getElementById('canvas_output');
+        const canvasCtx = canvasElement.getContext('2d');
+        const lyricsDisplay = document.getElementById('lyrics-display');
+        const statusLog = document.getElementById('status-log');
+
+        let audioStarted = false;
+        let synth, filter, backgroundSynth;
+        let cards = [];
+        let lastPos = { x: 0, y: 0 };
+        let currentSpeed = 0;
+        let lyricIndex = 0;
+
+        const lyrics = [
+            "Alice in Wonderland",
+            "How do you get to Wonderland?",
+            "Over the hill or underland",
+            "Or just behind the moon?",
+            "Wonderland where stars come down",
+            "To dance upon the golden ground"
+        ];
+
+        const cardSuits = ['♠', '♣', '♥', '♦'];
+        const cardValues = ['A', 'K', 'J', 'Q', '7', '6', '5'];
+
+        function log(msg) {
+            statusLog.innerHTML = msg;
+            console.log(msg);
+        }
+
+        function speakLyric(text) {
+            if (!window.speechSynthesis) return;
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'en-US';
+            utterance.rate = 0.85 + (currentSpeed * 0.35);
+            utterance.pitch = 1.2;
+            window.speechSynthesis.speak(utterance);
+            
+            lyricsDisplay.innerText = text;
+            lyricsDisplay.style.opacity = 1;
+            setTimeout(() => { if(lyricsDisplay.innerText === text) lyricsDisplay.style.opacity = 0; }, 2800);
+        }
+
+        async function initAudio() {
+            try {
+                await Tone.start();
+                log("Tone.js Ativado.");
+                
+                const reverb = new Tone.Reverb({ decay: 5, wet: 0.4 }).toDestination();
+                filter = new Tone.Filter(1800, "lowpass").connect(reverb);
+
+                // Música de Fundo - Volume base aumentado de -25 para -12
+                backgroundSynth = new Tone.PolySynth(Tone.Synth, {
+                    oscillator: { type: "triangle" }, // Som um pouco mais presente que o 'sine'
+                    envelope: { attack: 0.1, decay: 0.2, sustain: 0.5, release: 1.2 }
+                }).connect(filter);
+                backgroundSynth.set({ volume: -12 });
+
+                // Sintetizador de solo (Mãos)
+                synth = new Tone.PolySynth(Tone.AMSynth).connect(filter);
+                synth.set({ volume: -10 });
+
+                // Melodia de fundo em Loop
+                const bgNotes = ["C4", "Eb4", "G4", "B4", "C5", "G4", "Eb4", "B3"];
+                let step = 0;
+                Tone.Transport.scheduleRepeat((time) => {
+                    let note = bgNotes[step % bgNotes.length];
+                    backgroundSynth.triggerAttackRelease(note, "4n", time);
+                    step++;
+                }, "4n");
+                
+                Tone.Transport.start();
+                audioStarted = true;
+                
+                setInterval(() => {
+                    if(currentSpeed > 0.15 && audioStarted) {
+                        speakLyric(lyrics[lyricIndex]);
+                        lyricIndex = (lyricIndex + 1) % lyrics.length;
+                    }
+                }, 4000);
+            } catch (e) {
+                log("Erro Áudio: " + e.message);
+            }
+        }
+
+        class Card {
+            constructor(x, y, speed) {
+                this.x = x;
+                this.y = y;
+                this.val = cardValues[Math.floor(Math.random() * cardValues.length)];
+                this.suit = cardSuits[Math.floor(Math.random() * cardSuits.length)];
+                this.vx = (Math.random() - 0.5) * 35 * speed;
+                this.vy = (Math.random() - 0.5) * 25 * speed - 12;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.vr = (Math.random() - 0.5) * 0.5;
+                this.life = 1.0;
+                this.color = (this.suit === '♥' || this.suit === '♦') ? '#ef4444' : '#1e293b';
+            }
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.3; 
+                this.rotation += this.vr;
+                this.life -= 0.012;
+            }
+            draw() {
+                canvasCtx.save();
+                canvasCtx.translate(this.x, this.y);
+                canvasCtx.rotate(this.rotation);
+                canvasCtx.globalAlpha = this.life;
+                canvasCtx.fillStyle = '#ffffff';
+                canvasCtx.beginPath();
+                canvasCtx.roundRect(-25, -35, 50, 70, 6);
+                canvasCtx.fill();
+                canvasCtx.strokeStyle = '#0ea5e9';
+                canvasCtx.lineWidth = 2;
+                canvasCtx.stroke();
+                canvasCtx.fillStyle = this.color;
+                canvasCtx.font = 'bold 20px serif';
+                canvasCtx.fillText(this.val, -20, -12);
+                canvasCtx.font = '24px serif';
+                canvasCtx.fillText(this.suit, -10, 20);
+                canvasCtx.restore();
+            }
+        }
+
+        function onResults(results) {
+            canvasElement.width = window.innerWidth;
+            canvasElement.height = window.innerHeight;
+
+            const grad = canvasCtx.createRadialGradient(canvasElement.width/2, canvasElement.height/2, 0, canvasElement.width/2, canvasElement.height/2, canvasElement.width);
+            grad.addColorStop(0, '#001a33');
+            grad.addColorStop(1, '#00050a');
+            canvasCtx.fillStyle = grad;
+            canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const hand = results.multiHandLandmarks[0];
+                const x = (1 - hand[8].x) * canvasElement.width;
+                const y = hand[8].y * canvasElement.height;
+
+                const dist = Math.sqrt(Math.pow(x - lastPos.x, 2) + Math.pow(y - lastPos.y, 2));
+                currentSpeed = currentSpeed * 0.8 + (Math.min(dist/50, 1)) * 0.2;
+                
+                document.getElementById('speed-val').innerText = Math.round(currentSpeed * 100);
+                document.getElementById('speed-bar').style.width = (currentSpeed * 100) + "%";
+
+                if (currentSpeed > 0.08) {
+                    if (Math.random() < currentSpeed * 0.55) {
+                        cards.push(new Card(x, y, currentSpeed));
+                    }
+                    if(audioStarted) {
+                        filter.frequency.rampTo(400 + (currentSpeed * 8500), 0.1);
+                        // Volume dinâmico sobe até quase o máximo (-4dB) quando rápido
+                        backgroundSynth.set({ volume: -12 + (currentSpeed * 8) });
+                        
+                        if(Math.random() > 0.85) {
+                            synth.triggerAttackRelease(["C5", "E5", "G5", "B5"][Math.floor(Math.random()*4)], "16n");
+                        }
+                    }
+                }
+                lastPos = { x, y };
+
+                canvasCtx.shadowBlur = 40 * currentSpeed;
+                canvasCtx.shadowColor = "#0ea5e9";
+                canvasCtx.fillStyle = "white";
+                canvasCtx.beginPath();
+                canvasCtx.arc(x, y, 6, 0, Math.PI*2);
+                canvasCtx.fill();
+                canvasCtx.shadowBlur = 0;
+            } else {
+                currentSpeed *= 0.9;
+                if(audioStarted) backgroundSynth.set({ volume: -12 });
+            }
+
+            cards = cards.filter(c => c.life > 0);
+            cards.forEach(c => { c.update(); c.draw(); });
+        }
+
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        hands.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({image: videoElement});
+            },
+            width: 640,
+            height: 480
+        });
+
+        document.getElementById('startBtn').addEventListener('click', async () => {
+            log("A carregar País das Maravilhas...");
+            document.getElementById('setup-screen').style.display = 'none';
+            
+            try {
+                await initAudio();
+                await camera.start();
+                log("Música e Câmara Ativas!");
+            } catch (err) {
+                log("Erro: " + err.message);
+                alert("Erro ao aceder à câmara ou áudio.");
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            canvasElement.width = window.innerWidth;
+            canvasElement.height = window.innerHeight;
+        });
+    </script>
+</body>
+</html>

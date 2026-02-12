@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice: O Chá Caótico (Motion Control)</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Playfair+Display:ital,wght@0,400;1,700&display=swap');
+
+        :root {
+            --color-lilac: #C8A2C8;
+            --color-deep-purple: #4B0082;
+            --color-green: #50C878;
+            --color-red: #E30022;
+            --color-gold: #FFD700;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #1a0b1a;
+            background-image:
+                radial-gradient(circle at 20% 30%, #2e102e 0%, transparent 50%),
+                radial-gradient(circle at 80% 70%, #0f2e15 0%, transparent 50%);
+            font-family: 'Playfair Display', serif;
+            color: white;
+            user-select: none;
+            transition: filter 0.5s ease, background-color 0.5s ease;
+        }
+
+        /* UI Elements */
+        #game-ui {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .hud-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .score-box {
+            background: rgba(0, 0, 0, 0.6);
+            border: 2px solid var(--color-lilac);
+            padding: 10px 20px;
+            border-radius: 15px;
+            text-align: center;
+            box-shadow: 0 0 15px var(--color-lilac);
+        }
+
+        h1 {
+            margin: 0;
+            font-family: 'Cinzel', serif;
+            color: var(--color-lilac);
+            font-size: 1.2rem;
+            letter-spacing: 2px;
+        }
+
+        #score-display {
+            font-size: 2rem;
+            color: var(--color-green);
+            font-weight: bold;
+        }
+
+        #timer-display {
+            font-size: 2rem;
+            color: var(--color-red);
+            font-weight: bold;
+        }
+
+        #active-filter-name {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 3rem;
+            font-family: 'Cinzel', serif;
+            text-transform: uppercase;
+            opacity: 0;
+            transition: opacity 0.3s;
+            text-shadow: 0 0 10px rgba(255,255,255,0.5);
+            text-align: center;
+            pointer-events: none;
+        }
+
+        /* Game Area */
+        #game-area {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2; /* Above video */
+            /* Base transition for filters */
+            transition: filter 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+
+        /* Characters */
+        .character {
+            position: absolute;
+            width: 80px;
+            height: 80px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 50px;
+            cursor: pointer;
+            user-select: none;
+            filter: drop-shadow(0 0 5px rgba(255,255,255,0.5));
+            transition: transform 0.1s;
+            animation: floaty 3s infinite ease-in-out;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, rgba(0,0,0,0) 70%);
+            border-radius: 50%;
+        }
+
+        .character.hit {
+            transform: scale(1.5);
+            filter: brightness(2);
+        }
+
+        @keyframes floaty {
+            0%, 100% { transform: translateY(0) rotate(0deg); }
+            50% { transform: translateY(-10px) rotate(5deg); }
+        }
+
+        @keyframes popOut {
+            0% { transform: scale(1); opacity: 1; }
+            100% { transform: scale(2); opacity: 0; }
+        }
+
+        /* Webcam Background */
+        #webcam-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            opacity: 0.3; /* Subtle background */
+            filter: grayscale(100%) contrast(1.2);
+            pointer-events: none;
+            overflow: hidden;
+        }
+
+        #webcam {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); /* Mirror effect */
+        }
+
+        /* Motion Indicator (Debug/Visual Feedback) */
+        #motion-cursor {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: var(--color-gold);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 5;
+            opacity: 0;
+            box-shadow: 0 0 10px var(--color-gold);
+            transition: opacity 0.2s;
+        }
+
+        /* Start Screen */
+        #start-screen, #game-over-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 5, 10, 0.95);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            backdrop-filter: blur(5px);
+        }
+
+        .btn {
+            background: linear-gradient(45deg, var(--color-deep-purple), var(--color-red));
+            border: 2px solid var(--color-gold);
+            color: white;
+            padding: 15px 40px;
+            font-size: 1.5rem;
+            font-family: 'Cinzel', serif;
+            cursor: pointer;
+            margin-top: 20px;
+            border-radius: 30px;
+            transition: transform 0.2s, box-shadow 0.2s;
+            text-transform: uppercase;
+        }
+
+        .btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px var(--color-lilac);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* Visual Filter Classes applied to #game-area */
+        .filter-normal { filter: none; }
+       
+        .filter-alice { filter: brightness(1.2) contrast(0.9) hue-rotate(280deg) drop-shadow(0 0 10px #fff); }
+        .filter-queen { filter: sepia(0.5) hue-rotate(-50deg) saturate(3) contrast(1.2); background-color: rgba(50, 0, 0, 0.2); }
+        .filter-cat { filter: hue-rotate(180deg) invert(0.1) blur(1px); }
+        .filter-rabbit { filter: grayscale(100%) sepia(100%) hue-rotate(90deg) contrast(1.5); }
+        .filter-hatter { filter: invert(1) hue-rotate(180deg); }
+        .filter-cards { filter: sepia(0.8) contrast(1.2) brightness(0.9); }
+
+        .particle {
+            position: absolute;
+            pointer-events: none;
+            animation: popOut 0.8s forwards;
+            font-size: 20px;
+        }
+
+    </style>
+</head>
+<body>
+
+    <!-- Webcam Feed -->
+    <div id="webcam-container">
+        <video id="webcam" autoplay playsinline muted></video>
+    </div>
+
+    <!-- Hidden canvas for motion processing -->
+    <canvas id="motion-canvas" style="display:none;"></canvas>
+
+    <!-- Visual cursor following motion -->
+    <div id="motion-cursor"></div>
+
+    <!-- Game Area where characters spawn -->
+    <div id="game-area" class="filter-normal"></div>
+
+    <!-- UI Overlay -->
+    <div id="game-ui">
+        <div class="hud-top">
+            <div class="score-box">
+                <h1>Pontos</h1>
+                <div id="score-display">0</div>
+            </div>
+            <div class="score-box" style="border-color: var(--color-red);">
+                <h1>Tempo</h1>
+                <div id="timer-display">60</div>
+            </div>
+        </div>
+        <div id="active-filter-name"></div>
+    </div>
+
+    <!-- Start Screen -->
+    <div id="start-screen">
+        <h1 style="font-size: 3rem; color: var(--color-lilac); margin-bottom: 10px;">Alice: Controle por Movimento</h1>
+        <h2 style="color: var(--color-green); font-family: 'Playfair Display'; font-style: italic;">Use suas mãos e cabeça!</h2>
+        <p style="max-width: 600px; line-height: 1.6; font-size: 1.1rem; color: #ddd;">
+            1. Permita o uso da <strong>Câmera</strong>.<br>
+            2. <strong>Mova suas mãos</strong> sobre as personagens para pegá-las.<br>
+            3. A altura das suas mãos <strong>controla o som</strong> ambiente (Theremin).<br>
+            <span style="font-size: 0.9em; opacity: 0.8;">(Fique em um ambiente iluminado para melhor detecção)</span>
+        </p>
+        <button class="btn" onclick="startGame()">Ativar Magia</button>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="game-over-screen" class="hidden">
+        <h1 style="font-size: 3rem; color: var(--color-red);">Fim do Chá!</h1>
+        <p style="font-size: 1.5rem;">Pontuação Final: <span id="final-score" style="color: var(--color-gold);">0</span></p>
+        <button class="btn" onclick="resetGame()">Jogar Novamente</button>
+    </div>
+
+<script>
+    // --- Configuração do Jogo ---
+    const gameState = {
+        score: 0,
+        timeLeft: 60,
+        isPlaying: false,
+        spawnRate: 1000,
+        activeFilterTimeout: null
+    };
+
+    const characters = [
+        { id: 'alice', icon: '👧🏼', name: 'Alice', type: 'filter-alice', color: '#C8A2C8', points: 10 },
+        { id: 'queen', icon: '👑', name: 'Rainha de Copas', type: 'filter-queen', color: '#E30022', points: 20 },
+        { id: 'cat', icon: '😼', name: 'Gato Sorridente', type: 'filter-cat', color: '#8A2BE2', points: 15 },
+        { id: 'rabbit', icon: '🐇', name: 'Coelho Branco', type: 'filter-rabbit', color: '#50C878', points: 25 },
+        { id: 'hatter', icon: '🎩', name: 'Chapeleiro Maluco', type: 'filter-hatter', color: '#FFD700', points: 30 },
+        { id: 'cards', icon: '🃏', name: 'Soldado Carta', type: 'filter-cards', color: '#A52A2A', points: 5 }
+    ];
+
+    // --- Elementos DOM ---
+    const gameArea = document.getElementById('game-area');
+    const scoreDisplay = document.getElementById('score-display');
+    const timerDisplay = document.getElementById('timer-display');
+    const startScreen = document.getElementById('start-screen');
+    const gameOverScreen = document.getElementById('game-over-screen');
+    const finalScoreDisplay = document.getElementById('final-score');
+    const filterNameDisplay = document.getElementById('active-filter-name');
+    const video = document.getElementById('webcam');
+    const motionCanvas = document.getElementById('motion-canvas');
+    const motionCtx = motionCanvas.getContext('2d', { willReadFrequently: true });
+    const motionCursor = document.getElementById('motion-cursor');
+
+    // --- Audio System (Web Audio API) ---
+    let audioCtx;
+    let thereminOsc;
+    let thereminGain;
+
+    function initAudio() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+
+        // Setup Theremin (Ambient Sound controlled by motion)
+        if (!thereminOsc) {
+            thereminOsc = audioCtx.createOscillator();
+            thereminGain = audioCtx.createGain();
+           
+            thereminOsc.type = 'sine';
+            thereminOsc.frequency.setValueAtTime(440, audioCtx.currentTime);
+           
+            // Volume baixo inicial
+            thereminGain.gain.setValueAtTime(0, audioCtx.currentTime);
+
+            thereminOsc.connect(thereminGain);
+            thereminGain.connect(audioCtx.destination);
+            thereminOsc.start();
+        }
+    }
+
+    function updateTheremin(yPositionNormalized) {
+        if (!audioCtx || !thereminOsc) return;
+       
+        // yPositionNormalized: 0 (topo) a 1 (fundo)
+        // Inverter: Queremos agudo em cima (0) e grave em baixo (1)
+        // Mas o input geralmente vem invertido da tela, vamos ajustar:
+        // Topo da tela (y=0) -> Frequência Alta
+        // Fundo da tela (y=1) -> Frequência Baixa
+       
+        const minFreq = 100;
+        const maxFreq = 800;
+        const frequency = maxFreq - (yPositionNormalized * (maxFreq - minFreq));
+       
+        // Suavizar transição
+        thereminOsc.frequency.setTargetAtTime(frequency, audioCtx.currentTime, 0.1);
+       
+        // Volume aumenta se houver movimento detectado, senão fica mudo
+        thereminGain.gain.setTargetAtTime(0.05, audioCtx.currentTime, 0.1);
+    }
+
+    function silenceTheremin() {
+        if (thereminGain) {
+            thereminGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.5);
+        }
+    }
+
+    function playSound(type) {
+        if (!audioCtx) return;
+
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        const now = audioCtx.currentTime;
+
+        if (type === 'alice') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(440, now);
+            osc.frequency.exponentialRampToValueAtTime(880, now + 0.5);
+            gainNode.gain.setValueAtTime(0.3, now);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+            osc.start(now); osc.stop(now + 0.5);
+        } else if (type === 'queen') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(150, now);
+            osc.frequency.linearRampToValueAtTime(100, now + 0.3);
+            gainNode.gain.setValueAtTime(0.3, now);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+            osc.start(now); osc.stop(now + 0.3);
+        } else if (type === 'cat') {
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(600, now);
+            osc.frequency.linearRampToValueAtTime(1200, now + 0.2);
+            osc.frequency.linearRampToValueAtTime(300, now + 0.6);
+            gainNode.gain.setValueAtTime(0.2, now);
+            gainNode.gain.linearRampToValueAtTime(0, now + 0.6);
+            osc.start(now); osc.stop(now + 0.6);
+        } else if (type === 'rabbit') {
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(800, now);
+            gainNode.gain.setValueAtTime(0.1, now);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+            osc.start(now); osc.stop(now + 0.1);
+        } else {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(200, now);
+            osc.frequency.linearRampToValueAtTime(500, now + 0.2);
+            gainNode.gain.setValueAtTime(0.1, now);
+            gainNode.gain.linearRampToValueAtTime(0, now + 0.3);
+            osc.start(now); osc.stop(now + 0.3);
+        }
+    }
+
+    // --- Webcam & Motion Detection ---
+    let prevFrame = null;
+    let motionInterval = null;
+
+    async function initWebcam() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 } });
+            video.srcObject = stream;
+           
+            // Wait for video to be ready
+            video.onloadedmetadata = () => {
+                motionCanvas.width = 100; // Low res for performance
+                motionCanvas.height = 100 * (video.videoHeight / video.videoWidth);
+                startMotionDetection();
+            };
+        } catch (err) {
+            console.error("Webcam error:", err);
+            alert("Não foi possível acessar a câmera. O jogo funcionará apenas com cliques.");
+        }
+    }
+
+    function startMotionDetection() {
+        if (motionInterval) clearInterval(motionInterval);
+       
+        motionInterval = setInterval(() => {
+            if (!gameState.isPlaying) return;
+            detectMotion();
+        }, 100); // Check every 100ms
+    }
+
+    function detectMotion() {
+        // Draw current video frame to canvas (scaled down)
+        motionCtx.drawImage(video, 0, 0, motionCanvas.width, motionCanvas.height);
+       
+        const frame = motionCtx.getImageData(0, 0, motionCanvas.width, motionCanvas.height);
+        const length = frame.data.length;
+        const data = frame.data;
+
+        if (!prevFrame) {
+            prevFrame = data;
+            return;
+        }
+
+        let totalX = 0;
+        let totalY = 0;
+        let activePixels = 0;
+        const threshold = 30; // Sensitivity
+
+        // Compare with previous frame
+        for (let i = 0; i < length; i += 4) {
+            const rDiff = Math.abs(data[i] - prevFrame[i]);
+            const gDiff = Math.abs(data[i+1] - prevFrame[i+1]);
+            const bDiff = Math.abs(data[i+2] - prevFrame[i+2]);
+           
+            if (rDiff + gDiff + bDiff > threshold * 3) {
+                // Motion detected at this pixel
+                const pixelIndex = i / 4;
+                const x = pixelIndex % motionCanvas.width;
+                const y = Math.floor(pixelIndex / motionCanvas.width);
+               
+                totalX += x;
+                totalY += y;
+                activePixels++;
+            }
+        }
+
+        prevFrame = data; // Store current frame for next comparison
+
+        if (activePixels > 50) { // Require minimum movement amount
+            // Calculate center of motion
+            // Mirror X coordinate because video is mirrored
+            const avgX = (motionCanvas.width - (totalX / activePixels));
+            const avgY = totalY / activePixels;
+           
+            // Normalize to 0-1 range
+            const normX = avgX / motionCanvas.width;
+            const normY = avgY / motionCanvas.height;
+           
+            // Map to Screen Coordinates
+            const screenX = normX * window.innerWidth;
+            const screenY = normY * window.innerHeight;
+
+            // Visual feedback
+            motionCursor.style.opacity = 1;
+            motionCursor.style.left = screenX + 'px';
+            motionCursor.style.top = screenY + 'px';
+
+            // THEREMIN SOUND CONTROL
+            updateTheremin(normY);
+
+            // COLLISION DETECTION
+            checkCollisions(screenX, screenY);
+        } else {
+            motionCursor.style.opacity = 0;
+            silenceTheremin();
+        }
+    }
+
+    function checkCollisions(x, y) {
+        // Get all characters
+        const activeChars = document.querySelectorAll('.character');
+        const hitRadius = 80; // Larger radius for easier motion hitting
+
+        activeChars.forEach(char => {
+            const rect = char.getBoundingClientRect();
+            const charX = rect.left + rect.width / 2;
+            const charY = rect.top + rect.height / 2;
+
+            const dist = Math.hypot(x - charX, y - charY);
+
+            if (dist < hitRadius) {
+                // Simulate Click/Touch
+                // Create a synthetic event
+                const event = { clientX: x, clientY: y };
+                // Retrieve data attached to element (stored in property for simplicity)
+                if (char.dataset.id) {
+                    // Find data in characters array
+                    const charData = characters.find(c => c.id === char.dataset.id);
+                    if (charData) handleCharacterClick(event, charData, char);
+                }
+            }
+        });
+    }
+
+    // --- Lógica do Jogo ---
+
+    function startGame() {
+        initAudio();
+        initWebcam(); // Request camera
+
+        gameState.score = 0;
+        gameState.timeLeft = 60;
+        gameState.isPlaying = true;
+       
+        scoreDisplay.innerText = '0';
+        timerDisplay.innerText = '60';
+       
+        startScreen.classList.add('hidden');
+        gameOverScreen.classList.add('hidden');
+       
+        gameArea.innerHTML = '';
+        gameArea.className = 'filter-normal';
+
+        gameLoop();
+        spawnLoop();
+    }
+
+    function resetGame() {
+        gameState.isPlaying = false; // Parar loops anteriores
+        // Pequeno delay para garantir limpeza
+        setTimeout(startGame, 100);
+    }
+
+    function gameOver() {
+        gameState.isPlaying = false;
+        finalScoreDisplay.innerText = gameState.score;
+        gameOverScreen.classList.remove('hidden');
+        gameArea.className = 'filter-normal';
+        silenceTheremin();
+    }
+
+    function gameLoop() {
+        const timerInterval = setInterval(() => {
+            if (!gameState.isPlaying) {
+                clearInterval(timerInterval);
+                return;
+            }
+
+            gameState.timeLeft--;
+            timerDisplay.innerText = gameState.timeLeft;
+
+            if (gameState.timeLeft <= 10) {
+                timerDisplay.style.color = (gameState.timeLeft % 2 === 0) ? 'white' : 'red';
+            } else {
+                timerDisplay.style.color = 'var(--color-red)';
+            }
+
+            if (gameState.timeLeft <= 0) {
+                clearInterval(timerInterval);
+                gameOver();
+            }
+        }, 1000);
+    }
+
+    function spawnLoop() {
+        if (!gameState.isPlaying) return;
+
+        createCharacter();
+        let nextSpawnTime = Math.max(400, 1000 - (gameState.score * 5));
+        setTimeout(spawnLoop, nextSpawnTime + Math.random() * 500);
+    }
+
+    function createCharacter() {
+        const charData = characters[Math.floor(Math.random() * characters.length)];
+        const el = document.createElement('div');
+       
+        el.classList.add('character');
+        el.innerText = charData.icon;
+        el.dataset.id = charData.id; // Store ID for collision detection
+       
+        const maxTop = window.innerHeight - 100;
+        const maxLeft = window.innerWidth - 100;
+       
+        el.style.top = Math.floor(Math.random() * maxTop + 50) + 'px';
+        el.style.left = Math.floor(Math.random() * maxLeft + 50) + 'px';
+        el.style.textShadow = `0 0 10px ${charData.color}`;
+
+        // Keep mouse/touch interaction as backup
+        el.onmousedown = (e) => handleCharacterClick(e, charData, el);
+        el.ontouchstart = (e) => { e.preventDefault(); handleCharacterClick(e.touches[0], charData, el); };
+
+        gameArea.appendChild(el);
+
+        setTimeout(() => {
+            if (el.parentNode && !el.classList.contains('hit')) {
+                el.style.opacity = '0';
+                el.style.transform = 'scale(0)';
+                setTimeout(() => el.remove(), 300);
+            }
+        }, 2500);
+    }
+
+    function handleCharacterClick(event, data, element) {
+        if (!gameState.isPlaying || element.classList.contains('hit')) return;
+
+        // Mark as hit to prevent double counting
+        element.classList.add('hit');
+
+        playSound(data.id);
+
+        gameState.score += data.points;
+        scoreDisplay.innerText = gameState.score;
+       
+        showPoints(event.clientX, event.clientY, data.points, data.color);
+        spawnParticles(event.clientX, event.clientY, data.icon);
+        applyFilter(data.type, data.name, data.color);
+
+        // Animate out
+        element.style.transition = 'transform 0.2s, opacity 0.2s';
+        element.style.transform = 'scale(2) rotate(20deg)';
+        element.style.opacity = '0';
+        setTimeout(() => element.remove(), 200);
+    }
+
+    function applyFilter(filterClass, name, color) {
+        gameArea.className = '';
+        gameArea.classList.add(filterClass);
+
+        filterNameDisplay.innerText = `Efeito: ${name}`;
+        filterNameDisplay.style.color = color;
+        filterNameDisplay.style.opacity = '1';
+
+        if (gameState.activeFilterTimeout) clearTimeout(gameState.activeFilterTimeout);
+        gameState.activeFilterTimeout = setTimeout(() => {
+             filterNameDisplay.style.opacity = '0';
+        }, 2000);
+    }
+
+    function showPoints(x, y, value, color) {
+        const p = document.createElement('div');
+        p.innerText = `+${value}`;
+        p.style.position = 'absolute';
+        p.style.left = x + 'px';
+        p.style.top = y + 'px';
+        p.style.color = color;
+        p.style.fontWeight = 'bold';
+        p.style.fontSize = '24px';
+        p.style.pointerEvents = 'none';
+        p.style.zIndex = 20;
+        p.style.transition = 'all 1s';
+        p.style.textShadow = '0 0 5px black';
+        document.body.appendChild(p);
+        requestAnimationFrame(() => {
+            p.style.transform = 'translateY(-50px)';
+            p.style.opacity = '0';
+        });
+        setTimeout(() => p.remove(), 1000);
+    }
+
+    function spawnParticles(x, y, icon) {
+        for (let i = 0; i < 5; i++) {
+            const p = document.createElement('div');
+            p.classList.add('particle');
+            p.innerText = icon;
+            p.style.left = x + 'px';
+            p.style.top = y + 'px';
+            const angle = Math.random() * Math.PI * 2;
+            const velocity = 50 + Math.random() * 50;
+            const tx = Math.cos(angle) * velocity;
+            const ty = Math.sin(angle) * velocity;
+            p.style.transition = 'transform 0.8s ease-out, opacity 0.8s';
+            document.body.appendChild(p);
+            requestAnimationFrame(() => {
+                p.style.transform = `translate(${tx}px, ${ty}px) scale(0)`;
+                p.style.opacity = '0';
+            });
+            setTimeout(() => p.remove(), 800);
+        }
+    }
+
+</script>
+</body>
+</html>

@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A Fuga Psicadélica da Rainha</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Verdana', sans-serif;
+            background-color: #220044;
+        }
+
+        #game-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            pointer-events: none;
+            color: #FFF;
+            text-shadow: 2px 2px 0px #FF00FF;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 28px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #00FFFF;
+        }
+
+        #score-board {
+            font-size: 20px;
+            margin-top: 10px;
+            font-weight: bold;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 5px 15px;
+            border-radius: 10px;
+            border: 2px solid #00FFFF;
+            display: inline-block;
+        }
+
+        #danger-bar {
+            margin-top: 10px;
+            width: 200px;
+            height: 20px;
+            background: #333;
+            border: 2px solid #FF0000;
+            border-radius: 10px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        #danger-fill {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #FF0000, #FF6600);
+            transition: width 0.2s;
+        }
+
+        #danger-text {
+            position: absolute;
+            width: 100%;
+            text-align: center;
+            top: 0;
+            line-height: 20px;
+            font-size: 12px;
+            color: white;
+            text-shadow: 1px 1px 0 #000;
+        }
+
+        #webcam-preview {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 160px;
+            height: 120px;
+            z-index: 10;
+            border-radius: 10px;
+            border: 4px solid #00FFFF;
+            transform: scaleX(-1);
+            opacity: 0.8;
+        }
+
+        #loading-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #220044, #AA0044);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            text-align: center;
+            color: white;
+        }
+
+        button {
+            background: #00FFFF;
+            border: none;
+            padding: 20px 40px;
+            font-size: 24px;
+            color: #220044;
+            font-weight: bold;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 6px 0 #008888;
+            transition: transform 0.1s;
+            text-transform: uppercase;
+        }
+
+        button:active {
+            transform: translateY(4px);
+            box-shadow: none;
+        }
+
+        .hidden { display: none !important; }
+
+        #game-over {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+            background: rgba(150, 0, 0, 0.9);
+            animation: fadeIn 0.2s;
+        }
+
+        #game-over h1 {
+            color: #FFF;
+            font-size: 80px;
+            text-shadow: 5px 5px 0px #000;
+            margin-bottom: 20px;
+            animation: pulse 0.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        .instruction-box {
+            background: rgba(0,0,0,0.6);
+            padding: 20px;
+            border-radius: 15px;
+            border: 2px solid #FF00FF;
+            margin-bottom: 30px;
+            max-width: 600px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- UI Overlay -->
+    <div id="ui-layer">
+        <h1>Fuga da Rainha</h1>
+        <div id="score-board">Peixes: 0</div>
+       
+        <div style="margin-top: 10px; font-size: 14px;">Distância da Rainha:</div>
+        <div id="danger-bar">
+            <div id="danger-fill"></div>
+            <div id="danger-text">SEGURANÇA</div>
+        </div>
+    </div>
+
+    <!-- Webcam Preview -->
+    <video id="webcam-preview" autoplay playsinline muted></video>
+    <canvas id="motion-canvas" style="display:none;"></canvas>
+    <canvas id="tongue-canvas" style="display:none;"></canvas>
+
+    <!-- Start Screen -->
+    <div id="loading-screen">
+        <h1 style="font-size: 50px; color: #00FFFF; text-shadow: 4px 4px #FF00FF;">CORRE COELHO!</h1>
+       
+        <div class="instruction-box">
+            <p style="font-size: 20px; line-height: 1.8;">
+                🖐️ <b>Mexe a MÃO/CABEÇA</b> para os lados para correr.<br>
+                😝 <b>LÍNGUA BEM DE FORA</b> para SALTAR!<br>
+                (Abre bem a boca e mostra a língua)<br>
+                🧁 Apanha <b>TORTAS</b> para ganhar VELOCIDADE!<br>
+                🪨 Evita as PEDRAS.<br>
+            </p>
+        </div>
+       
+        <button id="start-btn">Começar Loucura</button>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="game-over">
+        <h1>APANHADO!</h1>
+        <p style="color: white; font-size: 30px;">A Rainha cortou-te a cabeça.</p>
+        <p style="color: #FFD700; font-size: 24px; margin-bottom: 30px;">Peixes Salvos: <span id="final-score">0</span></p>
+        <button onclick="location.reload()" style="background: #FF0000; color: #FFF; box-shadow: 0 6px 0 #880000;">Tentar Novamente</button>
+    </div>
+
+    <div id="game-container"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        // --- CORES VIBRANTES ---
+        const colors = {
+            bg: 0x220044,        // Roxo escuro
+            fog: 0x440066,       // Roxo nevoeiro
+            floor1: 0x00FF00,    // Verde Neon
+            floor2: 0xFF00FF,    // Rosa Neon
+            rabbit: 0xFFFFFF,
+            stone: 0x666666,     // Pedra cinza escuro
+            queenRed: 0xFF0000,  // Vermelho Sangue
+            queenBlack: 0x111111,// Preto
+            fishCard: 0x00FFFF,  // Ciano
+            gold: 0xFFD700,
+            tartCrust: 0xF4A460, // Castanho claro
+            tartJam: 0xFF0044    // Vermelho doce
+        };
+
+        // --- VARIÁVEIS DO JOGO ---
+        let scene, camera, renderer;
+        let rabbitGroup, queenGroup;
+        let obstacles = [];
+        let collectibles = [];
+        let floatingCards = [];
+        let gameActive = false;
+        let score = 0;
+        let speed = 0.5;
+        let queenDistance = 10; // 0 = Morte, 10 = Seguro
+        let isStumbled = false;
+        let isJumping = false;
+        let jumpVelocity = 0;
+        let frameCount = 0;
+
+        // Webcam
+        const video = document.getElementById('webcam-preview');
+        const motionCanvas = document.getElementById('motion-canvas');
+        const motionCtx = motionCanvas.getContext('2d');
+        const tongueCanvas = document.getElementById('tongue-canvas');
+        const tongueCtx = tongueCanvas.getContext('2d');
+
+        let prevFrameData = null;
+        let targetX = 0;
+        let currentX = 0;
+        let tongueCooldown = 0;
+
+        function initThree() {
+            const container = document.getElementById('game-container');
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(colors.bg);
+            scene.fog = new THREE.FogExp2(colors.fog, 0.025);
+
+            // Câmara
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 5, 12);
+            camera.lookAt(0, 0, -5);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            // Luzes Dramáticas
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.8); // Luz ambiente suave
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xFFD700, 0.8); // Sol Dourado
+            dirLight.position.set(10, 20, 10);
+            dirLight.castShadow = true;
+            scene.add(dirLight);
+
+            const purpleLight = new THREE.PointLight(0xFF00FF, 0.8, 50); // Luz de destaque
+            purpleLight.position.set(-5, 5, 5);
+            scene.add(purpleLight);
+
+            createWorld();
+            createRabbit();
+            createQueen();
+           
+            window.addEventListener('resize', onWindowResize, false);
+            animate();
+        }
+
+        function createWorld() {
+            // Chão Psicadélico
+            const geometry = new THREE.PlaneGeometry(200, 200, 50, 50);
+           
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 256;
+            const context = canvas.getContext('2d');
+           
+            // Padrão Xadrez Neon
+            context.fillStyle = '#111'; // Preto
+            context.fillRect(0, 0, 256, 256);
+            context.fillStyle = '#FF00AA'; // Rosa Choque
+            for(let y=0; y<4; y++) {
+                for(let x=0; x<4; x++) {
+                    if((x+y)%2 === 0) context.fillRect(x*64, y*64, 64, 64);
+                }
+            }
+           
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(20, 20);
+            texture.magFilter = THREE.NearestFilter;
+
+            const material = new THREE.MeshStandardMaterial({
+                map: texture,
+                roughness: 0.4,
+                metalness: 0.5
+            });
+           
+            const floor = new THREE.Mesh(geometry, material);
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.y = -1;
+            floor.receiveShadow = true;
+            scene.add(floor);
+
+            // Fundo: Cartas Gigantes a girar
+            const cardGeo = new THREE.BoxGeometry(4, 6, 0.1);
+            const cardMat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF });
+            const cardRed = new THREE.MeshBasicMaterial({ color: 0xFF0000 });
+
+            for(let i=0; i<30; i++) {
+                const group = new THREE.Group();
+                const card = new THREE.Mesh(cardGeo, cardMat);
+                const suit = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 0.2), cardRed);
+               
+                group.add(card);
+                group.add(suit);
+               
+                group.position.set(
+                    (Math.random() - 0.5) * 150,
+                    Math.random() * 40 + 5,
+                    (Math.random() - 0.5) * 150 - 50
+                );
+               
+                group.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, Math.random());
+                scene.add(group);
+                floatingCards.push(group);
+            }
+        }
+
+        function createRabbit() {
+            rabbitGroup = new THREE.Group();
+
+            const furMat = new THREE.MeshStandardMaterial({ color: 0xFFFFFF, roughness: 1 });
+
+            // Corpo
+            const body = new THREE.Mesh(new THREE.SphereGeometry(0.7, 32, 32), furMat);
+            body.position.y = 0.3;
+            body.castShadow = true;
+            rabbitGroup.add(body);
+
+            // Cabeça
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.5, 32, 32), furMat);
+            head.position.set(0, 1.0, 0.3);
+            head.castShadow = true;
+            rabbitGroup.add(head);
+
+            // Orelhas
+            const earGeo = new THREE.CylinderGeometry(0.1, 0.15, 1.0, 16);
+            earGeo.translate(0, 0.5, 0);
+            const earL = new THREE.Mesh(earGeo, furMat);
+            earL.position.set(-0.3, 1.3, 0.3);
+            earL.rotation.set(-0.2, 0, -0.3);
+            rabbitGroup.add(earL);
+           
+            const earR = new THREE.Mesh(earGeo, furMat);
+            earR.position.set(0.3, 1.3, 0.3);
+            earR.rotation.set(-0.2, 0, 0.3);
+            rabbitGroup.add(earR);
+
+            // Rabo fofo
+            const tail = new THREE.Mesh(new THREE.SphereGeometry(0.25), furMat);
+            tail.position.set(0, 0.3, -0.6);
+            rabbitGroup.add(tail);
+
+            // Patas a correr
+            const legGeo = new THREE.CylinderGeometry(0.15, 0.15, 0.5, 8);
+            const legL = new THREE.Mesh(legGeo, furMat);
+            legL.rotation.x = Math.PI/2;
+            legL.position.set(-0.4, 0.1, 0);
+            rabbitGroup.add(legL);
+
+            const legR = new THREE.Mesh(legGeo, furMat);
+            legR.rotation.x = Math.PI/2;
+            legR.position.set(0.4, 0.1, 0);
+            rabbitGroup.add(legR);
+
+            // Rodar para ficar de costas para a câmara (olhando para -Z)
+            rabbitGroup.rotation.y = Math.PI;
+
+            scene.add(rabbitGroup);
+        }
+
+        function createQueen() {
+            queenGroup = new THREE.Group();
+
+            // Vestido Vermelho Gigante (Cone)
+            const dressMat = new THREE.MeshStandardMaterial({ color: colors.queenRed, metalness: 0.3, roughness: 0.4 });
+            const dress = new THREE.Mesh(new THREE.ConeGeometry(3, 8, 32), dressMat);
+            dress.position.y = 2;
+            queenGroup.add(dress);
+
+            // Colarinho Branco
+            const collar = new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.3, 16, 32), new THREE.MeshBasicMaterial({color: 0xFFFFFF}));
+            collar.rotation.x = Math.PI/2;
+            collar.position.y = 5.5;
+            queenGroup.add(collar);
+
+            // Cabeça
+            const headMat = new THREE.MeshStandardMaterial({ color: 0xFFDDDD }); // Pele pálida
+            const head = new THREE.Mesh(new THREE.SphereGeometry(1.2, 32, 32), headMat);
+            head.position.y = 6.5;
+            queenGroup.add(head);
+
+            // Coroa
+            const crown = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.0, 1.0, 8), new THREE.MeshStandardMaterial({color: colors.gold, metalness: 0.8}));
+            crown.position.y = 7.5;
+            queenGroup.add(crown);
+
+            // Braços a tentar agarrar
+            const armGeo = new THREE.CylinderGeometry(0.3, 0.3, 4);
+            const armL = new THREE.Mesh(armGeo, dressMat);
+            armL.position.set(-2, 4, 2);
+            armL.rotation.x = 1.2;
+            armL.rotation.z = 0.5;
+            queenGroup.add(armL);
+
+            const armR = new THREE.Mesh(armGeo, dressMat);
+            armR.position.set(2, 4, 2);
+            armR.rotation.x = 1.2;
+            armR.rotation.z = -0.5;
+            queenGroup.add(armR);
+
+            scene.add(queenGroup);
+            updateQueenPosition();
+        }
+
+        function spawnObject() {
+            const lane = (Math.floor(Math.random() * 3) - 1) * 3.5;
+            const type = Math.random();
+
+            if (type > 0.7) {
+                // --- CARTA PEIXE (Bom - Score) ---
+                const group = new THREE.Group();
+                const card = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.6, 0.1), new THREE.MeshStandardMaterial({color: 0xFFFFFF}));
+                card.position.y = 1.0;
+                group.add(card);
+               
+                const fish = new THREE.Mesh(new THREE.ConeGeometry(0.4, 0.8, 16), new THREE.MeshStandardMaterial({color: colors.fishCard}));
+                fish.rotation.z = -Math.PI/2;
+                fish.position.set(0, 1.0, 0.1);
+                group.add(fish);
+
+                group.position.set(lane, 0, -80);
+                scene.add(group);
+                collectibles.push({mesh: group, type: 'fish'});
+
+            } else if (type > 0.55) {
+                // --- TORTA (Novo - Velocidade) ---
+                const group = new THREE.Group();
+               
+                // Base da Torta
+                const baseGeo = new THREE.CylinderGeometry(0.6, 0.5, 0.3, 16);
+                const baseMat = new THREE.MeshStandardMaterial({color: colors.tartCrust});
+                const base = new THREE.Mesh(baseGeo, baseMat);
+                base.position.y = 0.5;
+                group.add(base);
+
+                // Recheio Vermelho
+                const jamGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.35, 16);
+                const jamMat = new THREE.MeshStandardMaterial({color: colors.tartJam});
+                const jam = new THREE.Mesh(jamGeo, jamMat);
+                jam.position.y = 0.5;
+                group.add(jam);
+
+                // Cereja no topo
+                const cherry = new THREE.Mesh(new THREE.SphereGeometry(0.15), new THREE.MeshBasicMaterial({color: 0x880000}));
+                cherry.position.y = 0.7;
+                group.add(cherry);
+
+                group.position.set(lane, 0, -80);
+                scene.add(group);
+                collectibles.push({mesh: group, type: 'tart'});
+
+            } else if (type > 0.3) {
+                // --- SOLDADO CARTA (Inimigo) ---
+                const group = new THREE.Group();
+                const body = new THREE.Mesh(new THREE.BoxGeometry(1.3, 2.0, 0.1), new THREE.MeshStandardMaterial({color: 0xF0F0F0}));
+                body.position.y = 1.2;
+                group.add(body);
+               
+                const suit = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.15), new THREE.MeshStandardMaterial({color: colors.queenRed}));
+                suit.rotation.z = Math.PI/4;
+                suit.position.set(0, 1.6, 0);
+                group.add(suit);
+               
+                const spear = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 3), new THREE.MeshStandardMaterial({color: 0x000}));
+                spear.position.set(0.8, 1.5, 0.5);
+                spear.rotation.x = 0.5;
+                group.add(spear);
+
+                group.position.set(lane, 0, -80);
+                scene.add(group);
+                obstacles.push({mesh: group, type: 'soldier'});
+
+            } else {
+                // --- PEDRA (Obstáculo) ---
+                const group = new THREE.Group();
+                const geo = new THREE.DodecahedronGeometry(0.8, 0);
+                const mat = new THREE.MeshStandardMaterial({ color: colors.stone, roughness: 0.9 });
+                const rock = new THREE.Mesh(geo, mat);
+                rock.position.y = 0.6;
+                rock.scale.set(1.5, 1, 1);
+                group.add(rock);
+
+                group.position.set(lane, 0, -80);
+                scene.add(group);
+                obstacles.push({mesh: group, type: 'rock'});
+            }
+        }
+
+        function updateQueenPosition() {
+            // Distância segura visual
+            const zPos = 2 + (queenDistance / 10) * 13;
+            queenGroup.position.set(currentX * 0.5, -2, zPos);
+           
+            // Animação
+            queenGroup.position.y = -1 + Math.sin(Date.now() * 0.005) * 0.5;
+            queenGroup.children[4].rotation.x = 1.2 + Math.sin(Date.now()*0.01)*0.5;
+            queenGroup.children[5].rotation.x = 1.2 + Math.sin(Date.now()*0.01 + 1)*0.5;
+
+            // UI
+            const barFill = document.getElementById('danger-fill');
+            const barText = document.getElementById('danger-text');
+            const dangerPercent = ((10 - queenDistance) / 10) * 100;
+           
+            barFill.style.width = Math.max(0, Math.min(100, dangerPercent)) + '%';
+           
+            if (queenDistance <= 0) {
+                gameOver("captured");
+            } else if (queenDistance < 4) {
+                barText.innerText = "PERIGO! CORRE!";
+                barFill.style.background = "#FF0000";
+            } else {
+                barText.innerText = "Segurança";
+                barFill.style.background = "linear-gradient(90deg, #00FF00, #FFFF00)";
+            }
+        }
+
+        function stumble() {
+            if (isStumbled) return;
+            isStumbled = true;
+           
+            // Efeito visual
+            rabbitGroup.rotation.x = -0.5;
+           
+            // Penalidade
+            speed = 0.1;
+            queenDistance -= 3;
+           
+            setTimeout(() => {
+                isStumbled = false;
+                rabbitGroup.rotation.x = 0;
+            }, 800);
+        }
+
+        function jump() {
+            if (isJumping || isStumbled) return;
+            isJumping = true;
+            jumpVelocity = 0.45;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (!gameActive) return;
+
+            processWebcamMotion();
+            processTongueDetection();
+
+            // Movimento Lateral
+            currentX += (targetX - currentX) * 0.1;
+            if(currentX > 3.5) currentX = 3.5;
+            if(currentX < -3.5) currentX = -3.5;
+
+            // Física do Salto
+            if (isJumping) {
+                rabbitGroup.position.y += jumpVelocity;
+                jumpVelocity -= 0.025; // Gravidade
+                if (rabbitGroup.position.y <= 0) {
+                    rabbitGroup.position.y = 0;
+                    isJumping = false;
+                }
+            } else {
+                const hop = Math.abs(Math.sin(Date.now() * 0.015));
+                rabbitGroup.position.y = isStumbled ? 0 : hop * 0.5;
+            }
+
+            rabbitGroup.position.x = currentX;
+            if (!isStumbled) {
+                rabbitGroup.rotation.z = (currentX - targetX) * 0.1;
+                rabbitGroup.rotation.y = Math.PI;
+            }
+
+            // Aceleração progressiva
+            if (!isStumbled) {
+                if (speed < 0.8) speed += 0.0001;
+                // Recuperação lenta
+                if (frameCount % 60 === 0 && queenDistance < 10) {
+                    queenDistance += 0.1;
+                }
+            }
+
+            updateEntities(obstacles, true);
+            updateEntities(collectibles, false);
+
+            floatingCards.forEach((c, i) => {
+                c.rotation.x += 0.01;
+                c.position.z += speed * 0.5;
+                if(c.position.z > 20) c.position.z = -100;
+            });
+
+            updateQueenPosition();
+
+            frameCount++;
+            if (frameCount % Math.floor(100 / speed) === 0) spawnObject();
+
+            renderer.render(scene, camera);
+        }
+
+        function updateEntities(list, isObstacle) {
+            for (let i = list.length - 1; i >= 0; i--) {
+                let obj = list[i].mesh;
+                let type = list[i].type;
+               
+                obj.position.z += speed;
+               
+                // Animação para itens
+                if(!isObstacle) obj.rotation.y += 0.05;
+
+                // Colisão
+                if (obj.position.z > -1.5 && obj.position.z < 1.5) {
+                    if (Math.abs(obj.position.x - rabbitGroup.position.x) < 1.0) {
+                       
+                        if (isObstacle) {
+                            if (type === 'rock' && isJumping && rabbitGroup.position.y > 1.0) {
+                                // Sucesso: Saltou por cima
+                            } else if (type === 'rock') {
+                                stumble();
+                                scene.remove(obj);
+                                list.splice(i, 1);
+                                continue;
+                            } else {
+                                if (!isJumping) gameOver("soldier");
+                            }
+                        } else {
+                            // Coletáveis
+                            scene.remove(obj);
+                            list.splice(i, 1);
+
+                            if (type === 'fish') {
+                                score++;
+                                document.getElementById('score-board').innerText = "Peixes: " + score;
+                            } else if (type === 'tart') {
+                                // Torta: Boost de velocidade e Segurança
+                                queenDistance = Math.min(10, queenDistance + 3); // Empurra a Rainha para trás
+                                speed += 0.05; // Aumenta velocidade base
+                                // Efeito visual de Turbo
+                                rabbitGroup.scale.set(1.2, 1.2, 1.2);
+                                setTimeout(() => { if(rabbitGroup) rabbitGroup.scale.set(1,1,1); }, 300);
+                            }
+                            continue;
+                        }
+                    }
+                }
+
+                if (obj.position.z > 15) {
+                    scene.remove(obj);
+                    list.splice(i, 1);
+                }
+            }
+        }
+
+        function gameOver(reason) {
+            gameActive = false;
+            document.getElementById('final-score').innerText = score;
+            const goScreen = document.getElementById('game-over');
+            const title = goScreen.querySelector('h1');
+            const msg = goScreen.querySelector('p');
+           
+            goScreen.style.display = 'flex';
+           
+            if (reason === "captured") {
+                title.innerText = "APANHADO!";
+                msg.innerText = "A Rainha alcançou-te. Cortem-lhe a cabeça!";
+            } else {
+                title.innerText = "OUCH!";
+                msg.innerText = "Foste contra um soldado!";
+            }
+        }
+
+        // --- SISTEMAS DE VISÃO ---
+
+        function setupWebcam() {
+            const constraints = { video: { width: 320, height: 240, facingMode: "user" } };
+            navigator.mediaDevices.getUserMedia(constraints)
+                .then((stream) => {
+                    video.srcObject = stream;
+                    video.onloadedmetadata = () => {
+                        motionCanvas.width = 100;
+                        motionCanvas.height = 75;
+                        tongueCanvas.width = 100;
+                        tongueCanvas.height = 75;
+                        gameActive = true;
+                        initThree();
+                    };
+                })
+                .catch(err => alert("Câmara necessária!"));
+        }
+
+        function processWebcamMotion() {
+            if (video.readyState !== 4) return;
+            motionCtx.drawImage(video, 0, 0, motionCanvas.width, motionCanvas.height);
+            const frame = motionCtx.getImageData(0, 0, motionCanvas.width, motionCanvas.height);
+            const data = frame.data;
+
+            if (!prevFrameData) { prevFrameData = data; return; }
+
+            let movementX = 0;
+            let totalMovement = 0;
+
+            for (let i = 0; i < data.length; i += 16) {
+                const diff = Math.abs((data[i]+data[i+1]+data[i+2])/3 - (prevFrameData[i]+prevFrameData[i+1]+prevFrameData[i+2])/3);
+                if (diff > 25) {
+                    const x = (i / 4) % motionCanvas.width;
+                    movementX += x;
+                    totalMovement++;
+                }
+            }
+            prevFrameData = data;
+
+            if (totalMovement > 3) {
+                const center = movementX / totalMovement;
+                targetX = -((center / motionCanvas.width) * 2 - 1) * 7.0;
+            }
+        }
+
+        function processTongueDetection() {
+            if (tongueCooldown > 0) {
+                tongueCooldown--;
+                return;
+            }
+
+            tongueCtx.drawImage(video, 0, 0, tongueCanvas.width, tongueCanvas.height);
+            // Área Central Inferior (Boca)
+            const frame = tongueCtx.getImageData(30, 40, 40, 30);
+            const data = frame.data;
+            let redPixels = 0;
+
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i+1];
+                const b = data[i+2];
+
+                // Heurística MELHORADA (Mais rigorosa)
+                // Vermelho deve ser MUITO mais forte que verde e azul
+                // Aumentei o limiar para 1.6x e o brilho mínimo para 110
+                if (r > g * 1.6 && r > b * 1.6 && r > 110) {
+                    redPixels++;
+                }
+            }
+
+            // Aumentei o número de pixeis necessários (de 100 para 180)
+            // É preciso mesmo mostrar uma boa quantidade de língua
+            if (redPixels > 180) {
+                jump();
+                tongueCooldown = 40;
+            }
+        }
+
+        document.getElementById('start-btn').addEventListener('click', () => {
+            document.getElementById('loading-screen').classList.add('hidden');
+            setupWebcam();
+        });
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+    </script>
+</body>
+</html>

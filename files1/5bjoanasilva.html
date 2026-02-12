@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice no País das Maravilhas - Experiência Sonora</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700&family=Quicksand:wght@300;500&display=swap');
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Quicksand', sans-serif;
+            background: linear-gradient(135deg, #FFB7B2 0%, #E0BBE4 50%, #FFF200 100%);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            touch-action: none; /* Previne scroll no telemóvel para melhor controlo */
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .icon-container {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            transition: all 0.2s ease-out;
+            cursor: pointer;
+            filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.5));
+        }
+
+        .floating {
+            animation: float 6s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0% { transform: translate(-50%, -50%) translateY(0px) rotate(0deg); }
+            50% { transform: translate(-50%, -50%) translateY(-20px) rotate(5deg); }
+            100% { transform: translate(-50%, -50%) translateY(0px) rotate(0deg); }
+        }
+
+        /* Efeito de pulsação quando o som está ativo */
+        .active-sound {
+            filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.9));
+            transform: translate(-50%, -50%) scale(1.2) !important;
+        }
+
+        #start-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+            z-index: 50;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            transition: opacity 0.5s;
+        }
+
+        .title-font {
+            font-family: 'Cinzel Decorative', cursive;
+        }
+
+        canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body class="w-full h-screen relative select-none">
+
+    <!-- Canvas para rasto mágico -->
+    <canvas id="magicCanvas"></canvas>
+
+    <!-- Overlay Inicial -->
+    <div id="start-overlay">
+        <h1 class="title-font text-5xl md:text-7xl text-purple-800 mb-4 animate-pulse">O País das Maravilhas</h1>
+        <p class="text-xl text-pink-700 mb-8 max-w-md px-4">
+            Mova o cursor ou o dedo para controlar a orquestra mágica. <br>
+            Aproxime-se dos ícones para despertar as personagens.
+        </p>
+        <button id="start-btn" class="px-8 py-4 bg-purple-600 text-white rounded-full text-xl font-bold shadow-lg hover:bg-purple-700 hover:scale-105 transition transform">
+            Entrar na Toca do Coelho
+        </button>
+    </div>
+
+    <!-- Zona Central de Informação -->
+    <div class="absolute top-4 left-1/2 transform -translate-x-1/2 z-20 text-center opacity-70 pointer-events-none">
+        <p class="text-purple-900 font-bold tracking-widest text-sm uppercase">Experiência Sonora Interativa</p>
+    </div>
+
+    <!-- Ícones / Emissores de Som -->
+    <!-- Gato de Cheshire (Synth Misterioso) -->
+    <div id="cat-zone" class="icon-container floating" style="top: 25%; left: 25%;">
+        <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="#6B21A8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 5c.67 0 1.35.09 2 .26 1.78-2 5.03-2.84 6.42-2.26 1.4.58-.42 7-.42 7 .57 1.07 1 2.24 1 3.44C21 17.9 16.97 21 12 21S3 17.9 3 13.44c0-1.2.43-2.37 1-3.44 0 0-1.82-6.42-.42-7 1.39-.58 4.64.26 6.42 2.26.65-.17 1.33-.26 2-.26z"></path>
+            <path d="M9 13h.01"></path>
+            <path d="M15 13h.01"></path>
+            <path d="M10 17c1-1 3-1 4 0"></path>
+        </svg>
+    </div>
+
+    <!-- Chapeleiro Louco (Som Caótico/Sintetizador) -->
+    <div id="hatter-zone" class="icon-container floating" style="top: 25%; left: 75%; animation-delay: 1s;">
+        <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="#DB2777" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 22h20"></path>
+            <path d="M20 22v-5a3 3 0 0 0-3-3h-2.55a2.5 2.5 0 0 1-2.25-1.5l-.25-1a3 3 0 0 0-5.8 0l-.25 1a2.5 2.5 0 0 1-2.25 1.5H4a3 3 0 0 0-3 3v5"></path>
+            <path d="M10 2v3"></path>
+            <path d="M14 2v3"></path>
+        </svg>
+    </div>
+
+    <!-- Rainha de Copas (Baixo Profundo/Grave) -->
+    <div id="queen-zone" class="icon-container floating" style="top: 75%; left: 25%; animation-delay: 2s;">
+        <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="#BE185D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path>
+        </svg>
+    </div>
+
+    <!-- Coelho Branco (Relógio/Ritmo Rápido) -->
+    <div id="rabbit-zone" class="icon-container floating" style="top: 75%; left: 75%; animation-delay: 3s;">
+        <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="#D97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+        </svg>
+    </div>
+
+    <script>
+        // --- Configuração de Áudio (Web Audio API) ---
+        let audioCtx;
+        let isPlaying = false;
+
+        // Classe para gerir cada "Personagem Sonora"
+        class SoundCharacter {
+            constructor(type, xPercent, yPercent, elementId) {
+                this.type = type;
+                this.x = window.innerWidth * (xPercent / 100);
+                this.y = window.innerHeight * (yPercent / 100);
+                this.element = document.getElementById(elementId);
+                this.oscillator = null;
+                this.gainNode = null;
+                this.filterNode = null;
+                this.lfo = null;
+                this.lfoGain = null;
+                this.maxVolume = 0.3; // Volume máximo para segurança auditiva
+            }
+
+            init(ctx) {
+                this.gainNode = ctx.createGain();
+                this.gainNode.gain.value = 0; // Começa mudo
+
+                this.oscillator = ctx.createOscillator();
+                this.filterNode = ctx.createBiquadFilter();
+
+                // Configuração baseada no personagem
+                if (this.type === 'cat') {
+                    // Gato: Misterioso, Sine wave com vibrato lento
+                    this.oscillator.type = 'sine';
+                    this.oscillator.frequency.value = 440; // Lá
+                   
+                    // LFO para efeito "mágico/ondulante"
+                    this.lfo = ctx.createOscillator();
+                    this.lfo.frequency.value = 2; // Hz
+                    this.lfoGain = ctx.createGain();
+                    this.lfoGain.gain.value = 10;
+                    this.lfo.connect(this.lfoGain);
+                    this.lfoGain.connect(this.oscillator.frequency);
+                    this.lfo.start();
+
+                } else if (this.type === 'hatter') {
+                    // Chapeleiro: Louco, Sawtooth com filtro instável
+                    this.oscillator.type = 'sawtooth';
+                    this.oscillator.frequency.value = 150;
+                    this.filterNode.type = 'bandpass';
+                    this.filterNode.Q.value = 5;
+
+                } else if (this.type === 'queen') {
+                    // Rainha: Baixo grave e imponente, Triangle
+                    this.oscillator.type = 'triangle';
+                    this.oscillator.frequency.value = 60; // Grave
+                    this.filterNode.type = 'lowpass';
+                    this.filterNode.frequency.value = 200;
+
+                } else if (this.type === 'rabbit') {
+                    // Coelho: Apressado, Square wave
+                    this.oscillator.type = 'square';
+                    this.oscillator.frequency.value = 600;
+                   
+                    // LFO rápido para parecer um tique-taque ou alarme
+                    this.lfo = ctx.createOscillator();
+                    this.lfo.type = 'square';
+                    this.lfo.frequency.value = 8; // Rápido
+                    this.lfoGain = ctx.createGain();
+                    this.lfoGain.gain.value = 500; // Modulação de amplitude (tremolo forte)
+                    // Nota: para tremolo ligamos ao gain, mas aqui vou ligar ao filtro para efeito wah-wah rápido
+                    this.lfo.connect(this.lfoGain);
+                    this.lfoGain.connect(this.filterNode.frequency);
+                    this.lfo.start();
+                }
+
+                // Cadeia de ligação
+                this.oscillator.connect(this.filterNode);
+                this.filterNode.connect(this.gainNode);
+                this.gainNode.connect(ctx.destination);
+               
+                this.oscillator.start();
+            }
+
+            update(mouseX, mouseY) {
+                if (!isPlaying) return;
+
+                // Calcular distância entre o rato e o ícone
+                const dist = Math.hypot(this.x - mouseX, this.y - mouseY);
+                const maxDist = Math.min(window.innerWidth, window.innerHeight) / 1.5;
+
+                // Mapear distância para volume (mais perto = mais alto)
+                // Invertemos: 0 dist = 1 vol, maxDist = 0 vol
+                let vol = 1 - (dist / maxDist);
+                vol = Math.max(0, vol); // Não deixar ser negativo
+               
+                // Easing cúbico para transição suave
+                vol = vol * vol * vol;
+
+                // Aplicar volume suavemente
+                this.gainNode.gain.setTargetAtTime(vol * this.maxVolume, audioCtx.currentTime, 0.1);
+
+                // Alterar frequência ligeiramente com a posição Y para expressividade
+                // Coelho e Gato mudam pitch
+                if (this.type === 'cat') {
+                    const baseFreq = 440;
+                    const mod = (mouseY / window.innerHeight) * 200;
+                    this.oscillator.frequency.setTargetAtTime(baseFreq + mod, audioCtx.currentTime, 0.1);
+                }
+
+                // Feedback visual no ícone
+                if (vol > 0.1) {
+                    this.element.classList.add('active-sound');
+                    // Rotação baseada na proximidade
+                    this.element.style.transform = `translate(-50%, -50%) scale(${1 + vol}) rotate(${vol * 20}deg)`;
+                } else {
+                    this.element.classList.remove('active-sound');
+                    // Reset do estilo é tratado pela classe CSS .floating quando removemos o estilo inline ou quando a animacao css domina
+                    // Para garantir que volta à animação floating, removemos transform inline se volume for 0
+                    if (vol === 0) this.element.style.transform = '';
+                }
+            }
+
+            resize(xPercent, yPercent) {
+                this.x = window.innerWidth * (xPercent / 100);
+                this.y = window.innerHeight * (yPercent / 100);
+            }
+        }
+
+        const characters = [
+            new SoundCharacter('cat', 25, 25, 'cat-zone'),
+            new SoundCharacter('hatter', 75, 25, 'hatter-zone'),
+            new SoundCharacter('queen', 25, 75, 'queen-zone'),
+            new SoundCharacter('rabbit', 75, 75, 'rabbit-zone')
+        ];
+
+        // --- Configuração Visual (Canvas Particles) ---
+        const canvas = document.getElementById('magicCanvas');
+        const ctx = canvas.getContext('2d');
+        let particles = [];
+        let mouse = { x: -100, y: -100 };
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            characters[0].resize(25, 25);
+            characters[1].resize(75, 25);
+            characters[2].resize(25, 75);
+            characters[3].resize(75, 75);
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.size = Math.random() * 5 + 1;
+                this.speedX = Math.random() * 3 - 1.5;
+                this.speedY = Math.random() * 3 - 1.5;
+                this.color = color;
+                this.life = 100;
+            }
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.life -= 2;
+                this.size *= 0.95;
+            }
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.globalAlpha = this.life / 100;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        function animateVisuals() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+           
+            // Gerar novas partículas na posição do rato
+            if (isPlaying) {
+                for (let i = 0; i < 3; i++) {
+                    const colors = ['#FFF', '#FFD700', '#FF69B4', '#DA70D6'];
+                    const randomColor = colors[Math.floor(Math.random() * colors.length)];
+                    particles.push(new Particle(mouse.x, mouse.y, randomColor));
+                }
+            }
+
+            // Atualizar e desenhar partículas
+            for (let i = 0; i < particles.length; i++) {
+                particles[i].update();
+                particles[i].draw();
+                if (particles[i].life <= 0) {
+                    particles.splice(i, 1);
+                    i--;
+                }
+            }
+
+            // Desenhar linhas de conexão entre o rato e os ícones ativos
+            if (isPlaying) {
+                characters.forEach(char => {
+                    const dist = Math.hypot(char.x - mouse.x, char.y - mouse.y);
+                    if (dist < 300) {
+                        ctx.beginPath();
+                        ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
+                        ctx.lineWidth = (300 - dist) / 50;
+                        ctx.moveTo(mouse.x, mouse.y);
+                        ctx.lineTo(char.x, char.y);
+                        ctx.stroke();
+                    }
+                });
+            }
+
+            requestAnimationFrame(animateVisuals);
+        }
+
+        // --- Gestão de Eventos ---
+
+        function handleInput(x, y) {
+            mouse.x = x;
+            mouse.y = y;
+            characters.forEach(char => char.update(x, y));
+        }
+
+        window.addEventListener('mousemove', e => handleInput(e.clientX, e.clientY));
+        window.addEventListener('touchmove', e => {
+            e.preventDefault(); // Previne scroll
+            handleInput(e.touches[0].clientX, e.touches[0].clientY);
+        }, { passive: false });
+
+        document.getElementById('start-btn').addEventListener('click', () => {
+            // Inicializar Contexto de Áudio (necessário interação do utilizador)
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+           
+            characters.forEach(char => char.init(audioCtx));
+           
+            isPlaying = true;
+           
+            // Animação de saída do overlay
+            const overlay = document.getElementById('start-overlay');
+            overlay.style.opacity = '0';
+            setTimeout(() => overlay.remove(), 500);
+           
+            animateVisuals();
+        });
+
+    </script>
+</body>
+</html>

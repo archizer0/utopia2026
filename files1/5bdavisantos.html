@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice: Experiência Sonora Manual</title>
+   
+    <!-- Bibliotecas MediaPipe para rastreamento de mãos -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1a0b2e;
+            overflow: hidden;
+            font-family: 'Georgia', serif;
+            color: white;
+        }
+
+        /* Container principal */
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* O vídeo da webcam fica escondido, processamos apenas os dados */
+        .input_video {
+            display: none;
+        }
+
+        /* O Canvas onde desenhamos a arte */
+        .output_canvas {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            /* Espelhar o canvas para o movimento ser natural (como um espelho) */
+            transform: scaleX(-1);
+        }
+
+        /* Interface de Início (Overlay) */
+        #overlay {
+            position: absolute;
+            z-index: 10;
+            background: rgba(20, 0, 40, 0.9);
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            transition: opacity 1s;
+        }
+
+        h1 {
+            font-size: 3.5rem;
+            color: #C8A2C8; /* Lilás */
+            text-shadow: 0 0 10px #ff0055, 0 0 20px #0000ff;
+            margin-bottom: 10px;
+        }
+
+        p {
+            font-size: 1.2rem;
+            max-width: 600px;
+            line-height: 1.6;
+            color: #e0e0e0;
+        }
+
+        .icons-instruction {
+            font-size: 2rem;
+            margin: 20px 0;
+        }
+
+        button {
+            padding: 15px 40px;
+            font-size: 1.5rem;
+            background: linear-gradient(45deg, #ff0055, #4b0082);
+            color: white;
+            border: 2px solid #C8A2C8;
+            border-radius: 50px;
+            cursor: pointer;
+            font-family: 'Georgia', serif;
+            box-shadow: 0 0 15px rgba(200, 162, 200, 0.6);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 25px rgba(200, 162, 200, 1);
+        }
+
+        /* Elemento de carregamento */
+        #loading {
+            display: none;
+            color: #C8A2C8;
+            margin-top: 20px;
+            font-style: italic;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="container">
+        <video class="input_video"></video>
+        <canvas class="output_canvas"></canvas>
+
+        <div id="overlay">
+            <h1>País das Maravilhas Sonoro</h1>
+            <p>Uma experiência audiovisual controlada pelas suas mãos.</p>
+           
+            <div class="icons-instruction">
+                🤚 Esquerda: 🐇 Sons Graves &nbsp; | &nbsp; ✋ Direita: 🎩 Sons Agudos
+            </div>
+            <p>Mova as mãos para cima e para baixo para tocar a música do sonho.</p>
+           
+            <button id="start-btn" onclick="startExperience()">Entrar na Toca do Coelho</button>
+            <div id="loading">A carregar espelhos mágicos...</div>
+        </div>
+    </div>
+
+    <script>
+        // --- Configuração Visual e de Contexto ---
+        const videoElement = document.getElementsByClassName('input_video')[0];
+        const canvasElement = document.getElementsByClassName('output_canvas')[0];
+        const canvasCtx = canvasElement.getContext('2d');
+        const overlay = document.getElementById('overlay');
+        const loadingText = document.getElementById('loading');
+        const startBtn = document.getElementById('start-btn');
+
+        // Ajustar Canvas ao tamanho da janela
+        function resizeCanvas() {
+            canvasElement.width = window.innerWidth;
+            canvasElement.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // --- Configuração de Áudio (Web Audio API) ---
+        let audioCtx;
+        let isAudioStarted = false;
+       
+        // Osciladores para cada mão
+        const synths = {
+            left: { osc: null, gain: null, panner: null, type: 'sine', active: false },    // Onda suave
+            right: { osc: null, gain: null, panner: null, type: 'triangle', active: false } // Onda brilhante
+        };
+
+        function initAudio() {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext();
+
+            // Configurar Sintetizador Esquerdo (Coelho - Suave/Grave)
+            synths.left = createSynth('sine', -0.8); // Pan Esquerda
+
+            // Configurar Sintetizador Direito (Chapeleiro - Agudo/Estridente)
+            synths.right = createSynth('triangle', 0.8); // Pan Direita
+           
+            isAudioStarted = true;
+        }
+
+        function createSynth(type, panValue) {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            const panner = audioCtx.createStereoPanner();
+
+            osc.type = type;
+            osc.frequency.value = 440; // Valor inicial
+            gain.gain.value = 0; // Começa mudo
+
+            panner.pan.value = panValue;
+
+            // Cadeia: Oscilador -> Gain (Volume) -> Panner (Esq/Dir) -> Saída
+            osc.connect(gain);
+            gain.connect(panner);
+            panner.connect(audioCtx.destination);
+           
+            osc.start();
+
+            return { osc, gain, panner, active: false };
+        }
+
+        function updateSound(hand, yPos) {
+            if (!isAudioStarted) return;
+
+            // Converter posição Y (0 a 1) em Frequência (Hz)
+            // 0 (Topo) = Agudo, 1 (Baixo) = Grave
+            // Mão esquerda (Grave): 100Hz - 400Hz
+            // Mão direita (Aguda): 300Hz - 800Hz
+           
+            let minFreq, maxFreq;
+           
+            if (hand === 'Left') {
+                minFreq = 80; maxFreq = 350;
+            } else {
+                minFreq = 300; maxFreq = 900;
+            }
+
+            // Inverter Y (porque canvas Y=0 é topo)
+            const frequency = minFreq + ((1 - yPos) * (maxFreq - minFreq));
+           
+            const synth = hand === 'Left' ? synths.left : synths.right;
+           
+            // Suavizar transição de frequência e volume
+            const now = audioCtx.currentTime;
+            synth.osc.frequency.setTargetAtTime(frequency, now, 0.05);
+           
+            // Se a mão for detetada, aumentar volume, senão silenciar
+            if (synth.active) {
+                synth.gain.gain.setTargetAtTime(0.2, now, 0.1);
+            } else {
+                synth.gain.gain.setTargetAtTime(0, now, 0.1);
+            }
+        }
+
+        // --- Lógica Visual (O País das Maravilhas) ---
+       
+        // Partículas flutuantes (Cartas de baralho e xícaras)
+        const particles = [];
+        const icons = ['♠️', '♥️', '♦️', '♣️', '🫖', '🍄'];
+       
+        function createParticles() {
+            for(let i=0; i < 20; i++) {
+                particles.push({
+                    x: Math.random() * canvasElement.width,
+                    y: Math.random() * canvasElement.height,
+                    speed: 0.5 + Math.random(),
+                    icon: icons[Math.floor(Math.random() * icons.length)],
+                    size: 20 + Math.random() * 30,
+                    opacity: 0.1 + Math.random() * 0.4
+                });
+            }
+        }
+        createParticles();
+
+        function drawBackground() {
+            // Gradiente Temático: Vermelho, Lilás, Azul
+            const gradient = canvasCtx.createLinearGradient(0, 0, canvasElement.width, canvasElement.height);
+            gradient.addColorStop(0, '#4b0082');   // Índigo
+            gradient.addColorStop(0.3, '#ff0055'); // Vermelho arroxeado
+            gradient.addColorStop(0.6, '#C8A2C8'); // Lilás
+            gradient.addColorStop(1, '#00008b');   // Azul Profundo
+
+            canvasCtx.fillStyle = gradient;
+            canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+
+            // Animar partículas
+            particles.forEach(p => {
+                p.y -= p.speed;
+                if (p.y < -50) p.y = canvasElement.height + 50; // Reset ao topo
+               
+                canvasCtx.globalAlpha = p.opacity;
+                canvasCtx.font = `${p.size}px serif`;
+                canvasCtx.fillStyle = "#fff";
+                canvasCtx.fillText(p.icon, p.x, p.y);
+            });
+            canvasCtx.globalAlpha = 1.0;
+        }
+
+        function drawHandEffects(landmarks, label) {
+            // Ponto do dedo indicador
+            const indexTip = landmarks[8];
+            const x = indexTip.x * canvasElement.width;
+            const y = indexTip.y * canvasElement.height;
+            const wrist = landmarks[0];
+            const wx = wrist.x * canvasElement.width;
+            const wy = wrist.y * canvasElement.height;
+
+            // Definir ícone e cor baseada na mão
+            let mainIcon = "";
+            let glowColor = "";
+
+            // Nota: MediaPipe espelha a lógica 'Left'/'Right' dependendo da câmera.
+            // Para o utilizador, queremos que a mão que ele vê à ESQUERDA controle o som da ESQUERDA.
+            // No modo selfie padrão, se eu levanto a mão ESQUERDA, ela aparece à ESQUERDA do ecrã se espelharmos o canvas.
+           
+            if (label === 'Left') {
+                // Mão Esquerda (Real) -> Chapeleiro Louco? Não, o prompt diz Esquerda/Direita diferentes.
+                // Vamos atribuir: Esquerda = Coelho (Tempo), Direita = Chapeleiro (Loucura)
+                mainIcon = "🐇";
+                glowColor = "rgba(100, 200, 255, 0.6)"; // Azulado
+            } else {
+                mainIcon = "🎩";
+                glowColor = "rgba(255, 50, 100, 0.6)"; // Avermelhado
+            }
+
+            // Desenhar rastro/brilho
+            const grd = canvasCtx.createRadialGradient(x, y, 5, x, y, 60);
+            grd.addColorStop(0, "white");
+            grd.addColorStop(0.5, glowColor);
+            grd.addColorStop(1, "transparent");
+           
+            canvasCtx.fillStyle = grd;
+            canvasCtx.beginPath();
+            canvasCtx.arc(x, y, 60, 0, 2 * Math.PI);
+            canvasCtx.fill();
+
+            // Desenhar Ícone na ponta do dedo
+            canvasCtx.font = "50px serif";
+            canvasCtx.textAlign = "center";
+            canvasCtx.textBaseline = "middle";
+            canvasCtx.fillStyle = "white";
+            canvasCtx.fillText(mainIcon, x, y);
+
+            // Texto "Eat Me" / "Drink Me" perto do pulso de vez em quando
+            if (Math.random() > 0.95) {
+                canvasCtx.font = "16px monospace";
+                canvasCtx.fillStyle = "#C8A2C8";
+                canvasCtx.fillText(label === 'Left' ? "Estou Atrasado!" : "Hora do Chá!", wx, wy);
+            }
+        }
+
+        // --- Loop Principal do MediaPipe ---
+        function onResults(results) {
+            // 1. Desenhar Fundo
+            drawBackground();
+
+            // 2. Resetar estado ativo dos sintetizadores
+            synths.left.active = false;
+            synths.right.active = false;
+
+            // 3. Processar Mãos detetadas
+            if (results.multiHandLandmarks && results.multiHandedness) {
+                for (let index = 0; index < results.multiHandLandmarks.length; index++) {
+                    const classification = results.multiHandedness[index];
+                    const isRightHand = classification.label === 'Right';
+                    // Nota: Devido ao espelhamento do canvas (scaleX(-1)),
+                    // a mão 'Right' do MediaPipe aparecerá do lado Esquerdo visualmente.
+                    // Vamos inverter a lógica para que corresponda à visão do utilizador.
+                   
+                    const userHandSide = isRightHand ? 'Left' : 'Right';
+                   
+                    const landmarks = results.multiHandLandmarks[index];
+                    const indexFingerY = landmarks[8].y;
+
+                    // Ativar som correspondente
+                    if (userHandSide === 'Left') {
+                        synths.left.active = true;
+                        updateSound('Left', indexFingerY);
+                    } else {
+                        synths.right.active = true;
+                        updateSound('Right', indexFingerY);
+                    }
+
+                    // Desenhar efeitos visuais
+                    drawHandEffects(landmarks, userHandSide);
+                   
+                    // Desenhar esqueleto da mão (opcional, estilizado)
+                    drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS,
+                                   {color: '#C8A2C8', lineWidth: 2});
+                }
+            }
+
+            // Atualizar silêncio se nenhuma mão for detetada
+            const now = audioCtx ? audioCtx.currentTime : 0;
+            if (audioCtx) {
+                if (!synths.left.active) synths.left.gain.gain.setTargetAtTime(0, now, 0.1);
+                if (!synths.right.active) synths.right.gain.gain.setTargetAtTime(0, now, 0.1);
+            }
+        }
+
+        // --- Inicialização ---
+        const hands = new Hands({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }});
+
+        hands.setOptions({
+            maxNumHands: 2,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        hands.onResults(onResults);
+
+        // Função chamada pelo botão de início
+        async function startExperience() {
+            startBtn.style.display = 'none';
+            loadingText.style.display = 'block';
+           
+            // Iniciar Áudio (necessário interação do utilizador)
+            initAudio();
+
+            // Iniciar Câmara
+            const camera = new Camera(videoElement, {
+                onFrame: async () => {
+                    await hands.send({image: videoElement});
+                },
+                width: 1280,
+                height: 720
+            });
+           
+            await camera.start();
+           
+            // Esconder overlay quando a câmera estiver pronta (aproximado)
+            setTimeout(() => {
+                overlay.style.opacity = 0;
+                setTimeout(() => { overlay.style.display = 'none'; }, 1000);
+            }, 2000);
+        }
+
+    </script>
+</body>
+</html>

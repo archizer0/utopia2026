@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sinfonia das Maravilhas: Alice AR</title>
+    <!-- Tailwind CSS para UI -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- MediaPipe Holistic (Rosto + Mãos) -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700&family=Playfair+Display:ital@0;1&display=swap');
+
+        body {
+            font-family: 'Playfair Display', serif;
+            background-color: #0f172a;
+            color: white;
+            overflow: hidden;
+            margin: 0;
+            padding: 0;
+        }
+
+        .wonderland-font {
+            font-family: 'Cinzel Decorative', cursive;
+        }
+
+        /* Estilo para o Canvas espelhado */
+        #output_canvas {
+            transform: scaleX(-1);
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        /* Container de UI */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .interactive-btn {
+            pointer-events: auto;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(5px);
+        }
+       
+        .interactive-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.5);
+        }
+
+        .interactive-btn.active {
+            border: 2px solid #ffd700;
+            background: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 0 20px #ffd700;
+        }
+
+        #start-overlay {
+            background: radial-gradient(circle, rgba(20,0,30,0.9) 0%, rgba(0,0,0,1) 100%);
+            pointer-events: auto;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Video escondido -->
+    <video id="input_video" class="hidden"></video>
+   
+    <!-- Canvas Principal -->
+    <canvas id="output_canvas"></canvas>
+
+    <!-- UI Overlay -->
+    <div id="ui-layer" class="flex flex-col justify-between p-4">
+       
+        <!-- Cabeçalho -->
+        <div class="text-center mt-4">
+            <h1 class="wonderland-font text-3xl md:text-5xl text-yellow-100 drop-shadow-lg">Sinfonia & Máscaras</h1>
+            <p class="text-sm md:text-lg text-blue-200 mt-1 opacity-80">Controla o som com as mãos • Veste a personagem</p>
+        </div>
+
+        <!-- Seletor de Personagens -->
+        <div class="flex flex-wrap justify-center gap-2 md:gap-4 mb-6">
+            <button onclick="setTheme('alice')" id="btn-alice" class="interactive-btn active bg-blue-900/60 border border-blue-400 text-white px-4 py-2 rounded-xl flex flex-col items-center">
+                <span class="text-2xl">👩🏼</span>
+                <span class="text-xs font-bold mt-1">Alice</span>
+            </button>
+            <button onclick="setTheme('queen')" id="btn-queen" class="interactive-btn bg-red-900/60 border border-red-500 text-white px-4 py-2 rounded-xl flex flex-col items-center">
+                <span class="text-2xl">👑</span>
+                <span class="text-xs font-bold mt-1">Rainha</span>
+            </button>
+            <button onclick="setTheme('hatter')" id="btn-hatter" class="interactive-btn bg-green-900/60 border border-green-500 text-white px-4 py-2 rounded-xl flex flex-col items-center">
+                <span class="text-2xl">🎩</span>
+                <span class="text-xs font-bold mt-1">Chapeleiro</span>
+            </button>
+            <button onclick="setTheme('rabbit')" id="btn-rabbit" class="interactive-btn bg-white/20 border border-white text-white px-4 py-2 rounded-xl flex flex-col items-center">
+                <span class="text-2xl">🐰</span>
+                <span class="text-xs font-bold mt-1">Coelho</span>
+            </button>
+            <button onclick="setTheme('cat')" id="btn-cat" class="interactive-btn bg-purple-900/60 border border-purple-500 text-white px-4 py-2 rounded-xl flex flex-col items-center">
+                <span class="text-2xl">😼</span>
+                <span class="text-xs font-bold mt-1">Gato</span>
+            </button>
+            <button onclick="setTheme('guard')" id="btn-guard" class="interactive-btn bg-gray-800/60 border border-gray-400 text-white px-4 py-2 rounded-xl flex flex-col items-center">
+                <span class="text-2xl">♠️</span>
+                <span class="text-xs font-bold mt-1">Guarda</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Tela de Início -->
+    <div id="start-overlay" class="absolute inset-0 z-50 flex flex-col items-center justify-center text-center p-6">
+        <h1 class="wonderland-font text-5xl md:text-7xl text-yellow-400 mb-4 animate-pulse">O País das Maravilhas</h1>
+        <p class="text-gray-300 max-w-lg mb-8 text-lg">
+            Permite o acesso à câmara.<br>
+            Aumenta o som.<br>
+            Transforma-te na personagem!
+        </p>
+        <button onclick="startExperience()" class="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold py-4 px-10 rounded-full shadow-lg transform transition hover:scale-110 text-xl border-2 border-white">
+            ENTRAR NA TOCA DO COELHO 🐇
+        </button>
+    </div>
+
+    <script>
+        // --- Configuração Global ---
+        const videoElement = document.getElementById('input_video');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        let currentTheme = 'alice';
+        let audioContext = null;
+        let isRunning = false;
+       
+        // --- Audio Engine (Sintetizador) ---
+        class ThereminVoice {
+            constructor() {
+                this.osc = null;
+                this.gainNode = null;
+                this.panNode = null;
+                this.filterNode = null;
+                this.lfo = null;
+                this.lfoGain = null;
+            }
+
+            init(ctx) {
+                this.osc = ctx.createOscillator();
+                this.gainNode = ctx.createGain();
+                this.panNode = ctx.createStereoPanner();
+                this.filterNode = ctx.createBiquadFilter();
+               
+                // LFO para vibrato/efeitos
+                this.lfo = ctx.createOscillator();
+                this.lfoGain = ctx.createGain();
+
+                this.lfo.connect(this.lfoGain);
+                this.lfoGain.connect(this.osc.frequency);
+
+                this.osc.connect(this.filterNode);
+                this.filterNode.connect(this.gainNode);
+                this.gainNode.connect(this.panNode);
+                this.panNode.connect(ctx.destination);
+
+                this.gainNode.gain.value = 0;
+                this.osc.start();
+                this.lfo.start();
+            }
+
+            update(x, y, handType, theme) {
+                if (!audioContext) return;
+                const now = audioContext.currentTime;
+               
+                // Volume baseado na altura da mão (Y)
+                let volume = Math.max(0, 1 - y);
+                let frequency, waveType, lfoFreq, lfoDepth;
+
+                // Configurações por Tema
+                switch(theme) {
+                    case 'alice':
+                        waveType = 'sine';
+                        frequency = 200 + (x * 800);
+                        lfoFreq = 2; lfoDepth = 5;
+                        this.filterNode.type = 'lowpass';
+                        this.filterNode.frequency.value = 800 + (volume * 1000);
+                        break;
+                   
+                    case 'queen':
+                        waveType = 'sawtooth';
+                        frequency = 80 + (x * 300);
+                        lfoFreq = 10; lfoDepth = 20;
+                        this.filterNode.type = 'lowpass';
+                        this.filterNode.frequency.value = 200 + (volume * 2000);
+                        volume = volume * 1.2;
+                        break;
+
+                    case 'hatter':
+                        waveType = 'square';
+                        frequency = 150 + (x * 600);
+                        lfoFreq = 20 + (Math.random() * 10);
+                        lfoDepth = 50;
+                        this.filterNode.type = 'bandpass';
+                        break;
+
+                    case 'rabbit':
+                        waveType = 'triangle';
+                        frequency = 400 + (x * 400);
+                        lfoFreq = 12; lfoDepth = 0;
+                        if (Date.now() % 200 < 50) volume = 0.1;
+                        break;
+
+                    case 'cat':
+                        waveType = 'sine';
+                        frequency = 300 + (x * 600);
+                        this.osc.frequency.setTargetAtTime(frequency, now, 0.2);
+                        lfoFreq = 0.5; lfoDepth = 100;
+                        break;
+                   
+                    case 'guard':
+                        waveType = 'square';
+                        frequency = 100 + (Math.floor(x * 5) * 100);
+                        lfoFreq = 0; lfoDepth = 0;
+                        break;
+
+                    default:
+                        waveType = 'sine'; frequency = 440;
+                }
+
+                this.osc.type = waveType;
+                if (theme !== 'cat') {
+                     this.osc.frequency.setTargetAtTime(frequency, now, 0.05);
+                }
+                this.gainNode.gain.setTargetAtTime(volume * 0.2, now, 0.1);
+               
+                let panVal = (x * 2) - 1;
+                if (handType === 'Left') panVal -= 0.3;
+                if (handType === 'Right') panVal += 0.3;
+                this.panNode.pan.setTargetAtTime(Math.max(-1, Math.min(1, panVal)), now, 0.1);
+
+                this.lfo.frequency.value = lfoFreq;
+                this.lfoGain.gain.value = lfoDepth;
+            }
+
+            stop() {
+                if(this.gainNode) this.gainNode.gain.setTargetAtTime(0, audioContext.currentTime, 0.1);
+            }
+        }
+
+        const leftHandVoice = new ThereminVoice();
+        const rightHandVoice = new ThereminVoice();
+
+        // --- Gestão de Temas e UI ---
+        function setTheme(theme) {
+            currentTheme = theme;
+            document.querySelectorAll('.interactive-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`btn-${theme}`).classList.add('active');
+        }
+
+        function startExperience() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            leftHandVoice.init(audioContext);
+            rightHandVoice.init(audioContext);
+           
+            document.getElementById('start-overlay').style.opacity = '0';
+            setTimeout(() => {
+                document.getElementById('start-overlay').style.display = 'none';
+            }, 500);
+
+            isRunning = true;
+            initCamera();
+        }
+
+        // --- Visual Assets ---
+        const assets = {
+            alice: { color: '#60a5fa', emoji: '👱‍♀️', trail: 'rgba(173, 216, 230, 0.5)' },
+            queen: { color: '#ef4444', emoji: '👑', trail: 'rgba(255, 0, 0, 0.5)' },
+            hatter: { color: '#22c55e', emoji: '🎩', trail: 'rgba(0, 255, 0, 0.5)' },
+            rabbit: { color: '#ffffff', emoji: '🐇', trail: 'rgba(255, 255, 255, 0.5)' },
+            cat: { color: '#a855f7', emoji: '😼', trail: 'rgba(128, 0, 128, 0.5)' },
+            guard: { color: '#374151', emoji: '♠️', trail: 'rgba(0, 0, 0, 0.5)' }
+        };
+
+        // --- Holistic Logic (Rosto + Mãos) ---
+        function onResults(results) {
+            canvasElement.width = window.innerWidth;
+            canvasElement.height = window.innerHeight;
+
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+            // Efeito gato
+            if (currentTheme === 'cat') {
+                canvasCtx.globalAlpha = 0.6 + Math.sin(Date.now() / 500) * 0.4;
+            } else {
+                canvasCtx.globalAlpha = 1.0;
+            }
+
+            // Desenhar Video
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+            // 1. Processar Rosto (Máscaras)
+            if (results.faceLandmarks) {
+                drawFaceMask(canvasCtx, results.faceLandmarks, currentTheme);
+            }
+
+            // 2. Processar Mãos e Som
+            // Holistic devolve rightHandLandmarks e leftHandLandmarks separadamente
+            let leftActive = false;
+            let rightActive = false;
+
+            if (results.rightHandLandmarks) {
+                const x = results.rightHandLandmarks[8].x;
+                const y = results.rightHandLandmarks[8].y;
+                const px = x * canvasElement.width;
+                const py = y * canvasElement.height;
+                const wx = results.rightHandLandmarks[0].x * canvasElement.width;
+                const wy = results.rightHandLandmarks[0].y * canvasElement.height;
+               
+                // Mão direita do usuário (na tela aparece à direita se não espelhado, mas nós espelhamos via CSS)
+                // Nota: O Holistic "rightHand" é a mão direita fisica.
+                // Devido ao mirror CSS, o input x já vem correto para lógica visual,
+                // mas para áudio usamos 1-x se quisermos manter a escala esquerda->direita do ecrã.
+               
+                drawCharacterHand(canvasCtx, px, py, wx, wy, currentTheme);
+                rightHandVoice.update(1-x, y, 'Right', currentTheme);
+                rightActive = true;
+                createParticles(px, py, assets[currentTheme].color);
+            }
+
+            if (results.leftHandLandmarks) {
+                const x = results.leftHandLandmarks[8].x;
+                const y = results.leftHandLandmarks[8].y;
+                const px = x * canvasElement.width;
+                const py = y * canvasElement.height;
+                const wx = results.leftHandLandmarks[0].x * canvasElement.width;
+                const wy = results.leftHandLandmarks[0].y * canvasElement.height;
+
+                drawCharacterHand(canvasCtx, px, py, wx, wy, currentTheme);
+                leftHandVoice.update(1-x, y, 'Left', currentTheme);
+                leftActive = true;
+                createParticles(px, py, assets[currentTheme].color);
+            }
+
+            if (!leftActive) leftHandVoice.stop();
+            if (!rightActive) rightHandVoice.stop();
+
+            canvasCtx.restore();
+        }
+
+        // --- Desenhar Máscaras (AR) ---
+        function drawFaceMask(ctx, landmarks, theme) {
+            // Pontos chave
+            const topHead = landmarks[10]; // Topo da cabeça
+            const noseTip = landmarks[1];  // Ponta do nariz
+            const leftTemple = landmarks[127]; // Lado esquerdo (do espectador, se mirror)
+            const rightTemple = landmarks[356]; // Lado direito
+            const chin = landmarks[152];
+
+            const w = ctx.canvas.width;
+            const h = ctx.canvas.height;
+
+            const tx = topHead.x * w;
+            const ty = topHead.y * h;
+            const nx = noseTip.x * w;
+            const ny = noseTip.y * h;
+            const lx = leftTemple.x * w;
+            const rx = rightTemple.x * w;
+
+            // Escala da cabeça para dimensionar adereços
+            const faceWidth = Math.abs(rx - lx);
+           
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+
+            if (theme === 'alice') {
+                // Laço azul
+                ctx.font = `${faceWidth * 1.5}px Arial`;
+                ctx.fillText("🎀", tx, ty - (faceWidth * 0.4));
+                // Cabelo loiro brilhante (filtro subtil)
+                ctx.shadowColor = "#FFFF00";
+                ctx.shadowBlur = 30;
+                ctx.beginPath();
+                ctx.strokeStyle = "rgba(255, 255, 0, 0.3)";
+                ctx.lineWidth = 2;
+                ctx.arc(nx, ny, faceWidth * 0.8, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+            }
+            else if (theme === 'queen') {
+                // Coroa
+                ctx.font = `${faceWidth * 1.8}px Arial`;
+                ctx.fillText("👑", tx, ty - (faceWidth * 0.6));
+                // Maquilhagem
+                ctx.fillStyle = "rgba(255, 0, 0, 0.3)";
+                ctx.beginPath();
+                ctx.arc(nx, ny, faceWidth * 0.4, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            else if (theme === 'hatter') {
+                // Cartola
+                ctx.font = `${faceWidth * 2.0}px Arial`;
+                ctx.fillText("🎩", tx, ty - (faceWidth * 0.8));
+                // Nariz laranja
+                ctx.beginPath();
+                ctx.arc(nx, ny, 10, 0, Math.PI * 2);
+                ctx.fillStyle = "orange";
+                ctx.fill();
+            }
+            else if (theme === 'rabbit') {
+                // Orelhas
+                ctx.font = `${faceWidth * 1.5}px Arial`;
+                ctx.fillText("🐰", tx, ty - (faceWidth * 0.2));
+                // Bigodes
+                ctx.strokeStyle = "white";
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(nx - 20, ny); ctx.lineTo(nx - 80, ny - 10);
+                ctx.moveTo(nx - 20, ny + 10); ctx.lineTo(nx - 80, ny + 20);
+                ctx.moveTo(nx + 20, ny); ctx.lineTo(nx + 80, ny - 10);
+                ctx.moveTo(nx + 20, ny + 10); ctx.lineTo(nx + 80, ny + 20);
+                ctx.stroke();
+            }
+            else if (theme === 'cat') {
+                // Orelhas de gato
+                ctx.fillStyle = "#a855f7";
+                ctx.beginPath();
+                ctx.moveTo(lx, ty); ctx.lineTo(lx - 20, ty - 60); ctx.lineTo(lx + 40, ty);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(rx, ty); ctx.lineTo(rx + 20, ty - 60); ctx.lineTo(rx - 40, ty);
+                ctx.fill();
+               
+                // Sorriso
+                ctx.strokeStyle = "#a855f7";
+                ctx.lineWidth = 5;
+                ctx.beginPath();
+                ctx.arc(nx, ny + (faceWidth*0.2), faceWidth * 0.3, 0, Math.PI);
+                ctx.stroke();
+            }
+            else if (theme === 'guard') {
+                // Capacete / Carta
+                ctx.fillStyle = "rgba(0,0,0,0.8)";
+                ctx.fillRect(tx - faceWidth/2, ty - faceWidth/2, faceWidth, faceWidth * 0.8);
+                ctx.font = `${faceWidth}px Arial`;
+                ctx.fillText("♣️", tx, ty);
+            }
+        }
+
+        // --- Desenhar Mãos ---
+        function drawCharacterHand(ctx, x, y, wx, wy, theme) {
+            const style = assets[theme];
+            ctx.shadowColor = style.color;
+            ctx.shadowBlur = 20;
+
+            ctx.beginPath();
+            ctx.moveTo(wx, wy);
+            ctx.lineTo(x, y);
+            ctx.strokeStyle = style.trail;
+            ctx.lineWidth = 5;
+            ctx.stroke();
+
+            ctx.font = "50px Arial";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillStyle = "#fff";
+           
+            if (theme === 'queen') {
+                ctx.fillText("❤️", x, y);
+            } else if (theme === 'hatter') {
+                ctx.fillText("☕", x, y);
+            } else if (theme === 'rabbit') {
+                ctx.fillText("⌚", x, y);
+            } else if (theme === 'guard') {
+                ctx.fillText("⚔️", x, y);
+            } else {
+                ctx.fillText(style.emoji, x, y);
+            }
+            ctx.shadowBlur = 0;
+        }
+
+        // --- Partículas ---
+        const particles = [];
+        function createParticles(x, y, color) {
+            if (Math.random() > 0.3) return;
+            particles.push({
+                x: x, y: y,
+                vx: (Math.random() - 0.5) * 5,
+                vy: (Math.random() - 0.5) * 5,
+                life: 1.0,
+                color: color
+            });
+        }
+       
+        function animateParticles() {
+            if (!isRunning) { requestAnimationFrame(animateParticles); return; }
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.05;
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+            requestAnimationFrame(animateParticles);
+        }
+        animateParticles();
+
+        const _drawCharacterHand = drawCharacterHand;
+        drawCharacterHand = function(ctx, x, y, wx, wy, theme) {
+            _drawCharacterHand(ctx, x, y, wx, wy, theme);
+            particles.forEach(p => {
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 5 * p.life, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.globalAlpha = 1.0;
+        }
+
+        // --- Inicialização do Holistic ---
+        function initCamera() {
+            const holistic = new Holistic({locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`;
+            }});
+           
+            holistic.setOptions({
+                modelComplexity: 1,
+                smoothLandmarks: true,
+                enableSegmentation: false,
+                smoothSegmentation: false,
+                refineFaceLandmarks: true,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+           
+            holistic.onResults(onResults);
+           
+            const camera = new Camera(videoElement, {
+                onFrame: async () => {
+                    await holistic.send({image: videoElement});
+                },
+                width: 1280,
+                height: 720
+            });
+            camera.start();
+        }
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Alice: Fuga do Tsunami (Webcam)</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700&family=Roboto:wght@400&display=swap');
+
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #2c0e37;
+            font-family: 'Roboto', sans-serif;
+            touch-action: none;
+            user-select: none;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(to bottom, #87CEEB 0%, #E0F7FA 50%, #f7dbf3 100%);
+        }
+
+        canvas {
+            display: block;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+
+        #webcam-container {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 160px;
+            height: 120px;
+            border: 4px solid #fff;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            z-index: 20;
+            display: none; /* Escondido por padrão */
+            background: #000;
+        }
+
+        #webcam {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); /* Espelhar a câmara */
+        }
+
+        #head-zone {
+            position: absolute;
+            bottom: 5%; /* Mudado de top para bottom */
+            left: 25%;
+            width: 50%;
+            height: 35%;
+            border: 2px dashed rgba(255, 50, 50, 0.8);
+            border-radius: 5px;
+            box-sizing: border-box;
+            box-shadow: 0 0 5px rgba(255, 0, 0, 0.5);
+        }
+
+        #motion-indicator {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 5px;
+            background: #00ff00;
+            width: 0%;
+            transition: width 0.1s;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .hud {
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            font-family: 'Cinzel Decorative', cursive;
+            font-size: 24px;
+            color: #333;
+            text-shadow: 1px 1px 0 #fff;
+            width: 100%;
+            box-sizing: border-box;
+            z-index: 5;
+        }
+
+        .warning-text {
+            color: #d32f2f;
+            animation: pulse 1s infinite;
+            display: none;
+            font-weight: bold;
+        }
+
+        #start-screen, #game-over-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            backdrop-filter: blur(5px);
+            pointer-events: auto;
+            transition: opacity 0.3s;
+        }
+
+        h1 {
+            font-family: 'Cinzel Decorative', cursive;
+            font-size: 3rem;
+            color: #006064;
+            margin: 0 0 10px 0;
+            text-align: center;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+
+        h2 {
+            font-family: 'Cinzel Decorative', cursive;
+            font-size: 1.5rem;
+            color: #333;
+            margin: 10px 0;
+        }
+
+        p {
+            font-size: 1.1rem;
+            color: #333;
+            text-align: center;
+            max-width: 600px;
+            margin-bottom: 20px;
+            line-height: 1.4;
+        }
+
+        .btn {
+            padding: 12px 30px;
+            font-size: 1.3rem;
+            font-family: 'Cinzel Decorative', cursive;
+            background: #222;
+            color: #fff;
+            border: 2px solid #006064;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: transform 0.1s, background 0.2s;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            margin-top: 10px;
+        }
+
+        .btn:hover {
+            background: #006064;
+            transform: scale(1.05);
+        }
+
+        .btn.secondary {
+            background: #fff;
+            color: #222;
+            border-color: #222;
+            font-size: 1rem;
+            padding: 10px 20px;
+        }
+       
+        .btn.active {
+            background: #4caf50; /* Verde quando ativado */
+            color: white;
+            border-color: #2e7d32;
+        }
+
+        /* Character Select Grid */
+        .char-grid {
+            display: flex;
+            gap: 15px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .char-card {
+            width: 80px;
+            height: 100px;
+            border: 3px solid #ccc;
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            background: #fff;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .char-card.selected {
+            border-color: #00bcd4;
+            background: #e0f7fa;
+            transform: translateY(-5px);
+            box-shadow: 0 5px 10px rgba(0,0,0,0.2);
+        }
+
+        .char-card.locked {
+            background: #eee;
+            cursor: not-allowed;
+            filter: grayscale(100%);
+        }
+
+        .char-card.locked::after {
+            content: "🔒";
+            position: absolute;
+            font-size: 24px;
+        }
+       
+        .char-icon {
+            font-size: 30px;
+            margin-bottom: 5px;
+        }
+       
+        .char-name {
+            font-size: 10px;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        .char-req {
+            font-size: 9px;
+            color: #d32f2f;
+            margin-top: 2px;
+        }
+
+        .hidden {
+            display: none !important;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.5; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.1); }
+            100% { opacity: 0.5; transform: scale(1); }
+        }
+
+        /* Mobile tweaks */
+        @media (max-width: 600px) {
+            h1 { font-size: 2rem; }
+            .char-card { width: 70px; height: 90px; }
+            .hud { font-size: 18px; }
+            #webcam-container { width: 100px; height: 75px; bottom: 10px; right: 10px; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Webcam Preview -->
+    <div id="webcam-container">
+        <video id="webcam" autoplay playsinline muted></video>
+        <div id="head-zone"></div>
+        <div id="motion-indicator"></div>
+    </div>
+
+    <div id="ui-layer">
+        <div class="hud">
+            <span id="score-display">Distância: 0m</span>
+            <span id="warning-msg" class="warning-text">⚠ TSUNAMI A APROXIMAR! ⚠</span>
+        </div>
+    </div>
+
+    <div id="start-screen">
+        <h1>Fuga do Tsunami</h1>
+        <p>Um Tsunami Mágico está a varrer o País das Maravilhas!<br>Corre e não olhes para trás.</p>
+       
+        <h2>Escolhe o Personagem:</h2>
+        <div class="char-grid" id="char-grid">
+            <!-- Gerado via JS -->
+        </div>
+
+        <button class="btn secondary" id="camera-btn">📷 Ativar Câmara</button>
+        <p id="cam-status" style="font-size: 0.8rem; margin-top: 5px; color: #666;"></p>
+
+        <button class="btn" id="start-btn">Começar a Fuga</button>
+    </div>
+
+    <div id="game-over-screen" class="hidden">
+        <h1 style="color: #006064;">Engolido pela Onda!</h1>
+        <p id="final-score">Correste 0m</p>
+        <p id="unlock-msg" style="color: #d32f2f; font-weight: bold;"></p>
+        <button class="btn" id="restart-btn">Tentar Novamente</button>
+        <button class="btn" id="menu-btn" style="background: #444; border-color: #666; margin-top: 10px; font-size: 1rem;">Menu Principal</button>
+    </div>
+</div>
+
+<script>
+/**
+ * LÓGICA DO JOGO - TSUNAMI EDITION + WEBCAM MOTION
+ */
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// UI Elements
+const startScreen = document.getElementById('start-screen');
+const gameOverScreen = document.getElementById('game-over-screen');
+const scoreDisplay = document.getElementById('score-display');
+const warningMsg = document.getElementById('warning-msg');
+const finalScoreDisplay = document.getElementById('final-score');
+const unlockMsg = document.getElementById('unlock-msg');
+const charGrid = document.getElementById('char-grid');
+const webcamContainer = document.getElementById('webcam-container');
+const webcamVideo = document.getElementById('webcam');
+const motionIndicator = document.getElementById('motion-indicator');
+const camStatus = document.getElementById('cam-status');
+
+const startBtn = document.getElementById('start-btn');
+const restartBtn = document.getElementById('restart-btn');
+const menuBtn = document.getElementById('menu-btn');
+const cameraBtn = document.getElementById('camera-btn');
+
+// Game State
+let gameRunning = false;
+let frameId;
+let score = 0;
+let highScore = localStorage.getItem('aliceTsunamiRecord') || 0;
+let gameSpeed = 6;
+let gravity = 0.6;
+
+// Tsunami Mechanic
+let tsunamiX = -300;
+let playerX = 200;
+
+// Camera State
+let cameraActive = false;
+let motionCanvas = document.createElement('canvas');
+let motionCtx = motionCanvas.getContext('2d');
+let lastImageData = null;
+let motionThreshold = 3000; // Sensibilidade do movimento
+
+// Characters Data
+const CHARACTERS = [
+    { id: 'alice', name: 'Alice', icon: '👩🏼', color: '#3498db', req: 0 },
+    { id: 'rabbit', name: 'Coelho', icon: '🐰', color: '#fff', req: 500 },
+    { id: 'hatter', name: 'Chapeleiro', icon: '🎩', color: '#2ecc71', req: 1000 },
+    { id: 'cat', name: 'Gato Cheshire', icon: '😺', color: '#9b59b6', req: 2000 }
+];
+
+let selectedCharId = 'alice';
+let unlockedChars = JSON.parse(localStorage.getItem('unlockedChars')) || ['alice'];
+
+// Dimensions
+let groundHeight = 100;
+
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    groundHeight = canvas.height * 0.15;
+    if (groundHeight < 50) groundHeight = 50;
+    playerX = window.innerWidth < 600 ? 120 : 200;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// --- CAMERA LOGIC ---
+
+async function setupCamera() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+                width: { ideal: 320 },
+                height: { ideal: 240 },
+                facingMode: "user"
+            }
+        });
+        webcamVideo.srcObject = stream;
+       
+        // Preparar canvas de processamento (pequeno para performance)
+        motionCanvas.width = 100;
+        motionCanvas.height = 75;
+       
+        cameraActive = true;
+        webcamContainer.style.display = 'block';
+        cameraBtn.classList.add('active');
+        cameraBtn.innerText = "📷 Câmara Ativa";
+        camStatus.innerText = "Mexe a mão dentro do quadrado VERMELHO para saltar!";
+    } catch (err) {
+        console.error("Erro na câmara:", err);
+        camStatus.innerText = "Erro: Não foi possível aceder à câmara.";
+        cameraActive = false;
+    }
+}
+
+function processMotion() {
+    if (!cameraActive || !gameRunning) return;
+
+    // Desenhar frame atual no canvas escondido
+    motionCtx.drawImage(webcamVideo, 0, 0, motionCanvas.width, motionCanvas.height);
+   
+    const currentImageData = motionCtx.getImageData(0, 0, motionCanvas.width, motionCanvas.height);
+   
+    if (lastImageData) {
+        let movementScore = 0;
+        const data = currentImageData.data;
+        const lastData = lastImageData.data;
+       
+        // Definir a ZONA DE DETEÇÃO (Agora em BAIXO)
+        // Baseado nas dimensões do motionCanvas (100x75)
+        // Zona: x(25-75), y(45-70) - Fundo central
+        const startX = 25;
+        const endX = 75;
+        const startY = 45; // Mudado para zona inferior
+        const endY = 70;   // Mudado para zona inferior
+       
+        // Iterar apenas sobre a zona definida
+        for (let y = startY; y < endY; y++) {
+            for (let x = startX; x < endX; x+=2) { // Pular pixels para performance
+                const i = (y * motionCanvas.width + x) * 4;
+               
+                // Diferença absoluta média RGB
+                const rDiff = Math.abs(data[i] - lastData[i]);
+                const gDiff = Math.abs(data[i+1] - lastData[i+1]);
+                const bDiff = Math.abs(data[i+2] - lastData[i+2]);
+               
+                if (rDiff + gDiff + bDiff > 80) { // Se o pixel mudou significativamente
+                    movementScore++;
+                }
+            }
+        }
+       
+        // Visualizar quantidade de movimento
+        let zoneArea = (endX - startX) * (endY - startY) / 2; // /2 porque pulamos pixels
+        let widthPct = Math.min((movementScore * 10) / zoneArea * 100, 100);
+        motionIndicator.style.width = widthPct + "%";
+
+        // Detetar Salto (ajustar sensibilidade conforme necessário)
+        if (movementScore > 50) {
+             player.jump();
+        }
+    }
+   
+    lastImageData = currentImageData;
+}
+
+cameraBtn.addEventListener('click', () => {
+    if (!cameraActive) {
+        setupCamera();
+    } else {
+        // Desativar (opcional, por agora apenas ativa)
+        alert("Câmara já está ativa!");
+    }
+});
+
+// --- MENU & SELECTION LOGIC ---
+
+function renderCharSelection() {
+    charGrid.innerHTML = '';
+    CHARACTERS.forEach(char => {
+        const isUnlocked = unlockedChars.includes(char.id);
+        const el = document.createElement('div');
+        el.className = `char-card ${isUnlocked ? '' : 'locked'} ${selectedCharId === char.id ? 'selected' : ''}`;
+       
+        let html = `<div class="char-icon">${char.icon}</div>
+                    <div class="char-name">${char.name}</div>`;
+       
+        if (!isUnlocked) {
+            html += `<div class="char-req">${char.req}m</div>`;
+        }
+
+        el.innerHTML = html;
+        el.onclick = () => {
+            if (isUnlocked) {
+                selectedCharId = char.id;
+                renderCharSelection();
+            }
+        };
+        charGrid.appendChild(el);
+    });
+}
+
+// --- CLASSES ---
+
+class Player {
+    constructor(charId) {
+        this.charConfig = CHARACTERS.find(c => c.id === charId);
+        this.width = 40;
+        this.height = 70;
+        this.x = playerX;
+        this.y = canvas.height - groundHeight - this.height;
+        this.dy = 0;
+        this.jumpForce = 14;
+        this.grounded = true;
+        this.rotation = 0;
+        this.stunned = 0;
+    }
+
+    jump() {
+        if (this.grounded && this.stunned <= 0) {
+            this.dy = -this.jumpForce;
+            this.grounded = false;
+            createParticles(this.x + this.width/2, this.y + this.height, 5, '#fff');
+        }
+    }
+
+    update() {
+        this.dy += gravity;
+        this.y += this.dy;
+
+        if (this.y + this.height > canvas.height - groundHeight) {
+            this.y = canvas.height - groundHeight - this.height;
+            this.dy = 0;
+            this.grounded = true;
+            this.rotation = 0;
+        } else {
+            this.rotation += 0.05;
+        }
+
+        if (this.stunned > 0) this.stunned--;
+    }
+
+    draw() {
+        ctx.save();
+        ctx.translate(this.x + this.width/2, this.y + this.height/2);
+       
+        if (this.stunned > 0) {
+            ctx.rotate((Math.random() - 0.5) * 0.5);
+            ctx.globalAlpha = 0.7;
+        } else if (!this.grounded) {
+            ctx.rotate(Math.min(this.rotation, 0.3));
+        }
+
+        this.drawCharacterSkin();
+        ctx.restore();
+    }
+
+    drawCharacterSkin() {
+        const c = this.charConfig;
+        if (c.id === 'alice') {
+            ctx.fillStyle = c.color;
+            ctx.beginPath();
+            ctx.moveTo(-15, 20); ctx.lineTo(15, 20); ctx.lineTo(10, -10); ctx.lineTo(-10, -10);
+            ctx.fill();
+            ctx.fillStyle = '#ffccaa';
+            ctx.beginPath(); ctx.arc(0, -18, 12, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#f1c40f';
+            ctx.beginPath(); ctx.arc(0, -20, 14, Math.PI, Math.PI * 2.5); ctx.fill();
+        }
+        else if (c.id === 'rabbit') {
+            ctx.fillStyle = '#fff';
+            ctx.beginPath(); ctx.ellipse(0, 5, 15, 20, 0, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(0, -15, 12, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#pink';
+            ctx.beginPath(); ctx.ellipse(-5, -30, 4, 15, -0.2, 0, Math.PI*2);
+            ctx.ellipse(5, -30, 4, 15, 0.2, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.beginPath(); ctx.ellipse(-5, -30, 3, 12, -0.2, 0, Math.PI*2);
+            ctx.ellipse(5, -30, 3, 12, 0.2, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#e74c3c';
+            ctx.fillRect(-10, 0, 20, 15);
+        }
+        else if (c.id === 'hatter') {
+            ctx.fillStyle = '#16a085';
+            ctx.fillRect(-12, 0, 24, 25);
+            ctx.fillStyle = '#ffccaa';
+            ctx.beginPath(); ctx.arc(0, -15, 11, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#2c3e50';
+            ctx.fillRect(-15, -20, 30, 5);
+            ctx.fillRect(-10, -45, 20, 25);
+            ctx.fillStyle = '#e67e22';
+            ctx.fillRect(-10, -25, 20, 5);
+        }
+        else if (c.id === 'cat') {
+            ctx.fillStyle = '#9b59b6';
+            ctx.beginPath(); ctx.ellipse(0, 5, 18, 15, 0, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#e056fd';
+            ctx.fillRect(-10, 0, 20, 5);
+            ctx.fillRect(-12, 10, 24, 5);
+            ctx.fillStyle = '#9b59b6';
+            ctx.beginPath(); ctx.arc(0, -15, 14, 0, Math.PI*2); ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.arc(0, -12, 8, 0.2, Math.PI-0.2); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(-10, -25); ctx.lineTo(-5,-15); ctx.lineTo(-15,-15); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(10, -25); ctx.lineTo(5,-15); ctx.lineTo(15,-15); ctx.fill();
+        }
+    }
+}
+
+class Tsunami {
+    constructor() {
+        this.x = -300;
+        this.width = 400;
+        this.waveOffset = 0;
+        this.color = 'rgba(0, 150, 255, 0.8)';
+        this.foamColor = 'rgba(255, 255, 255, 0.9)';
+    }
+
+    update(playerStunned) {
+        if (playerStunned) {
+            this.x += 4;
+        } else {
+            this.x += 0.2;
+        }
+        if (this.x < -canvas.width/2) this.x = -canvas.width/2;
+        this.waveOffset += 0.1;
+    }
+
+    draw() {
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.moveTo(-100, canvas.height);
+       
+        for (let i = 0; i <= this.width; i += 20) {
+            let y = canvas.height - groundHeight - 100 - Math.sin(this.waveOffset + i * 0.02) * 20;
+            let waveCurve = Math.pow(i / this.width, 2) * 100;
+            ctx.lineTo(this.x + i + waveCurve, y - i*0.5);
+        }
+       
+        ctx.lineTo(this.x + this.width + 100, canvas.height);
+        ctx.lineTo(-100, canvas.height);
+        ctx.fill();
+
+        ctx.fillStyle = this.foamColor;
+        ctx.beginPath();
+        for (let i = 0; i <= 50; i += 10) {
+             let tipX = this.x + this.width + 100;
+             let tipY = canvas.height - groundHeight - 150 + i + Math.sin(this.waveOffset * 2) * 10;
+             ctx.arc(tipX, tipY, 15, 0, Math.PI * 2);
+        }
+        ctx.fill();
+    }
+   
+    getTipX() {
+        return this.x + this.width + 50;
+    }
+}
+
+class Obstacle {
+    constructor() {
+        this.w = 40;
+        this.h = 40;
+        this.x = canvas.width;
+        this.y = canvas.height - groundHeight - this.h;
+        this.type = Math.floor(Math.random() * 3);
+        this.markedForDeletion = false;
+    }
+
+    update() {
+        this.x -= gameSpeed;
+        if (this.x + this.w < 0) this.markedForDeletion = true;
+    }
+
+    draw() {
+        if (this.type === 0) {
+            ctx.font = "35px Arial";
+            ctx.fillText("🪨", this.x + 20, this.y + 35);
+        } else if (this.type === 1) {
+            ctx.fillStyle = "#5d4037";
+            ctx.fillRect(this.x, this.y + 10, this.w, 30);
+            ctx.fillStyle = "#8d6e63";
+            ctx.beginPath(); ctx.arc(this.x, this.y + 25, 5, 0, Math.PI*2); ctx.fill();
+        } else {
+            ctx.fillStyle = "#fff";
+            ctx.fillRect(this.x, this.y - 10, 30, 50);
+            ctx.strokeStyle = "#000";
+            ctx.strokeRect(this.x, this.y - 10, 30, 50);
+            ctx.font = "20px Arial";
+            ctx.fillStyle = "red";
+            ctx.fillText("♦", this.x + 15, this.y + 20);
+        }
+    }
+}
+
+class PowerUp {
+    constructor() {
+        this.w = 30;
+        this.h = 30;
+        this.x = canvas.width;
+        this.y = canvas.height - groundHeight - 90;
+        this.markedForDeletion = false;
+        this.bobAngle = 0;
+    }
+    update() {
+        this.x -= gameSpeed;
+        this.bobAngle += 0.1;
+        this.y += Math.sin(this.bobAngle) * 0.5;
+        if (this.x + this.w < 0) this.markedForDeletion = true;
+    }
+    draw() {
+        ctx.font = "30px Arial";
+        ctx.fillText("🧁", this.x + 15, this.y + 25);
+    }
+}
+
+function createParticles(x, y, count, color) {
+    // Simples para performance
+}
+
+// --- VARIÁVEIS GLOBAIS ---
+let player;
+let tsunami;
+let obstacles = [];
+let powerups = [];
+let spawnTimer = 0;
+let obstaclesPassed = 0;
+
+// --- FUNÇÕES DE CONTROLE ---
+
+function initGame() {
+    player = new Player(selectedCharId);
+    tsunami = new Tsunami();
+    obstacles = [];
+    powerups = [];
+    score = 0;
+    obstaclesPassed = 0;
+    gameSpeed = 6;
+    spawnTimer = 0;
+   
+    gameRunning = true;
+    startScreen.classList.add('hidden');
+    gameOverScreen.classList.add('hidden');
+   
+    // Se a câmara estiver ativa, resetamos o tracking
+    lastImageData = null;
+   
+    animate();
+}
+
+function handleInput(e) {
+    if ((e.code === 'Space' || e.code === 'ArrowUp' || e.type === 'touchstart' || e.type === 'mousedown') && gameRunning) {
+        player.jump();
+    }
+}
+
+window.addEventListener('keydown', handleInput);
+window.addEventListener('touchstart', (e) => handleInput(e), {passive: false});
+window.addEventListener('mousedown', handleInput);
+
+startBtn.addEventListener('click', initGame);
+restartBtn.addEventListener('click', initGame);
+menuBtn.addEventListener('click', () => {
+    gameOverScreen.classList.add('hidden');
+    startScreen.classList.remove('hidden');
+    renderCharSelection();
+});
+
+// --- VISUAL DO CENÁRIO ---
+let bgOffset = 0;
+function drawBackground() {
+    let grad = ctx.createLinearGradient(0,0,0,canvas.height);
+    grad.addColorStop(0, "#2c3e50");
+    grad.addColorStop(1, "#4ca1af");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0,0,canvas.width, canvas.height);
+
+    bgOffset -= 0.5;
+    ctx.fillStyle = "rgba(255,255,255,0.2)";
+    ctx.beginPath();
+    ctx.arc((bgOffset % canvas.width) + 100, 100, 50, 0, Math.PI*2);
+    ctx.arc((bgOffset % canvas.width) + 160, 80, 60, 0, Math.PI*2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc((bgOffset % canvas.width) + canvas.width/2, 150, 40, 0, Math.PI*2);
+    ctx.fill();
+
+    ctx.fillStyle = "#2ecc71";
+    ctx.fillRect(0, canvas.height - groundHeight, canvas.width, groundHeight);
+   
+    ctx.fillStyle = "rgba(0,0,0,0.1)";
+    let patternSpeed = (score * 5) % 50;
+    for(let i = -50; i < canvas.width; i+=50) {
+        ctx.fillRect(i - patternSpeed, canvas.height - groundHeight, 25, groundHeight);
+    }
+}
+
+// --- GAME LOOP ---
+
+function checkUnlocks(finalScore) {
+    let newUnlocks = [];
+    CHARACTERS.forEach(char => {
+        if (!unlockedChars.includes(char.id) && finalScore >= char.req) {
+            unlockedChars.push(char.id);
+            newUnlocks.push(char.name);
+        }
+    });
+   
+    if (newUnlocks.length > 0) {
+        localStorage.setItem('unlockedChars', JSON.stringify(unlockedChars));
+        return `🎉 Desbloqueaste: ${newUnlocks.join(', ')}!`;
+    }
+    return "";
+}
+
+function gameOver() {
+    gameRunning = false;
+    cancelAnimationFrame(frameId);
+   
+    let msg = checkUnlocks(Math.floor(score));
+    finalScoreDisplay.innerText = `Correste ${Math.floor(score)}m`;
+    unlockMsg.innerText = msg;
+   
+    gameOverScreen.classList.remove('hidden');
+}
+
+function animate() {
+    if (!gameRunning) return;
+   
+    ctx.clearRect(0,0,canvas.width, canvas.height);
+   
+    // Processar Câmara primeiro
+    processMotion();
+   
+    drawBackground();
+   
+    tsunami.update(player.stunned > 0);
+    tsunami.draw();
+   
+    if (tsunami.getTipX() > player.x + 20) {
+        gameOver();
+        return;
+    }
+   
+    if (tsunami.getTipX() > player.x - 200) {
+        warningMsg.style.display = 'block';
+    } else {
+        warningMsg.style.display = 'none';
+    }
+
+    player.update();
+    player.draw();
+   
+    spawnTimer++;
+    if (spawnTimer > 100 - Math.min(score/50, 40) + Math.random()*50) {
+        obstacles.push(new Obstacle());
+        spawnTimer = 0;
+    }
+   
+    obstacles.forEach((obs, i) => {
+        obs.update();
+        obs.draw();
+       
+        let pad = 10;
+        if (player.x + pad < obs.x + obs.w - pad &&
+            player.x + player.width - pad > obs.x + pad &&
+            player.y + pad < obs.y + obs.h - pad &&
+            player.y + player.height - pad > obs.y + pad)
+        {
+            if (player.stunned <= 0) {
+                player.stunned = 40;
+                obs.markedForDeletion = true;
+                tsunami.x += 150;
+            }
+        }
+       
+        if (obs.markedForDeletion) {
+            if (obs.x + obs.w <= 0) {
+                obstaclesPassed++;
+                if (obstaclesPassed % 3 === 0) {
+                    tsunami.x -= 100;
+                    score += 10;
+                    createParticles(player.x, player.y, 15, '#00ffff');
+                }
+            }
+            obstacles.splice(i, 1);
+        }
+    });
+   
+    if (Math.random() < 0.005 && powerups.length < 1) powerups.push(new PowerUp());
+   
+    powerups.forEach((p, i) => {
+        p.update();
+        p.draw();
+       
+        if (player.x < p.x + p.w && player.x + player.width > p.x &&
+            player.y < p.y + p.h && player.y + player.height > p.y)
+        {
+            tsunami.x -= 150;
+            p.markedForDeletion = true;
+            score += 10;
+        }
+       
+        if (p.markedForDeletion) powerups.splice(i, 1);
+    });
+
+    score += 0.1;
+    scoreDisplay.innerText = `Distância: ${Math.floor(score)}m`;
+   
+    frameId = requestAnimationFrame(animate);
+}
+
+renderCharSelection();
+
+</script>
+</body>
+</html>

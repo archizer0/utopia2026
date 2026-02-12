@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sinfonia das Mãos</title>
+    <!-- Utilização de um CDN alternativo e estável para o Handtrack.js -->
+    <script src="https://cdn.jsdelivr.net/npm/handtrackjs/dist/handtrack.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: linear-gradient(135deg, #ff6b6b, #0a192f); /* Vermelho claro a Azul escuro */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: white;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #video-container {
+            position: relative;
+            width: 640px;
+            height: 480px;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            background: #000;
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 10;
+        }
+
+        video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            transform: scaleX(-1); /* Efeito de espelho */
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .controls {
+            margin-top: 20px;
+            text-align: center;
+            z-index: 20;
+        }
+
+        .btn {
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            padding: 12px 24px;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            font-weight: bold;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .btn:hover:not(:disabled) {
+            background: rgba(255, 255, 255, 0.4);
+            transform: translateY(-2px);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ff4444;
+        }
+
+        .status-dot.active {
+            background: #44ff44;
+            box-shadow: 0 0 10px #44ff44;
+        }
+
+        .info-panel {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-top: 30px;
+            width: 80%;
+            max-width: 800px;
+        }
+
+        .card {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 15px;
+            text-align: center;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .icon {
+            font-size: 24px;
+            margin-bottom: 8px;
+        }
+
+        #loading-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #ff6b6b;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <div id="loading-overlay">
+        <div class="loader"></div>
+        <p class="mt-4" id="loading-text">A inicializar sistema de visão...</p>
+    </div>
+
+    <h1 class="text-4xl font-bold mb-4 tracking-tight">Sinfonia das Mãos</h1>
+    <p class="mb-6 opacity-80 text-center px-4">Move as tuas mãos para esculpir o som. Esquerda/Direita altera a nota, Cima/Baixo altera o filtro.</p>
+
+    <div id="video-container">
+        <video id="myvideo"></video>
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <div class="controls">
+        <button id="trackbutton" class="btn" disabled>
+            <div id="status-dot" class="status-dot"></div>
+            <span id="btn-text">A carregar IA...</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.94c1.88-1.1 3.24-2.49 4.07-4.14a9.91 9.91 0 0 0 1.93-5.8c0-3.04-1.25-5.61-3.41-7.23a1.5 1.5 0 0 0-1.59 0c-2.16 1.62-3.41 4.19-3.41 7.23 0 2.15.68 4.17 1.93 5.8.83 1.65 2.19 3.04 4.07 4.14z"></path><path d="M19 18.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"></path></svg>
+        </button>
+    </div>
+
+    <div class="info-panel">
+        <div class="card">
+            <div class="icon">🎹</div>
+            <h3 class="font-bold">Frequência</h3>
+            <p class="text-xs opacity-60">Eixo Horizontal (X)</p>
+            <div id="freq-val" class="text-xl font-mono text-red-300">--</div>
+        </div>
+        <div class="card">
+            <div class="icon">🌀</div>
+            <h3 class="font-bold">Filtro</h3>
+            <p class="text-xs opacity-60">Eixo Vertical (Y)</p>
+            <div id="filter-val" class="text-xl font-mono text-blue-300">--</div>
+        </div>
+        <div class="card">
+            <div class="icon">🖐️</div>
+            <h3 class="font-bold">Mãos Detetadas</h3>
+            <p class="text-xs opacity-60">Interação Ativa</p>
+            <div id="hands-count" class="text-xl font-mono">0</div>
+        </div>
+    </div>
+
+    <script>
+        // Função para tentar carregar a biblioteca se o CDN falhar inicialmente
+        function checkHandTrack() {
+            return typeof handTrack !== 'undefined';
+        }
+
+        window.addEventListener('load', () => {
+            const video = document.getElementById("myvideo");
+            const canvas = document.getElementById("canvas");
+            const context = canvas.getContext("2d");
+            const trackButton = document.getElementById("trackbutton");
+            const statusDot = document.getElementById("status-dot");
+            const loadingOverlay = document.getElementById("loading-overlay");
+            const loadingText = document.getElementById("loading-text");
+            const btnText = document.getElementById('btn-text');
+           
+            let isVideo = false;
+            let model = null;
+            let audioCtx = null;
+            let oscillators = {};
+            let filter = null;
+
+            const modelParams = {
+                flipHorizontal: true,
+                maxNumBoxes: 2,
+                iouThreshold: 0.5,
+                scoreThreshold: 0.6,
+            };
+
+            // Inicialização do Áudio (apenas após interação do utilizador)
+            function initAudio() {
+                if (!audioCtx) {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    filter = audioCtx.createBiquadFilter();
+                    filter.type = "lowpass";
+                    filter.frequency.value = 1000;
+                    filter.Q.value = 10;
+                    filter.connect(audioCtx.destination);
+                }
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+            }
+
+            async function initModel() {
+                let attempts = 0;
+                const maxAttempts = 10;
+
+                const tryLoad = async () => {
+                    if (checkHandTrack()) {
+                        try {
+                            model = await handTrack.load(modelParams);
+                            loadingOverlay.style.display = "none";
+                            trackButton.disabled = false;
+                            btnText.innerText = "Ativar Experiência";
+                        } catch (err) {
+                            console.error("Erro ao carregar modelo:", err);
+                            loadingText.innerText = "Erro ao carregar IA. Tenta novamente.";
+                        }
+                    } else if (attempts < maxAttempts) {
+                        attempts++;
+                        loadingText.innerText = `A ligar à biblioteca (tentativa ${attempts})...`;
+                        setTimeout(tryLoad, 1000);
+                    } else {
+                        loadingText.innerText = "Não foi possível carregar a biblioteca. Verifica a tua ligação.";
+                        loadingText.style.color = "#ff4444";
+                    }
+                };
+
+                tryLoad();
+            }
+
+            function startVideo() {
+                initAudio();
+                handTrack.startVideo(video).then(status => {
+                    if (status) {
+                        isVideo = true;
+                        runDetection();
+                        statusDot.classList.add('active');
+                        btnText.innerText = "Parar Som";
+                    } else {
+                        btnText.innerText = "Erro na Câmara";
+                    }
+                }).catch(err => {
+                    console.error("Erro ao iniciar vídeo:", err);
+                    btnText.innerText = "Erro na Câmara";
+                });
+            }
+
+            function stopVideo() {
+                handTrack.stopVideo(video);
+                isVideo = false;
+                statusDot.classList.remove('active');
+                btnText.innerText = "Ativar Experiência";
+               
+                Object.values(oscillators).forEach(osc => {
+                    try {
+                        osc.gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
+                        setTimeout(() => osc.stop(), 100);
+                    } catch(e) {}
+                });
+                oscillators = {};
+            }
+
+            trackButton.addEventListener("click", () => {
+                if (!model) return;
+                if (!isVideo) {
+                    startVideo();
+                } else {
+                    stopVideo();
+                }
+            });
+
+            function runDetection() {
+                if (!isVideo) return;
+                model.detect(video).then(predictions => {
+                    model.renderPredictions(predictions, canvas, context, video);
+                    updateAudio(predictions);
+                    if (isVideo) {
+                        requestAnimationFrame(runDetection);
+                    }
+                });
+            }
+
+            function updateAudio(predictions) {
+                document.getElementById('hands-count').innerText = predictions.length;
+                const activeIndices = predictions.map((_, i) => i);
+               
+                // Limpar osciladores inativos
+                Object.keys(oscillators).forEach(key => {
+                    if (!activeIndices.includes(parseInt(key))) {
+                        try {
+                            oscillators[key].gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
+                            const oldOsc = oscillators[key];
+                            delete oscillators[key];
+                            setTimeout(() => oldOsc.stop(), 200);
+                        } catch(e) {}
+                    }
+                });
+
+                predictions.forEach((prediction, i) => {
+                    const x = prediction.bbox[0] + prediction.bbox[2]/2;
+                    const y = prediction.bbox[1] + prediction.bbox[3]/2;
+                   
+                    const normX = Math.max(0, Math.min(1, x / 640));
+                    const normY = Math.max(0, Math.min(1, y / 480));
+
+                    const freq = 150 + (normX * 850); // 150Hz a 1000Hz
+                    const filterFreq = 100 + ((1 - normY) * 4000); // 100Hz a 4100Hz
+
+                    if (!oscillators[i]) {
+                        const osc = audioCtx.createOscillator();
+                        const gainNode = audioCtx.createGain();
+                       
+                        osc.type = i === 0 ? 'sine' : 'triangle';
+                        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                       
+                        gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+                        gainNode.gain.setTargetAtTime(0.15, audioCtx.currentTime, 0.1);
+                       
+                        osc.connect(gainNode);
+                        gainNode.connect(filter);
+                       
+                        osc.start();
+                        osc.gainNode = gainNode;
+                        oscillators[i] = osc;
+                    } else {
+                        oscillators[i].frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.1);
+                    }
+
+                    if (i === 0 && filter) {
+                        filter.frequency.setTargetAtTime(filterFreq, audioCtx.currentTime, 0.1);
+                        document.getElementById('freq-val').innerText = Math.round(freq) + " Hz";
+                        document.getElementById('filter-val').innerText = Math.round(filterFreq) + " Hz";
+                    }
+                });
+
+                if (predictions.length === 0) {
+                    document.getElementById('freq-val').innerText = "--";
+                    document.getElementById('filter-val').innerText = "--";
+                }
+            }
+
+            initModel();
+        });
+    </script>
+</body>
+</html>
+

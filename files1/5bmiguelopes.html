@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Espelho das Maravilhas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tracking.js/1.1.3/tracking-min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tracking.js/1.1.3/data/face-min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Playfair+Display:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Playfair Display', serif;
+            background-color: #0f0518;
+            color: #f3e8ff;
+            overflow-x: hidden;
+            margin: 0;
+            min-height: 100vh;
+        }
+
+        .alice-font {
+            font-family: 'Cinzel', serif;
+        }
+
+        /* --- NOVO FUNDO WONDERLAND --- */
+        .wonderland-bg {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            z-index: -1;
+            pointer-events: none;
+            background: radial-gradient(circle at 50% 30%, #2e1065 0%, #0f0518 70%);
+        }
+
+        .checkerboard-floor {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 40vh;
+            background-image:
+                linear-gradient(45deg, #1a0b2e 25%, transparent 25%),
+                linear-gradient(-45deg, #1a0b2e 25%, transparent 25%),
+                linear-gradient(45deg, transparent 75%, #1a0b2e 75%),
+                linear-gradient(-45deg, transparent 75%, #1a0b2e 75%);
+            background-size: 60px 60px;
+            background-position: 0 0, 30px 0, 30px -30px, 0px 30px;
+            opacity: 0.3;
+            transform: perspective(500px) rotateX(60deg) scale(2);
+            transform-origin: bottom center;
+            mask-image: linear-gradient(to top, black 20%, transparent 100%);
+        }
+
+        .silhouette-layer {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            height: auto;
+            opacity: 0.6;
+            color: #160626;
+        }
+
+        /* Moldura do Espelho */
+        .mirror-frame {
+            position: relative;
+            box-shadow: 0 0 50px rgba(139, 92, 246, 0.4),
+                        inset 0 0 50px rgba(0,0,0,0.9);
+            border: 8px solid #4c1d95;
+            border-radius: 30px;
+            overflow: hidden;
+            background: #000;
+            transition: all 0.5s ease;
+            z-index: 10;
+        }
+
+        /* Camada de Atmosfera */
+        #atmosphere-overlay {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 15;
+            transition: all 0.5s ease;
+            opacity: 0;
+            mix-blend-mode: normal;
+        }
+
+        .mirror-frame::after {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            pointer-events: none;
+            background: radial-gradient(circle, rgba(255,255,255,0) 50%, rgba(20,10,40,0.4) 100%);
+            z-index: 10;
+        }
+
+        /* ================= FILTROS MELHORADOS ================= */
+       
+        .filter-normal video { filter: none; }
+       
+        /* Chapeleiro: Verde vibrante + Psicadélico */
+        .filter-hatter { border-color: #10b981; box-shadow: 0 0 60px #10b981; }
+        .filter-hatter video {
+            filter: url(#svg-hatter-warp) saturate(2.5) hue-rotate(20deg) contrast(1.1);
+            transform: scale(1.05);
+        }
+        .filter-hatter #atmosphere-overlay {
+            opacity: 1;
+            background: radial-gradient(circle, rgba(250, 204, 21, 0.2), rgba(16, 185, 129, 0.3));
+            mix-blend-mode: overlay;
+        }
+
+        /* Cheshire: Escuro e Fantasmagórico */
+        .filter-cheshire { border-color: #d946ef; box-shadow: 0 0 60px #d946ef; }
+        .filter-cheshire video {
+            filter: brightness(0.5) contrast(1.4) hue-rotate(270deg) grayscale(0.5);
+        }
+        .filter-cheshire #atmosphere-overlay {
+            opacity: 1;
+            background: radial-gradient(circle at 50% 50%, transparent 10%, #2e1065 95%);
+            mix-blend-mode: multiply;
+        }
+
+        /* Rainha: Vermelho Intenso */
+        .filter-queen { border-color: #991b1b; box-shadow: 0 0 60px #ef4444; }
+        .filter-queen video {
+            filter: url(#svg-queen-drama) contrast(1.4) sepia(0.3);
+        }
+        .filter-queen #atmosphere-overlay {
+            opacity: 1;
+            background: radial-gradient(circle, transparent 40%, rgba(153, 27, 27, 0.6));
+            mix-blend-mode: multiply;
+            box-shadow: inset 0 0 100px #7f1d1d;
+        }
+
+        /* Alice: Sonho */
+        .filter-alice { border-color: #60a5fa; box-shadow: 0 0 50px #93c5fd; }
+        .filter-alice video {
+            filter: brightness(1.1) contrast(0.9) saturate(0.8) blur(0.5px);
+        }
+        .filter-alice #atmosphere-overlay {
+            opacity: 1;
+            background: radial-gradient(circle, transparent 50%, rgba(147, 197, 253, 0.4) 100%);
+            mix-blend-mode: screen;
+            box-shadow: inset 0 0 50px rgba(255,255,255,0.3);
+        }
+
+        /* Coelho: Vintage Acelerado */
+        .filter-rabbit { border-color: #fbbf24; box-shadow: 0 0 50px #d97706; }
+        .filter-rabbit video {
+            filter: sepia(0.8) contrast(1.2) brightness(1.1);
+        }
+        .filter-rabbit #atmosphere-overlay {
+            opacity: 1;
+            background: radial-gradient(circle, rgba(251, 191, 36, 0.2), transparent);
+            mix-blend-mode: soft-light;
+            box-shadow: inset 0 0 60px #78350f;
+        }
+
+        /* Lagarta: Fumo Denso */
+        .filter-caterpillar { border-color: #06b6d4; box-shadow: 0 0 60px #0891b2; }
+        .filter-caterpillar video {
+            filter: url(#svg-caterpillar-smoke) hue-rotate(190deg) brightness(0.9) contrast(1.2);
+            transition: filter 2s ease;
+        }
+        .filter-caterpillar #atmosphere-overlay {
+            opacity: 1;
+            background: linear-gradient(to top, rgba(8, 145, 178, 0.4), transparent);
+            mix-blend-mode: screen;
+        }
+
+        /* ================= ANIMAÇÕES ================= */
+
+        @keyframes float {
+            0% { transform: translateY(0px) rotate(0deg); opacity: 0; }
+            10% { opacity: 0.8; }
+            90% { opacity: 0.8; }
+            100% { transform: translateY(100vh) rotate(360deg); opacity: 0; }
+        }
+
+        @keyframes cat-blink {
+            0%, 45%, 55%, 100% { transform: scaleY(1); }
+            50% { transform: scaleY(0.1); }
+        }
+
+        .cat-eye {
+            animation: cat-blink 4s infinite;
+            transform-origin: center;
+        }
+
+        .falling-item {
+            position: fixed;
+            top: -50px;
+            pointer-events: none;
+            z-index: 50;
+            font-size: 2rem;
+            animation: float linear infinite;
+        }
+
+        .quote-box {
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        .overlay-element {
+            position: absolute;
+            pointer-events: none;
+            z-index: 20;
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+        .show-overlay { opacity: 1; }
+
+        /* Container de Rastreamento (Espelhado) */
+        .face-tracker-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            pointer-events: none;
+            /* Importante: Espelhar para alinhar com o vídeo */
+            transform: scaleX(-1);
+        }
+
+        /* --- MÁSCARAS --- */
+
+        /* Máscara Coelho */
+        #rabbit-mask {
+            position: absolute;
+            top: 0; left: 0;
+            width: 200px; height: 250px;
+            transform-origin: center center;
+            display: none;
+        }
+
+        /* Máscara Gato */
+        #cheshire-mask {
+            position: absolute;
+            top: 0; left: 0;
+            width: 220px; height: 180px;
+            transform-origin: center center;
+            display: none;
+            filter: drop-shadow(0 0 10px #e879f9);
+        }
+
+        /* Máscara Chapeleiro (NOVO) */
+        #hatter-mask {
+            position: absolute;
+            top: 0; left: 0;
+            width: 200px; height: 200px;
+            transform-origin: bottom center;
+            display: none;
+            filter: drop-shadow(5px 5px 5px rgba(0,0,0,0.5));
+        }
+
+        /* Máscara Rainha (NOVO) */
+        #queen-mask {
+            position: absolute;
+            top: 0; left: 0;
+            width: 180px; height: 150px;
+            transform-origin: bottom center;
+            display: none;
+            filter: drop-shadow(0 0 15px #fbbf24);
+        }
+
+        .filter-btn {
+            transition: all 0.3s;
+            border: 1px solid rgba(255,255,255,0.1);
+            backdrop-filter: blur(4px);
+        }
+        .filter-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(255,255,255,0.1);
+            background-color: rgba(255,255,255,0.1);
+        }
+
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4 selection:bg-purple-500 selection:text-white">
+
+    <!-- Filtros SVG -->
+    <svg style="position: absolute; width: 0; height: 0; overflow: hidden;" aria-hidden="true">
+        <defs>
+            <filter id="svg-hatter-warp">
+                <feTurbulence type="fractalNoise" baseFrequency="0.01 0.005" numOctaves="2" result="warp">
+                    <animate attributeName="baseFrequency" values="0.01 0.005; 0.015 0.01; 0.01 0.005" dur="4s" repeatCount="indefinite"/>
+                </feTurbulence>
+                <feDisplacementMap xChannelSelector="R" yChannelSelector="G" scale="30" in="SourceGraphic" in2="warp" />
+            </filter>
+
+            <filter id="svg-queen-drama">
+                <!-- Aumenta vermelhos, diminui verdes/azuis -->
+                <feColorMatrix type="matrix" values="1.2 0 0 0 0  0 0.8 0 0 0  0 0 0.8 0 0  0 0 0 1 0" />
+            </filter>
+
+            <filter id="svg-cheshire-glow">
+                <feColorMatrix type="matrix" result="purple-tint" values="0.5 0 0 0 0.2 0 1 0 0 0.1 0 0 1.5 0 0.4 0 0 0 1 0" />
+                <feGaussianBlur in="purple-tint" stdDeviation="2" result="blur" />
+                <feMerge><feMergeNode in="blur" /><feMergeNode in="purple-tint" /></feMerge>
+            </filter>
+
+            <filter id="svg-caterpillar-smoke">
+                <feTurbulence type="turbulence" baseFrequency="0.01" numOctaves="3" result="turbulence">
+                    <animate attributeName="baseFrequency" values="0.01; 0.005; 0.01" dur="8s" repeatCount="indefinite"/>
+                </feTurbulence>
+                <feDisplacementMap in2="turbulence" in="SourceGraphic" scale="25" xChannelSelector="R" yChannelSelector="G"/>
+            </filter>
+        </defs>
+    </svg>
+
+    <div class="wonderland-bg">
+        <div class="checkerboard-floor"></div>
+        <svg class="silhouette-layer" viewBox="0 0 1440 320" xmlns="http://www.w3.org/2000/svg">
+            <path fill="currentColor" fill-opacity="1" d="M0,224L48,213.3C96,203,192,181,288,181.3C384,181,480,203,576,224C672,245,768,267,864,250.7C960,235,1056,181,1152,165.3C1248,149,1344,171,1392,181.3L1440,192L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
+            <path fill="currentColor" d="M100 250 Q 150 150 200 250 Z" />
+            <rect x="140" y="250" width="20" height="50" fill="currentColor"/>
+            <path fill="currentColor" d="M1200 280 Q 1260 180 1320 280 Z" />
+            <rect x="1250" y="280" width="20" height="40" fill="currentColor"/>
+            <path fill="currentColor" d="M-20 320 Q 50 200 10 100 Q 60 150 80 120 Q 50 250 100 320 Z" opacity="0.8"/>
+        </svg>
+    </div>
+
+    <header class="text-center mb-6 z-10 relative">
+        <h1 class="text-4xl md:text-6xl font-bold alice-font text-purple-200 mb-2 drop-shadow-[0_4px_4px_rgba(0,0,0,0.8)]">País das Maravilhas</h1>
+        <p class="text-purple-300 italic text-lg drop-shadow-md">"Escolhe a tua loucura..."</p>
+    </header>
+
+    <main class="relative w-full max-w-4xl flex flex-col items-center">
+       
+        <div class="w-full flex justify-center items-center mb-4 px-4 z-20">
+            <div class="bg-black/40 backdrop-blur-md px-6 py-2 rounded-full border border-purple-500/30 shadow-lg">
+                <span class="text-purple-200 text-sm uppercase tracking-wider">Realidade Atual:</span>
+                <span id="mode-display" class="font-bold text-white ml-2 alice-font text-lg">Normal</span>
+            </div>
+        </div>
+
+        <div id="mirror-container" class="mirror-frame w-full max-w-2xl aspect-video relative bg-black transition-all duration-700 filter-normal">
+           
+            <div id="atmosphere-overlay"></div>
+
+            <video id="webcam" autoplay playsinline muted class="w-full h-full object-cover transform scale-x-[-1]"></video>
+           
+            <div id="camera-error" class="absolute inset-0 flex flex-col items-center justify-center bg-black/90 text-center p-6 hidden z-50">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-red-500 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                </svg>
+                <p class="text-white mb-4">O Espelho não te vê.<br>Permite o acesso à câmara.</p>
+                <button onclick="startCamera()" class="px-6 py-2 bg-purple-600 rounded-full hover:bg-purple-500 transition">Tentar Novamente</button>
+            </div>
+
+            <!-- Overlays Tracking -->
+            <div class="face-tracker-container">
+               
+                <!-- Máscara Coelho -->
+                <div id="rabbit-mask">
+                    <svg width="100%" height="100%" viewBox="0 0 200 250" class="drop-shadow-lg">
+                        <g transform="translate(0, 20)">
+                            <path d="M60,100 Q30,10 80,10 Q110,50 90,100" fill="white" stroke="#fbcfe8" stroke-width="2" />
+                            <path d="M65,90 Q45,30 75,30 Q90,60 80,90" fill="#fbcfe8" opacity="0.6" />
+                            <path d="M140,100 Q170,10 120,10 Q90,50 110,100" fill="white" stroke="#fbcfe8" stroke-width="2" />
+                            <path d="M135,90 Q155,30 125,30 Q110,60 120,90" fill="#fbcfe8" opacity="0.6" />
+                            <ellipse cx="100" cy="140" rx="15" ry="12" fill="#f472b6" />
+                            <line x1="85" y1="140" x2="40" y2="135" stroke="white" stroke-width="2" stroke-linecap="round" />
+                            <line x1="85" y1="145" x2="40" y2="155" stroke="white" stroke-width="2" stroke-linecap="round" />
+                            <line x1="115" y1="140" x2="160" y2="135" stroke="white" stroke-width="2" stroke-linecap="round" />
+                            <line x1="115" y1="145" x2="160" y2="155" stroke="white" stroke-width="2" stroke-linecap="round" />
+                        </g>
+                    </svg>
+                </div>
+
+                <!-- Máscara Gato Cheshire -->
+                <div id="cheshire-mask">
+                    <svg width="100%" height="100%" viewBox="0 0 220 180" class="drop-shadow-lg">
+                        <g transform="translate(10, 10)">
+                            <g class="cat-eye">
+                                <ellipse cx="50" cy="60" rx="25" ry="18" fill="#EAB308" stroke="#fef08a" stroke-width="2" />
+                                <ellipse cx="50" cy="60" rx="3" ry="14" fill="#000" />
+                            </g>
+                            <g class="cat-eye" style="animation-delay: 0.2s;">
+                                <ellipse cx="150" cy="60" rx="25" ry="18" fill="#EAB308" stroke="#fef08a" stroke-width="2" />
+                                <ellipse cx="150" cy="60" rx="3" ry="14" fill="#000" />
+                            </g>
+                            <path d="M30,100 Q100,160 170,100 Q100,140 30,100" fill="#fff" stroke="#d946ef" stroke-width="2" />
+                            <path d="M50,110 L50,128" stroke="#d946ef" stroke-width="1.5" />
+                            <path d="M70,118 L70,135" stroke="#d946ef" stroke-width="1.5" />
+                            <path d="M90,122 L90,138" stroke="#d946ef" stroke-width="1.5" />
+                            <path d="M110,122 L110,138" stroke="#d946ef" stroke-width="1.5" />
+                            <path d="M130,118 L130,135" stroke="#d946ef" stroke-width="1.5" />
+                            <path d="M150,110 L150,128" stroke="#d946ef" stroke-width="1.5" />
+                        </g>
+                    </svg>
+                </div>
+
+                <!-- Máscara Chapeleiro (NOVO) -->
+                <div id="hatter-mask">
+                    <svg width="100%" height="100%" viewBox="0 0 200 200" class="drop-shadow-2xl">
+                        <!-- Cartola Verde -->
+                        <path d="M20,150 L180,150 L180,180 L20,180 Z" fill="#064e3b" />
+                        <path d="M40,150 L160,150 L150,50 L50,50 Z" fill="#065f46" />
+                        <path d="M40,150 L160,150 L150,50 L50,50 Z" fill="url(#hatGradient)" fill-opacity="0.5"/>
+                        <!-- Faixa -->
+                        <path d="M42,130 L158,130 L156,150 L44,150 Z" fill="#db2777" />
+                        <!-- Carta 10/6 -->
+                        <rect x="120" y="80" width="40" height="50" fill="white" transform="rotate(-15 120 80)" stroke="#ccc"/>
+                        <text x="125" y="110" font-family="serif" font-size="20" fill="black" transform="rotate(-15 120 80)">10/6</text>
+                        <defs>
+                            <linearGradient id="hatGradient" x1="0" y1="0" x2="1" y2="1">
+                                <stop offset="0%" stop-color="#34d399" stop-opacity="0.2"/>
+                                <stop offset="100%" stop-color="#064e3b" stop-opacity="0.8"/>
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                </div>
+
+                <!-- Máscara Rainha (NOVO) -->
+                <div id="queen-mask">
+                    <svg width="100%" height="100%" viewBox="0 0 180 150" class="drop-shadow-lg">
+                        <!-- Coroa -->
+                        <path d="M20,100 L40,40 L70,80 L90,20 L110,80 L140,40 L160,100 Z" fill="#fbbf24" stroke="#b45309" stroke-width="2" />
+                        <!-- Detalhes -->
+                        <circle cx="40" cy="40" r="5" fill="#ef4444" />
+                        <circle cx="90" cy="20" r="6" fill="#ef4444" />
+                        <circle cx="140" cy="40" r="5" fill="#ef4444" />
+                        <!-- Corações -->
+                        <path d="M85,60 C85,55 80,55 80,60 C80,65 90,75 90,75 C90,75 100,65 100,60 C100,55 95,55 95,60 C95,65 90,70 90,70 C90,70 85,65 85,60" fill="#ef4444" />
+                    </svg>
+                </div>
+
+            </div>
+
+            <!-- Overlays Staticos -->
+            <div id="overlay-caterpillar" class="overlay-element bottom-0 w-full h-32 opacity-50 bg-gradient-to-t from-cyan-900 to-transparent"></div>
+
+        </div>
+
+        <div id="filter-selector" class="flex flex-wrap gap-3 mt-6 justify-center max-w-3xl hidden opacity-0 transition-opacity duration-500 z-20">
+            <button onclick="setMode('normal')" class="filter-btn px-4 py-2 bg-gray-900/50 rounded-lg text-white hover:bg-gray-800">🐇 Real</button>
+            <button onclick="setMode('hatter')" class="filter-btn px-4 py-2 bg-green-900/50 rounded-lg text-green-200 hover:bg-green-800">🫖 Chapeleiro</button>
+            <button onclick="setMode('cheshire')" class="filter-btn px-4 py-2 bg-purple-900/50 rounded-lg text-purple-200 hover:bg-purple-800">😼 Cheshire</button>
+            <button onclick="setMode('queen')" class="filter-btn px-4 py-2 bg-red-900/50 rounded-lg text-red-200 hover:bg-red-800">👑 Rainha</button>
+            <button onclick="setMode('alice')" class="filter-btn px-4 py-2 bg-blue-900/50 rounded-lg text-blue-200 hover:bg-blue-800">🧪 Alice</button>
+            <button onclick="setMode('rabbit')" class="filter-btn px-4 py-2 bg-yellow-900/50 rounded-lg text-yellow-200 hover:bg-yellow-800">⏱️ Coelho</button>
+            <button onclick="setMode('caterpillar')" class="filter-btn px-4 py-2 bg-cyan-900/50 rounded-lg text-cyan-200 hover:bg-cyan-800">🐛 Lagarta</button>
+            <button onclick="spinRoulette()" class="filter-btn px-4 py-2 bg-pink-900/50 rounded-lg text-pink-200 hover:bg-pink-800 border-dashed">🎲 Aleatório</button>
+        </div>
+
+        <div id="quote-container" class="mt-6 p-4 rounded-lg quote-box text-center max-w-lg min-h-[80px] flex items-center justify-center transition-opacity duration-500 z-20">
+            <p id="quote-text" class="text-lg text-purple-100 italic">"Estou atrasado! Estou atrasado!"</p>
+        </div>
+
+        <div class="flex flex-wrap gap-4 mt-4 justify-center z-20">
+            <button onclick="startGame()" id="btn-start" class="px-8 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-full font-bold text-white shadow-lg hover:scale-105 transition transform border border-purple-400">Entrar no Espelho</button>
+            <button onclick="takeSnapshot()" id="btn-snap" class="hidden px-6 py-3 bg-gray-800 hover:bg-gray-700 rounded-full font-bold text-gray-300 shadow-lg transition border border-gray-600 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg> Foto
+            </button>
+        </div>
+
+    </main>
+
+    <div id="falling-container" class="fixed inset-0 pointer-events-none z-0 overflow-hidden"></div>
+
+    <script>
+        const video = document.getElementById('webcam');
+        const mirrorContainer = document.getElementById('mirror-container');
+        const quoteText = document.getElementById('quote-text');
+        const modeDisplay = document.getElementById('mode-display');
+        const fallingContainer = document.getElementById('falling-container');
+       
+        // Máscaras
+        const rabbitMask = document.getElementById('rabbit-mask');
+        const cheshireMask = document.getElementById('cheshire-mask');
+        const hatterMask = document.getElementById('hatter-mask');
+        const queenMask = document.getElementById('queen-mask');
+       
+        let stream = null;
+        let gameActive = false;
+        let currentMode = 'normal';
+        let trackerTask = null;
+
+        const modes = {
+            hatter: { name: "Chapeleiro Louco", class: "filter-hatter", quote: "Por que é que um corvo se parece com uma escrivaninha?", overlayId: null },
+            cheshire: { name: "Gato de Cheshire", class: "filter-cheshire", quote: "Eu não sou louco. A minha realidade é apenas diferente da tua.", overlayId: null },
+            queen: { name: "Rainha de Copas", class: "filter-queen", quote: "Cortem-lhe a cabeça!", overlayId: null },
+            alice: { name: "Pequena Alice", class: "filter-alice", quote: "Beba-me.", overlayId: null },
+            rabbit: { name: "Coelho Branco", class: "filter-rabbit", quote: "Ai, as minhas orelhas e bigodes! Como está tarde!", overlayId: null },
+            caterpillar: { name: "Absolem", class: "filter-caterpillar", quote: "Quem... és... tu?", overlayId: "overlay-caterpillar" },
+            normal: { name: "Mundo Real", class: "filter-normal", quote: "Tudo não passou de um sonho?", overlayId: null }
+        };
+
+        async function startCamera() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+                document.getElementById('camera-error').classList.add('hidden');
+               
+                video.onloadedmetadata = function() {
+                    initTracker();
+                };
+            } catch (err) {
+                console.error("Erro na câmara:", err);
+                document.getElementById('camera-error').classList.remove('hidden');
+            }
+        }
+
+        function initTracker() {
+            const tracker = new tracking.ObjectTracker('face');
+            tracker.setInitialScale(4);
+            tracker.setStepSize(2);
+            tracker.setEdgesDensity(0.1);
+
+            trackerTask = tracking.track('#webcam', tracker);
+
+            tracker.on('track', function(event) {
+                // Esconder todas as máscaras
+                rabbitMask.style.display = 'none';
+                cheshireMask.style.display = 'none';
+                hatterMask.style.display = 'none';
+                queenMask.style.display = 'none';
+
+                if (event.data.length === 0) return;
+
+                let activeMask = null;
+                let scaleFactor = 1;
+                let offsetX = 0;
+                let offsetY = 0;
+
+                // Configuração de cada máscara
+                if (currentMode === 'rabbit') {
+                    activeMask = rabbitMask;
+                    scaleFactor = 120; // Ajuste de tamanho
+                    offsetX = 0.2;     // Desvio Horizontal
+                    offsetY = 0.6;     // Desvio Vertical (para cima da cabeça)
+                } else if (currentMode === 'cheshire') {
+                    activeMask = cheshireMask;
+                    scaleFactor = 140;
+                    offsetX = 0.1;
+                    offsetY = 0.3;     // Centrado na boca/olhos
+                } else if (currentMode === 'hatter') {
+                    activeMask = hatterMask;
+                    scaleFactor = 130;
+                    offsetX = 0.15;
+                    offsetY = 0.8;     // Bem acima da cabeça
+                } else if (currentMode === 'queen') {
+                    activeMask = queenMask;
+                    scaleFactor = 140;
+                    offsetX = 0.05;
+                    offsetY = 0.8;     // Coroa acima da testa
+                }
+
+                if (activeMask) {
+                    event.data.forEach(function(rect) {
+                        activeMask.style.display = 'block';
+                       
+                        const width = rect.width;
+                        const height = rect.height;
+                        const left = rect.x;
+                        const top = rect.y;
+
+                        const scale = (width / scaleFactor);
+                       
+                        activeMask.style.transform = `translate(${left - width*offsetX}px, ${top - height*offsetY}px) scale(${scale})`;
+                    });
+                }
+            });
+        }
+
+        function startGame() {
+            startCamera();
+            gameActive = true;
+            document.getElementById('btn-start').classList.add('hidden');
+            document.getElementById('btn-snap').classList.remove('hidden');
+           
+            const filterSelector = document.getElementById('filter-selector');
+            filterSelector.classList.remove('hidden');
+            setTimeout(() => {
+                filterSelector.classList.remove('opacity-0');
+            }, 100);
+           
+            setInterval(createFallingItem, 1500);
+        }
+
+        function setMode(modeKey) {
+            Object.values(modes).forEach(m => {
+                mirrorContainer.classList.remove(m.class);
+                if(m.overlayId) {
+                    const el = document.getElementById(m.overlayId);
+                    if(el) el.classList.remove('show-overlay');
+                }
+            });
+
+            currentMode = modeKey;
+            const mode = modes[modeKey];
+
+            mirrorContainer.classList.add(mode.class);
+            modeDisplay.textContent = mode.name;
+            modeDisplay.style.color = getModeColor(modeKey);
+            quoteText.textContent = `"${mode.quote}"`;
+
+            if(mode.overlayId) {
+                const el = document.getElementById(mode.overlayId);
+                if(el) el.classList.add('show-overlay');
+            }
+
+            // Reset máscaras ao mudar
+            rabbitMask.style.display = 'none';
+            cheshireMask.style.display = 'none';
+            hatterMask.style.display = 'none';
+            queenMask.style.display = 'none';
+
+            mirrorContainer.style.transform = "scale(0.98)";
+            setTimeout(() => mirrorContainer.style.transform = "scale(1)", 200);
+        }
+
+        function getModeColor(key) {
+            if(key === 'hatter') return '#34d399';
+            if(key === 'cheshire') return '#e879f9';
+            if(key === 'queen') return '#f87171';
+            if(key === 'alice') return '#60a5fa';
+            if(key === 'rabbit') return '#fbbf24';
+            if(key === 'caterpillar') return '#22d3ee';
+            return '#fff';
+        }
+
+        function spinRoulette() {
+            const keys = Object.keys(modes).filter(k => k !== 'normal');
+            let spins = 0;
+            const interval = setInterval(() => {
+                const randomKey = keys[Math.floor(Math.random() * keys.length)];
+                setMode(randomKey);
+                spins++;
+                if (spins > 10) {
+                    clearInterval(interval);
+                    const finalKey = keys[Math.floor(Math.random() * keys.length)];
+                    setMode(finalKey);
+                }
+            }, 100);
+        }
+
+        function createFallingItem() {
+            if(!gameActive) return;
+            const items = ["🃏", "🍰", "🍵", "🗝️", "🍄", "🌹"];
+            const item = document.createElement('div');
+            item.textContent = items[Math.floor(Math.random() * items.length)];
+            item.className = 'falling-item';
+            item.style.left = Math.random() * 100 + 'vw';
+            item.style.animationDuration = (Math.random() * 3 + 3) + 's';
+            item.style.fontSize = (Math.random() * 20 + 20) + 'px';
+            fallingContainer.appendChild(item);
+            setTimeout(() => { item.remove(); }, 6000);
+        }
+
+        function takeSnapshot() {
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.translate(canvas.width, 0);
+            ctx.scale(-1, 1);
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const link = document.createElement('a');
+            link.download = 'wonderland-snap.png';
+            link.href = canvas.toDataURL();
+            link.click();
+        }
+
+        setMode('normal');
+    </script>
+</body>
+</html>
