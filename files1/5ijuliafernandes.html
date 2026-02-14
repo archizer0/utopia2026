@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Câmara Alice no País das Maravilhas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700&family=Nunito:wght@400;700&display=swap');
+
+        body {
+            font-family: 'Nunito', sans-serif;
+            background-color: #0f172a;
+            overflow: hidden;
+        }
+
+        h1, .fantasy-font {
+            font-family: 'Cinzel Decorative', cursive;
+        }
+
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        canvas {
+            transform: scaleX(-1);
+            object-fit: cover;
+        }
+
+        .filter-btn.active {
+            border-color: #fcd34d;
+            transform: scale(1.1);
+            box-shadow: 0 0 15px rgba(252, 211, 77, 0.6);
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col items-center justify-between text-white relative">
+
+    <!-- Cabeçalho -->
+    <header class="absolute top-0 left-0 w-full p-4 z-20 bg-gradient-to-b from-black/80 to-transparent pointer-events-none">
+        <div class="flex justify-between items-center pointer-events-auto">
+            <h1 class="text-xl md:text-2xl text-yellow-100 drop-shadow-lg tracking-wider">País das Maravilhas</h1>
+            <button id="toggle-cam-btn" class="bg-white/10 backdrop-blur-md p-3 rounded-full hover:bg-white/20 transition active:scale-90 border border-white/20">
+                <i class="fas fa-sync-alt text-white"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Área Principal -->
+    <main class="relative w-full h-full bg-black flex justify-center items-center overflow-hidden">
+        <div id="loader" class="absolute inset-0 flex flex-col items-center justify-center z-10 bg-slate-900">
+            <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500 mb-4"></div>
+            <p class="text-gray-400 font-light">A procurar o buraco do coelho...</p>
+            <button id="start-cam-btn" class="mt-6 px-8 py-3 bg-purple-600 hover:bg-purple-700 rounded-full font-bold hidden transition shadow-[0_0_20px_rgba(147,51,234,0.5)]">
+                Permitir Câmara
+            </button>
+        </div>
+
+        <video id="video" autoplay playsinline muted class="hidden"></video>
+        <canvas id="canvas" class="h-full w-full absolute top-0 left-0"></canvas>
+        <div id="flash" class="absolute inset-0 bg-white opacity-0 pointer-events-none transition-opacity duration-200 z-30"></div>
+    </main>
+
+    <!-- UI Controlos -->
+    <footer class="absolute bottom-0 w-full z-20 flex flex-col items-center pb-8 pt-12 bg-gradient-to-t from-black via-black/60 to-transparent">
+       
+        <!-- Lista de Filtros -->
+        <div class="w-full overflow-x-auto no-scrollbar mb-6 px-4">
+            <div class="flex space-x-4 justify-start md:justify-center min-w-max px-2 py-2">
+                <button onclick="setFilter('normal')" class="filter-btn active w-16 h-16 rounded-full border-2 border-white/30 bg-gray-800/80 backdrop-blur flex flex-col items-center justify-center overflow-hidden transition-all shrink-0 group">
+                    <span class="text-2xl drop-shadow-md">🚫</span>
+                    <span class="text-[9px] mt-1 font-bold uppercase tracking-wide opacity-70 group-hover:opacity-100">Normal</span>
+                </button>
+               
+                <button onclick="setFilter('cheshire')" class="filter-btn w-16 h-16 rounded-full border-2 border-white/30 bg-purple-900/80 backdrop-blur flex flex-col items-center justify-center overflow-hidden transition-all shrink-0 group">
+                    <span class="text-2xl drop-shadow-md">😸</span>
+                    <span class="text-[9px] mt-1 font-bold uppercase tracking-wide opacity-70 group-hover:opacity-100">Gato</span>
+                </button>
+
+                <button onclick="setFilter('queen')" class="filter-btn w-16 h-16 rounded-full border-2 border-white/30 bg-red-900/80 backdrop-blur flex flex-col items-center justify-center overflow-hidden transition-all shrink-0 group">
+                    <span class="text-2xl drop-shadow-md">👑</span>
+                    <span class="text-[9px] mt-1 font-bold uppercase tracking-wide opacity-70 group-hover:opacity-100">Rainha</span>
+                </button>
+
+                <button onclick="setFilter('hatter')" class="filter-btn w-16 h-16 rounded-full border-2 border-white/30 bg-orange-900/80 backdrop-blur flex flex-col items-center justify-center overflow-hidden transition-all shrink-0 group">
+                    <span class="text-2xl drop-shadow-md">🎩</span>
+                    <span class="text-[9px] mt-1 font-bold uppercase tracking-wide opacity-70 group-hover:opacity-100">Chá</span>
+                </button>
+
+                <button onclick="setFilter('roses')" class="filter-btn w-16 h-16 rounded-full border-2 border-white/30 bg-pink-900/80 backdrop-blur flex flex-col items-center justify-center overflow-hidden transition-all shrink-0 group">
+                    <span class="text-2xl drop-shadow-md">🌹</span>
+                    <span class="text-[9px] mt-1 font-bold uppercase tracking-wide opacity-70 group-hover:opacity-100">Rosas</span>
+                </button>
+
+                <!-- ALTERADO: PORTAL MÁGICO (ex-Vortex) -->
+                <button onclick="setFilter('portal')" class="filter-btn w-16 h-16 rounded-full border-2 border-white/30 bg-indigo-900/80 backdrop-blur flex flex-col items-center justify-center overflow-hidden transition-all shrink-0 group">
+                    <span class="text-2xl drop-shadow-md">🔮</span>
+                    <span class="text-[9px] mt-1 font-bold uppercase tracking-wide opacity-70 group-hover:opacity-100">Portal</span>
+                </button>
+
+                <button onclick="setFilter('caterpillar')" class="filter-btn w-16 h-16 rounded-full border-2 border-white/30 bg-blue-900/80 backdrop-blur flex flex-col items-center justify-center overflow-hidden transition-all shrink-0 group">
+                    <span class="text-2xl drop-shadow-md">🐛</span>
+                    <span class="text-[9px] mt-1 font-bold uppercase tracking-wide opacity-70 group-hover:opacity-100">Absolem</span>
+                </button>
+
+                <button onclick="setFilter('mirror')" class="filter-btn w-16 h-16 rounded-full border-2 border-white/30 bg-slate-700/80 backdrop-blur flex flex-col items-center justify-center overflow-hidden transition-all shrink-0 group">
+                    <span class="text-2xl drop-shadow-md">🪞</span>
+                    <span class="text-[9px] mt-1 font-bold uppercase tracking-wide opacity-70 group-hover:opacity-100">Espelho</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Botões Ação -->
+        <div class="flex items-center justify-center w-full space-x-8 px-8">
+            <div id="mini-gallery" class="w-12 h-12 bg-gray-800/50 rounded-lg border border-white/30 overflow-hidden cursor-pointer hover:border-white transition relative group">
+                <img id="last-photo" class="w-full h-full object-cover hidden" alt="Última foto">
+                <div class="absolute inset-0 flex items-center justify-center text-xs text-gray-400 group-hover:text-white">
+                    <i class="fas fa-images"></i>
+                </div>
+            </div>
+
+            <button id="shutter-btn" class="w-20 h-20 rounded-full border-4 border-white bg-white/20 relative flex items-center justify-center hover:bg-white/30 transition active:scale-95 shadow-lg">
+                <div class="w-16 h-16 bg-white rounded-full shadow-inner"></div>
+            </button>
+
+            <a id="download-btn" class="w-12 h-12 flex items-center justify-center bg-gray-800/50 rounded-full border border-white/30 text-white hover:bg-purple-600 transition opacity-50 pointer-events-none group">
+                <i class="fas fa-download group-hover:scale-110 transition-transform"></i>
+            </a>
+        </div>
+    </footer>
+
+    <div id="message-overlay" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-black/80 backdrop-blur px-6 py-3 rounded-xl text-white font-bold pointer-events-none opacity-0 transition-opacity border border-white/10 z-50">
+        <i class="fas fa-check text-green-400 mr-2"></i> Foto guardada!
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const shutterBtn = document.getElementById('shutter-btn');
+        const flash = document.getElementById('flash');
+        const lastPhoto = document.getElementById('last-photo');
+        const downloadBtn = document.getElementById('download-btn');
+        const loader = document.getElementById('loader');
+        const startBtn = document.getElementById('start-cam-btn');
+        const toggleCamBtn = document.getElementById('toggle-cam-btn');
+
+        let currentStream = null;
+        let facingMode = 'user';
+        let activeFilter = 'normal';
+        let frameCount = 0;
+        let particles = [];
+
+        // --- Gestão da Câmara ---
+        async function startCamera() {
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+            }
+
+            const constraints = {
+                audio: false,
+                video: {
+                    facingMode: facingMode,
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 }
+                }
+            };
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                currentStream = stream;
+                video.srcObject = stream;
+               
+                video.onloadedmetadata = () => {
+                    video.play();
+                    resizeCanvas();
+                    loader.classList.add('hidden');
+                    drawFrame();
+                };
+            } catch (err) {
+                console.error("Erro na câmara:", err);
+                loader.querySelector('p').textContent = "Por favor, permita o acesso à câmara.";
+                startBtn.classList.remove('hidden');
+            }
+        }
+
+        startBtn.addEventListener('click', startCamera);
+       
+        toggleCamBtn.addEventListener('click', () => {
+            facingMode = facingMode === 'user' ? 'environment' : 'user';
+            if(facingMode === 'user') {
+                canvas.style.transform = "scaleX(-1)";
+            } else {
+                canvas.style.transform = "scaleX(1)";
+            }
+            startCamera();
+        });
+
+        startCamera();
+        window.addEventListener('resize', resizeCanvas);
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        // --- Lógica dos Filtros ---
+        class Particle {
+            constructor(type) {
+                this.x = Math.random() * canvas.width;
+                this.y = canvas.height + 50;
+                this.size = Math.random() * 20 + 15;
+                this.speed = Math.random() * 3 + 1;
+                this.type = type;
+                this.wobble = Math.random() * Math.PI * 2;
+                this.wobbleSpeed = Math.random() * 0.05 + 0.02;
+                this.opacity = 1;
+               
+                if (type === 'smoke') {
+                    this.y = Math.random() * canvas.height;
+                    this.speed = Math.random() * 1 + 0.5;
+                    this.size = Math.random() * 40 + 20;
+                    this.life = 100;
+                }
+            }
+           
+            update() {
+                this.y -= this.speed;
+                this.x += Math.sin(this.wobble) * 2;
+                this.wobble += this.wobbleSpeed;
+               
+                if (this.type === 'smoke') {
+                    this.life -= 0.5;
+                    this.opacity = this.life / 100;
+                    this.size += 0.2;
+                }
+            }
+           
+            draw(ctx) {
+                ctx.save();
+                ctx.globalAlpha = this.opacity;
+               
+                if (this.type === 'smoke') {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(150, 200, 255, 0.3)';
+                    ctx.fill();
+                } else {
+                    ctx.font = `${this.size}px Arial`;
+                    // Efeito de brilho para as rosas
+                    if (this.type === '🌹' || this.type === '🥀') {
+                        ctx.shadowColor = '#ff0000';
+                        ctx.shadowBlur = 15;
+                    }
+                    ctx.fillText(this.type, this.x, this.y);
+                }
+                ctx.restore();
+            }
+        }
+
+        function setFilter(filterName) {
+            activeFilter = filterName;
+            particles = [];
+            document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+           
+            // Atualizar o mapeamento para incluir 'portal'
+            const map = {
+                'normal':0,
+                'cheshire':1,
+                'queen':2,
+                'hatter':3,
+                'roses':4,
+                'portal':5, // ID alterado de vortex para portal
+                'caterpillar':6,
+                'mirror':7
+            };
+           
+            const btns = document.querySelectorAll('.filter-btn');
+            if(btns[map[filterName]]) btns[map[filterName]].classList.add('active');
+        }
+
+        window.setFilter = setFilter;
+
+        // --- Loop de Desenho ---
+        function drawFrame() {
+            const w = canvas.width;
+            const h = canvas.height;
+            const vidRatio = video.videoWidth / video.videoHeight;
+            const screenRatio = w / h;
+            let drawWidth, drawHeight, startX, startY;
+
+            if (screenRatio > vidRatio) {
+                drawWidth = w;
+                drawHeight = w / vidRatio;
+                startX = 0;
+                startY = (h - drawHeight) / 2;
+            } else {
+                drawHeight = h;
+                drawWidth = h * vidRatio;
+                startX = (w - drawWidth) / 2;
+                startY = 0;
+            }
+
+            // --- FASE 1: DESENHO DO VÍDEO ---
+            ctx.filter = 'none';
+
+            // Rosas: Fundo Preto e Branco
+            if (activeFilter === 'roses') {
+                ctx.filter = 'grayscale(100%) contrast(120%)';
+            }
+           
+            if (activeFilter === 'mirror') {
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(0, 0, w/2, h);
+                ctx.clip();
+                ctx.drawImage(video, startX, startY, drawWidth, drawHeight);
+                ctx.restore();
+
+                ctx.save();
+                ctx.translate(w, 0);
+                ctx.scale(-1, 1);
+                ctx.beginPath();
+                ctx.rect(0, 0, w/2, h);
+                ctx.clip();
+                ctx.drawImage(video, startX, startY, drawWidth, drawHeight);
+                ctx.restore();
+               
+                ctx.beginPath();
+                ctx.moveTo(w/2, 0);
+                ctx.lineTo(w/2, h);
+                ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+
+            } else if (activeFilter === 'portal') {
+                // --- Lógica PORTAL MÁGICO (Simetria Quadrada 4-Eixos) ---
+               
+                // Fundo preto
+                ctx.fillStyle = 'black';
+                ctx.fillRect(0,0,w,h);
+
+                const radius = Math.max(w, h); // Raio suficiente para cobrir tudo
+               
+                // Mover para o centro
+                ctx.save();
+                ctx.translate(w/2, h/2);
+
+                // 4 Loops para simetria quadrada (360 / 4 = 90 graus)
+                const angle = (Math.PI * 2) / 4;
+
+                for (let i = 0; i < 4; i++) {
+                    ctx.save();
+                    ctx.rotate(i * angle);
+                   
+                    // Definir CORTE QUADRADO/TRIANGULAR
+                    // Cortamos um triângulo retângulo que forma 1/4 do quadrado
+                    ctx.beginPath();
+                    ctx.moveTo(0, 0);
+                    // Definir o caminho para capturar um quadrante
+                    ctx.lineTo(radius, -radius); // Canto superior direito (relativo à rotação)
+                    ctx.lineTo(radius, radius);  // Canto inferior direito
+                    ctx.closePath();
+                    ctx.clip();
+
+                    // Desenhar vídeo
+                    // Rodar vídeo -90 graus para que a orientação "topo" aponte para fora
+                    ctx.rotate(-Math.PI / 2);
+                   
+                    // Escala para preencher
+                    ctx.drawImage(video, -drawWidth/2, -drawHeight/2, drawWidth, drawHeight);
+                   
+                    ctx.restore();
+                }
+                ctx.restore();
+
+            } else {
+                ctx.drawImage(video, startX, startY, drawWidth, drawHeight);
+            }
+
+            // --- FASE 2: RESTAURAR COR ---
+            ctx.filter = 'none';
+
+            // --- FASE 3: EFEITOS (SEM TEXTO) ---
+            applyFilterEffects(w, h);
+
+            requestAnimationFrame(drawFrame);
+        }
+
+        function applyFilterEffects(w, h) {
+            frameCount++;
+
+            // --- Gato de Cheshire ---
+            if (activeFilter === 'cheshire') {
+                ctx.save();
+                ctx.globalCompositeOperation = 'overlay';
+                ctx.fillStyle = '#a855f7';
+                ctx.globalAlpha = 0.3;
+                ctx.fillRect(0, 0, w, h);
+                ctx.restore();
+
+                const opacity = (Math.sin(frameCount * 0.05) + 1) / 2;
+                ctx.save();
+                ctx.globalAlpha = opacity;
+                ctx.shadowColor = '#d8b4fe';
+                ctx.shadowBlur = 20;
+                ctx.font = '150px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('😸', w / 2, h / 2);
+                ctx.restore();
+            }
+           
+            // --- Rainha de Copas ---
+            else if (activeFilter === 'queen') {
+                ctx.strokeStyle = '#7f1d1d';
+                ctx.lineWidth = 30;
+                ctx.strokeRect(0, 0, w, h);
+
+                if (frameCount % 10 === 0) particles.push(new Particle('♥️'));
+                if (frameCount % 15 === 0) particles.push(new Particle('♣️'));
+                updateParticles(ctx);
+            }
+           
+            // --- Chapeleiro Louco ---
+            else if (activeFilter === 'hatter') {
+                ctx.save();
+                ctx.globalCompositeOperation = 'soft-light';
+                ctx.fillStyle = '#d97706';
+                ctx.globalAlpha = 0.4;
+                ctx.fillRect(0, 0, w, h);
+                ctx.restore();
+
+                if (frameCount % 15 === 0) particles.push(new Particle('☕'));
+                if (frameCount % 30 === 0) particles.push(new Particle('🫖'));
+                updateParticles(ctx);
+
+                ctx.save();
+                ctx.translate(w/2, 80);
+                ctx.rotate(Math.sin(frameCount * 0.05) * 0.2);
+                ctx.font = '120px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('🎩', 0, 0);
+                ctx.restore();
+            }
+
+            // --- Jardim das Rosas ---
+            else if (activeFilter === 'roses') {
+                if (frameCount % 6 === 0) particles.push(new Particle('🌹'));
+                if (frameCount % 15 === 0) particles.push(new Particle('🥀'));
+                updateParticles(ctx);
+
+                // Vinheta vermelha subtil
+                const gradient = ctx.createRadialGradient(w/2, h/2, w/3, w/2, h/2, w);
+                gradient.addColorStop(0, 'transparent');
+                gradient.addColorStop(1, 'rgba(255, 0, 0, 0.2)');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0,0,w,h);
+            }
+
+            // --- Lagarta Azul ---
+            else if (activeFilter === 'caterpillar') {
+                ctx.save();
+                ctx.globalCompositeOperation = 'screen';
+                ctx.fillStyle = '#1e3a8a';
+                ctx.globalAlpha = 0.3;
+                ctx.fillRect(0, 0, w, h);
+                ctx.restore();
+
+                if (frameCount % 5 === 0) particles.push(new Particle('smoke'));
+                updateParticles(ctx);
+            }
+
+            // --- Portal Mágico ---
+            else if (activeFilter === 'portal') {
+                // Efeito visual extra: moldura brilhante no centro
+                ctx.save();
+                ctx.globalCompositeOperation = 'screen';
+                ctx.strokeStyle = `rgba(200, 200, 255, ${0.4 + Math.sin(frameCount * 0.1)*0.2})`;
+                ctx.lineWidth = 4;
+                // Desenhar um quadrado no centro para enfatizar o formato
+                ctx.strokeRect(w/2 - 50, h/2 - 50, 100, 100);
+                ctx.restore();
+            }
+        }
+
+        function updateParticles(context) {
+            for (let i = 0; i < particles.length; i++) {
+                let p = particles[i];
+                p.update();
+                context.save();
+               
+                // Lógica de espelho para partículas
+                if(facingMode === 'user' && activeFilter !== 'mirror' && activeFilter !== 'portal') {
+                    context.translate(canvas.width, 0);
+                    context.scale(-1, 1);
+                    p.draw(context);
+                } else {
+                    p.draw(context);
+                }
+                context.restore();
+
+                if (p.y < -50 || (p.type === 'smoke' && p.life <= 0)) {
+                    particles.splice(i, 1);
+                    i--;
+                }
+            }
+        }
+
+        shutterBtn.addEventListener('click', () => {
+            flash.style.opacity = 1;
+            setTimeout(() => flash.style.opacity = 0, 150);
+
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = canvas.width;
+            tempCanvas.height = canvas.height;
+            const tCtx = tempCanvas.getContext('2d');
+
+            // Ajustar orientação para captura
+            if (facingMode === 'user' && activeFilter !== 'mirror') {
+                tCtx.translate(tempCanvas.width, 0);
+                tCtx.scale(-1, 1);
+            }
+            tCtx.drawImage(canvas, 0, 0);
+
+            const dataURL = tempCanvas.toDataURL('image/png');
+
+            lastPhoto.src = dataURL;
+            lastPhoto.classList.remove('hidden');
+           
+            downloadBtn.href = dataURL;
+            downloadBtn.download = `alice-cam-${Date.now()}.png`;
+            downloadBtn.classList.remove('opacity-50', 'pointer-events-none');
+           
+            const msg = document.getElementById('message-overlay');
+            msg.style.opacity = 1;
+            setTimeout(() => msg.style.opacity = 0, 2500);
+        });
+    </script>
+</body>
+</html>

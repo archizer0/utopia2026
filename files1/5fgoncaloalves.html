@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Laboratório das Maravilhas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=UnifrakturMaguntia&family=Fira+Code:wght@400;700&display=swap');
+       
+        body {
+            font-family: 'Fira+Code', monospace;
+            background-color: #1a0f1a;
+            color: #f8fafc;
+            overflow: hidden;
+            background-image: radial-gradient(circle at center, #2e102e 0%, #0f070f 100%);
+        }
+
+        .alice-title {
+            font-family: 'UnifrakturMaguntia', cursive;
+            text-shadow: 0 0 15px #ff00ff;
+        }
+
+        .glass-container {
+            background: rgba(40, 10, 40, 0.4);
+            backdrop-filter: blur(12px);
+            border: 2px solid rgba(255, 0, 255, 0.2);
+            border-radius: 1.5rem;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+        }
+
+        /* Recipiente Monumental */
+        .liquid-container {
+            position: relative;
+            width: 500px;
+            height: 650px;
+            border: 14px solid #d946ef;
+            border-top: none;
+            border-bottom-left-radius: 200px;
+            border-bottom-right-radius: 200px;
+            overflow: hidden;
+            background: rgba(0, 0, 0, 0.6);
+            box-shadow: 0 0 80px rgba(217, 70, 239, 0.5), inset 0 0 60px rgba(0,0,0,0.8);
+        }
+
+        .liquid {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            height: 0%;
+            transition: height 0.8s cubic-bezier(0.4, 0, 0.2, 1), background-color 1s ease;
+            box-shadow: inset 0 20px 60px rgba(255,255,255,0.3);
+        }
+
+        .monster-card {
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            border: 2px solid rgba(255, 255, 255, 0.05);
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .monster-card:hover {
+            background: rgba(217, 70, 239, 0.1);
+            transform: scale(1.05);
+        }
+
+        .monster-card.selected {
+            border-color: #f472b6;
+            background: rgba(244, 114, 182, 0.2);
+            box-shadow: 0 0 15px rgba(244, 114, 182, 0.5);
+        }
+
+        .monster-card.is-mutant {
+            border-color: #a855f7;
+            background: rgba(168, 85, 247, 0.1);
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-30px); }
+        }
+
+        .floating { animation: float 6s infinite ease-in-out; }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10% { transform: translateX(-15px) rotate(-1deg); }
+            30% { transform: translateX(15px) rotate(1deg); }
+            50% { transform: translateX(-15px); }
+            70% { transform: translateX(15px); }
+            90% { transform: translateX(-5px); }
+        }
+
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: #701a75; border-radius: 10px; }
+
+        .fusion-aura {
+            animation: pulse-aura 2s infinite;
+        }
+
+        @keyframes pulse-aura {
+            0%, 100% { box-shadow: 0 0 20px rgba(168, 85, 247, 0.4); }
+            50% { box-shadow: 0 0 40px rgba(168, 85, 247, 0.8); }
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-2">
+
+    <div class="max-w-[1700px] w-full grid grid-cols-1 lg:grid-cols-4 gap-4 h-[98vh]">
+       
+        <!-- Painel de Controlo (Esquerda) -->
+        <div class="glass-container p-4 flex flex-col gap-3 overflow-y-auto border-pink-900/50">
+            <h2 class="text-xl alice-title text-pink-400 text-center mb-2">Matéria-Prima</h2>
+           
+            <!-- Ingredientes -->
+            <div class="grid grid-cols-1 gap-2">
+                <button onclick="addIngredient('Chá de Ervas', '#d946ef', 10, 5)" class="bg-fuchsia-900/40 border border-fuchsia-500 hover:bg-fuchsia-600 p-3 rounded-lg text-xs transition flex items-center gap-2">
+                    <span class="text-lg">☕</span> Chá de Outubro
+                </button>
+                <button onclick="addIngredient('Tinta Vermelha', '#ef4444', 8, 10)" class="bg-red-900/40 border border-red-500 hover:bg-red-600 p-3 rounded-lg text-xs transition flex items-center gap-2">
+                    <span class="text-lg">🌹</span> Sangue de Rosa
+                </button>
+                <button onclick="addIngredient('Essência de Gato', '#3b82f6', 8, 5)" class="bg-blue-900/40 border border-blue-500 hover:bg-blue-600 p-3 rounded-lg text-xs transition flex items-center gap-2">
+                    <span class="text-lg">🐈</span> Pelo de Cheshire
+                </button>
+                <button onclick="addIngredient('Areia do Tempo', '#eab308', 12, 8)" class="bg-yellow-900/40 border border-yellow-500 hover:bg-yellow-600 p-3 rounded-lg text-xs transition flex items-center gap-2">
+                    <span class="text-lg">⏰</span> Engrenagem
+                </button>
+            </div>
+           
+            <div class="h-px bg-pink-900/50 my-2"></div>
+
+            <!-- Grupo de Ação Principal Reorganizado -->
+            <div class="flex flex-col gap-3">
+                <!-- Botão 1: Manifestar -->
+                <button onclick="synthesize()" class="bg-pink-600 hover:bg-pink-500 py-6 rounded-2xl font-bold shadow-lg transition-all active:scale-95 uppercase tracking-widest text-lg border-2 border-white/10 text-white">
+                    MANIFESTAR CLÁSSICO
+                </button>
+               
+                <!-- Botão 2: Limpar -->
+                <button onclick="resetLab()" class="bg-slate-900/80 border border-red-900/50 hover:bg-red-900/20 py-3 rounded-2xl text-[12px] uppercase font-bold text-red-400 transition-all hover:border-red-500">
+                    LIMPAR RECIPIENTE
+                </button>
+
+                <!-- Botão 3: Misturar Mutantes (Abaixo do Limpar) -->
+                <div class="flex flex-col gap-2 mt-2">
+                    <div id="fusion-warning" class="text-[9px] text-center text-purple-400 uppercase font-bold animate-pulse">Seleciona 2 cobaias no jardim</div>
+                    <button id="btn-fusion" onclick="fuseMonsters()" disabled class="bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 disabled:opacity-10 disabled:grayscale hover:from-indigo-500 hover:to-pink-500 text-white font-black py-5 rounded-2xl shadow-xl transition-all uppercase tracking-widest border-t border-white/20">
+                        MISTURAR MUTANTES
+                    </button>
+                </div>
+            </div>
+           
+            <div class="mt-auto p-3 bg-black/40 rounded-xl border border-pink-500/20 text-center">
+                <p class="text-[10px] text-pink-200 italic leading-tight">Combine essências no reservatório ou use o jardim para mutações avançadas.</p>
+            </div>
+        </div>
+
+        <!-- Grande Forja (Centro) -->
+        <div class="lg:col-span-2 glass-container p-6 flex flex-col items-center justify-between border-fuchsia-500/30">
+            <div class="text-center">
+                <h1 class="text-5xl alice-title text-white">Grande Forja das Maravilhas</h1>
+                <div id="status-msg" class="text-sm text-pink-400 mt-1 uppercase tracking-[0.4em]">Câmara de Transmutação de Alta Capacidade</div>
+            </div>
+
+            <div id="beaker-area" class="relative my-2 floating">
+                <div class="liquid-container" id="beaker-main">
+                    <div id="liquid-fill" class="liquid"></div>
+                </div>
+               
+                <div class="absolute -top-16 -left-20 text-7xl opacity-40 rotate-[-25deg]">♠️</div>
+                <div class="absolute -bottom-16 -right-20 text-7xl opacity-40 rotate-[25deg]">♥️</div>
+               
+                <div class="absolute inset-0 -z-10 bg-fuchsia-500/15 blur-[150px] rounded-full"></div>
+            </div>
+
+            <!-- Barras de Status -->
+            <div class="w-full grid grid-cols-3 gap-8 px-16 mb-4">
+                <div class="text-center">
+                    <span class="text-[10px] font-bold text-pink-300 uppercase">Fluido Mágico</span>
+                    <div class="h-2.5 bg-black/50 rounded-full mt-2 overflow-hidden border border-pink-900">
+                        <div id="bar-volume" class="h-full bg-gradient-to-r from-blue-400 to-blue-600 w-0 transition-all"></div>
+                    </div>
+                </div>
+                <div class="text-center">
+                    <span class="text-[10px] font-bold text-pink-300 uppercase">Instabilidade</span>
+                    <div class="h-2.5 bg-black/50 rounded-full mt-2 overflow-hidden border border-pink-900">
+                        <div id="bar-instab" class="h-full bg-gradient-to-r from-purple-400 to-purple-600 w-0 transition-all"></div>
+                    </div>
+                </div>
+                <div class="text-center">
+                    <span class="text-[10px] font-bold text-pink-300 uppercase">Potencial Mutante</span>
+                    <div class="h-2.5 bg-black/50 rounded-full mt-2 overflow-hidden border border-pink-900">
+                        <div id="bar-chance" class="h-full bg-gradient-to-r from-red-400 to-red-600 w-0 transition-all"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Jardim de Criaturas (Direita) -->
+        <div class="glass-container p-4 flex flex-col overflow-hidden border-pink-900/50">
+            <h2 class="text-xl alice-title text-yellow-400 text-center mb-2">Jardim de Espécimes</h2>
+            <div id="bestiary-list" class="flex-1 overflow-y-auto space-y-3 pr-1">
+                <!-- Personagens -->
+            </div>
+            <div id="selection-count" class="text-[10px] text-center mt-3 text-pink-400 italic font-bold uppercase tracking-widest">
+                Selecione cobaias para misturar
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Modal de Descoberta -->
+    <div id="event-modal" class="fixed inset-0 bg-black/95 flex items-center justify-center hidden z-50 p-4">
+        <div class="bg-slate-900 border-2 border-pink-500 p-10 rounded-[3rem] max-w-md w-full text-center relative overflow-hidden">
+            <div id="modal-effect" class="alice-title text-pink-400 text-lg mb-2 uppercase tracking-tighter">Bio-Manifestação!</div>
+            <div id="modal-monster-display" class="bg-gradient-to-b from-purple-900/30 to-black p-8 rounded-3xl mb-6 flex justify-center border border-pink-500/30">
+            </div>
+            <h2 id="modal-name" class="text-3xl font-bold text-white mb-2 alice-title">Nome</h2>
+            <p id="modal-desc" class="text-sm text-gray-400 mb-8 italic leading-relaxed">Descrição.</p>
+            <button onclick="closeModal()" class="w-full bg-pink-600 hover:bg-pink-500 text-white py-5 rounded-2xl font-bold transition-all shadow-[0_0_20px_rgba(219,39,119,0.5)] text-lg uppercase">PRESERVAR NO JARDIM</button>
+        </div>
+    </div>
+
+    <script>
+        let state = {
+            volume: 0,
+            instability: 0,
+            color: '#ffffff',
+            bestiary: [],
+            selectedIndices: []
+        };
+
+        const characters = [
+            {
+                id: 'alice', name: 'Alice Liddell', color: '#60a5fa', isMutant: false,
+                desc: 'A viajante dimensional. A sua curiosidade é o catalisador de todo o caos.',
+                svg: (c) => `<g transform="translate(0, -5)"><rect x="42" y="85" width="6" height="10" fill="white"/><rect x="52" y="85" width="6" height="10" fill="white"/><path d="M35 50 Q30 40 50 30 Q70 40 65 50 L68 70 Q50 65 32 70 Z" fill="#facc15"/><path d="M30 65 L70 65 L80 95 L20 95 Z" fill="${c}"/><rect x="40" y="55" width="20" height="10" fill="white"/><circle cx="50" cy="48" r="14" fill="#ffedd5"/><path d="M42 36 Q50 30 58 36" stroke="black" fill="none" stroke-width="3"/></g>`
+            },
+            {
+                id: 'bunny', name: 'Coelho Branco', color: '#ffffff', isMutant: false,
+                desc: 'Guardião do Tempo. Vive em pânico constante com o tiquetaque do destino.',
+                svg: (c) => `<circle cx="50" cy="65" r="25" fill="${c}" stroke="#eab308" stroke-width="2"/><rect x="42" y="25" width="6" height="30" rx="3" fill="${c}"/><rect x="52" y="25" width="6" height="30" rx="3" fill="${c}"/><circle cx="42" cy="60" r="2" fill="black"/><circle cx="58" cy="60" r="2" fill="black"/><path d="M48 70 L52 70" stroke="pink" stroke-width="2"/>`
+            },
+            {
+                id: 'hatter', name: 'Chapeleiro', color: '#d946ef', isMutant: false,
+                desc: 'A mente fragmentada. Mestre de uma cerimónia de chá sem fim ou lógica.',
+                svg: (c) => `<path d="M30 70 L70 70 L65 40 L35 40 Z" fill="${c}"/><rect x="25" y="70" width="50" height="4" fill="#4a044e"/><text x="40" y="55" fill="white" font-size="8">10/6</text><circle cx="45" cy="78" r="2" fill="black"/><circle cx="55" cy="78" r="2" fill="black"/>`
+            },
+            {
+                id: 'cat', name: 'Gato Cheshire', color: '#3b82f6', isMutant: false,
+                desc: 'O Observador. Pode desaparecer, mas o seu sorriso sádico permanece sempre.',
+                svg: (c) => `<circle cx="50" cy="50" r="25" fill="${c}" opacity="0.8"/><path d="M30 55 Q50 75 70 55" stroke="white" stroke-width="3" fill="none"/><circle cx="40" cy="45" r="4" fill="yellow"/><circle cx="60" cy="45" r="4" fill="yellow"/>`
+            },
+            {
+                id: 'queen', name: 'Rainha Vermelha', color: '#ef4444', isMutant: false,
+                desc: 'O Coração Tirânico. Governa através do medo e de sentenças de decapitação.',
+                svg: (c) => `<circle cx="50" cy="55" r="22" fill="white" stroke="${c}" stroke-width="2"/><path d="M40 35 L50 20 L60 35 Z" fill="#eab308"/><path d="M45 55 L50 60 L55 55 L50 50 Z" fill="red"/>`
+            }
+        ];
+
+        function addIngredient(name, color, vol, instab) {
+            if (state.volume >= 100) return;
+            state.volume = Math.min(100, state.volume + vol);
+            state.instability += instab;
+            state.color = color;
+            updateUI();
+            createBubbles();
+        }
+
+        function updateUI() {
+            document.getElementById('liquid-fill').style.height = state.volume + "%";
+            document.getElementById('liquid-fill').style.backgroundColor = state.color;
+            document.getElementById('bar-volume').style.width = state.volume + "%";
+            document.getElementById('bar-instab').style.width = Math.min(100, state.instability) + "%";
+            document.getElementById('bar-chance').style.width = Math.min(100, state.instability * 1.5) + "%";
+           
+            const btnFusion = document.getElementById('btn-fusion');
+            const warnFusion = document.getElementById('fusion-warning');
+           
+            if(state.selectedIndices.length === 2) {
+                btnFusion.disabled = false;
+                btnFusion.classList.add('fusion-aura');
+                warnFusion.innerText = "PRONTO PARA A MISTURA";
+                warnFusion.classList.remove('text-purple-400');
+                warnFusion.classList.add('text-green-400');
+            } else {
+                btnFusion.disabled = true;
+                btnFusion.classList.remove('fusion-aura');
+                warnFusion.innerText = "Seleciona 2 cobaias no jardim";
+                warnFusion.classList.add('text-purple-400');
+                warnFusion.classList.remove('text-green-400');
+            }
+        }
+
+        function synthesize() {
+            if (state.volume < 20) return;
+            const beaker = document.getElementById('beaker-main');
+            beaker.style.animation = 'shake 0.1s infinite';
+
+            setTimeout(() => {
+                beaker.style.animation = '';
+                const base = characters[Math.floor(Math.random() * characters.length)];
+                const char = { ...base, uid: Date.now(), color: base.id === 'alice' ? '#60a5fa' : state.color, level: 1 };
+                showDiscovery(char, "Clássico Materializado");
+                state.bestiary.push(char);
+                renderBestiary();
+                resetLab();
+            }, 1500);
+        }
+
+        function fuseMonsters() {
+            if (state.selectedIndices.length !== 2) return;
+           
+            const beaker = document.getElementById('beaker-main');
+            beaker.style.animation = 'shake 0.05s infinite';
+
+            setTimeout(() => {
+                beaker.style.animation = '';
+                const m1 = state.bestiary[state.selectedIndices[0]];
+                const m2 = state.bestiary[state.selectedIndices[1]];
+
+                const mutant = {
+                    uid: Date.now(),
+                    isMutant: true,
+                    name: `${m1.name.split(' ')[0]}-${m2.name.split(' ').pop()}`,
+                    color: lerpColor(m1.color, m2.color, 0.5),
+                    desc: "Uma aberração colossal forjada através da mistura forçada de essências.",
+                    level: m1.level + m2.level + 3,
+                    svg: (c) => `
+                        <g transform="scale(0.9) translate(5, 5)">
+                            ${m1.svg(m1.color)}
+                            <g opacity="0.6" transform="rotate(25 50 50) scale(1.1)">
+                                ${m2.svg(m2.color)}
+                            </g>
+                            <circle cx="50" cy="50" r="49" fill="none" stroke="${c}" stroke-width="4" stroke-dasharray="10 5"/>
+                        </g>
+                    `
+                };
+
+                const sorted = [...state.selectedIndices].sort((a, b) => b - a);
+                sorted.forEach(i => state.bestiary.splice(i, 1));
+                state.selectedIndices = [];
+                state.bestiary.push(mutant);
+                showDiscovery(mutant, "MISTURA BEM-SUCEDIDA");
+                renderBestiary();
+                updateUI();
+            }, 1000);
+        }
+
+        function showDiscovery(m, title) {
+            document.getElementById('modal-effect').innerText = title;
+            document.getElementById('modal-name').innerText = m.name;
+            document.getElementById('modal-desc').innerText = m.desc;
+            document.getElementById('modal-monster-display').innerHTML = `<svg width="250" height="250" viewBox="0 0 100 100">${m.svg(m.color)}</svg>`;
+            document.getElementById('event-modal').classList.remove('hidden');
+        }
+
+        function renderBestiary() {
+            const list = document.getElementById('bestiary-list');
+            list.innerHTML = '';
+            state.bestiary.forEach((m, i) => {
+                const sel = state.selectedIndices.includes(i);
+                const card = document.createElement('div');
+                card.className = `monster-card p-4 rounded-2xl flex items-center gap-4 ${sel ? 'selected' : ''} ${m.isMutant ? 'is-mutant' : ''}`;
+                card.onclick = () => {
+                    const pos = state.selectedIndices.indexOf(i);
+                    if (pos > -1) state.selectedIndices.splice(pos, 1);
+                    else if (state.selectedIndices.length < 2) state.selectedIndices.push(i);
+                    renderBestiary(); updateUI();
+                };
+                card.innerHTML = `
+                    <div class="w-16 h-16 bg-black/60 rounded-xl border ${m.isMutant ? 'border-purple-500' : 'border-pink-500/30'} flex items-center justify-center">
+                        <svg width="50" height="50" viewBox="0 0 100 100">${m.svg(m.color)}</svg>
+                    </div>
+                    <div class="flex-1 overflow-hidden">
+                        <p class="text-sm font-bold text-white alice-title truncate">${m.name}</p>
+                        <p class="text-[9px] ${m.isMutant ? 'text-purple-400' : 'text-pink-500'} font-bold">LV ${m.level} | ${m.isMutant ? 'COLOSSAL' : 'ESTÁVEL'}</p>
+                    </div>
+                `;
+                list.appendChild(card);
+            });
+        }
+
+        function resetLab() {
+            state.volume = 0; state.instability = 0; state.color = '#ffffff'; updateUI();
+        }
+
+        function closeModal() { document.getElementById('event-modal').classList.add('hidden'); }
+
+        function createBubbles() {
+            const container = document.getElementById('beaker-main');
+            for(let i=0; i<6; i++){
+                const b = document.createElement('div');
+                const size = Math.random() * 15 + 8;
+                b.style.cssText = `position:absolute; bottom:0; left:${Math.random()*90+5}%; width:${size}px; height:${size}px; background:rgba(255,255,255,0.3); border-radius:50%; transition: transform 2.5s ease-in, opacity 1.5s; z-index:10;`;
+                container.appendChild(b);
+                setTimeout(() => { b.style.transform = `translateY(-640px)`; b.style.opacity = '0'; }, 50);
+                setTimeout(() => b.remove(), 2600);
+            }
+        }
+
+        function lerpColor(a, b, amount) {
+            const ah = parseInt(a.replace(/#/g, ''), 16),
+                ar = ah >> 16, ag = ah >> 8 & 0xff, ab = ah & 0xff,
+                bh = parseInt(b.replace(/#/g, ''), 16),
+                br = bh >> 16, bg = bh >> 8 & 0xff, bb = bh & 0xff,
+                rr = ar + amount * (br - ar),
+                rg = ag + amount * (bg - ag),
+                rb = ab + amount * (bb - ab);
+            return '#' + ((1 << 24) + (rr << 16) + (rg << 8) + rb | 0).toString(16).slice(1);
+        }
+    </script>
+</body>
+</html>
