@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Labirinto 3D das Maravilhas</title>
+    <!-- Tailwind CSS para UI -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Lora:ital,wght@0,400;1,400&display=swap');
+        
+        body { margin: 0; overflow: hidden; background-color: #1a1a1a; font-family: 'Lora', serif; }
+        #game-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        
+        /* Estilos de UI do Livro */
+        .book-panel {
+            background-color: #fdfbf7;
+            background-image: url('https://www.transparenttextures.com/patterns/aged-paper.png');
+            border: 8px double #8B4513;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5), inset 0 0 60px rgba(139,69,19,0.1);
+        }
+        
+        .book-btn {
+            background-color: #fff;
+            border: 1px solid #8B4513;
+            color: #3e2723;
+            transition: all 0.2s;
+            font-family: 'Cinzel', serif;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .book-btn:hover {
+            background-color: #8B4513;
+            color: #fff;
+            transform: translateY(-2px);
+        }
+        .book-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            background-color: #e0e0e0;
+            color: #888;
+            transform: none;
+        }
+
+        /* Joystick virtual para telemóvel */
+        #joystick-zone {
+            display: none;
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 120px;
+            height: 120px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 50%;
+            touch-action: none;
+        }
+        @media (max-width: 768px) {
+            #joystick-zone { display: block; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Contentor 3D -->
+    <div id="game-container"></div>
+
+    <!-- UI: HUD -->
+    <div class="absolute top-4 left-4 z-10 pointer-events-none">
+        <div class="book-panel px-4 py-2 rounded-sm inline-block">
+            <h1 class="text-[#8B4513] font-bold text-lg font-serif">O Labirinto</h1>
+            <p class="text-xs text-[#5d4037] italic">Encontra a Toca do Coelho</p>
+        </div>
+    </div>
+
+    <!-- UI: Botão Ver de Cima -->
+    <div class="absolute top-4 right-4 z-10 pointer-events-auto">
+        <button id="btn-topview" onclick="activateTopView()" class="book-panel px-4 py-2 rounded-sm text-sm font-bold text-[#8B4513] hover:text-[#5d4037] active:scale-95 transition-transform flex items-center gap-2">
+            👁️ Olho de Águia
+        </button>
+    </div>
+
+    <!-- UI: Modals (Intro, Riddle, Game Over) -->
+    <div id="ui-layer" class="absolute inset-0 z-20 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-opacity duration-300">
+        
+        <!-- INTRO SCREEN -->
+        <div id="screen-intro" class="book-panel p-8 max-w-md text-center">
+            <div class="text-4xl mb-4 text-[#8B4513]">🐇</div>
+            <h1 class="text-3xl font-bold text-[#3e2723] mb-4 font-serif">A Toca do Coelho</h1>
+            <p class="text-[#5d4037] mb-6 italic">
+                Estás perdido no jardim da Rainha. Encontra a saída antes que ela te encontre.
+                Cuidado com o Gato de Cheshire e as suas charadas.
+            </p>
+            <p class="text-sm text-[#8B4513] mb-6 font-bold uppercase">
+                WASD / Setas para mover<br>Rato para olhar
+            </p>
+            <button onclick="startGame()" class="book-btn px-6 py-3 rounded text-lg font-bold w-full">
+                Entrar no Labirinto
+            </button>
+        </div>
+
+        <!-- RIDDLE SCREEN -->
+        <div id="screen-riddle" class="hidden book-panel p-8 max-w-md text-center transform rotate-1">
+            <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#3e2723] text-[#fdfbf7] px-3 py-1 text-xs font-bold uppercase tracking-widest">
+                Enigma
+            </div>
+            <div class="text-5xl mb-4 animate-pulse">😼</div>
+            <p id="riddle-text" class="text-[#3e2723] text-xl mb-6 font-serif italic">
+                "Quanto mais tiras de mim, maior eu fico..."
+            </p>
+            <div id="riddle-options" class="space-y-3">
+                <!-- Opções geradas via JS -->
+            </div>
+        </div>
+
+        <!-- GAME OVER SCREEN -->
+        <div id="screen-gameover" class="hidden book-panel p-8 max-w-md text-center border-red-900">
+            <div class="text-5xl mb-4">👑</div>
+            <h2 class="text-3xl font-bold text-red-900 mb-2 font-serif">CORTEM-LHE A CABEÇA!</h2>
+            <p class="text-red-800 mb-6 italic">A resposta estava errada.</p>
+            <button onclick="resetGame()" class="bg-red-800 text-white hover:bg-red-700 px-6 py-3 rounded w-full font-bold uppercase tracking-widest">
+                Tentar de Novo
+            </button>
+        </div>
+
+        <!-- WIN SCREEN -->
+        <div id="screen-win" class="hidden book-panel p-8 max-w-md text-center border-blue-900">
+            <div class="text-5xl mb-4">🕳️</div>
+            <h2 class="text-3xl font-bold text-blue-900 mb-2 font-serif">Escapaste!</h2>
+            <p class="text-blue-800 mb-6 italic">Caíste pela toca do coelho em segurança.</p>
+            <button onclick="resetGame()" class="bg-blue-800 text-white hover:bg-blue-700 px-6 py-3 rounded w-full font-bold uppercase tracking-widest">
+                Jogar Novamente
+            </button>
+        </div>
+    </div>
+
+    <!-- Controles Móveis (Simples) -->
+    <div id="mobile-controls" class="hidden absolute bottom-8 left-0 right-0 flex justify-center gap-4 z-10 md:hidden pointer-events-none">
+        <div class="flex flex-col items-center pointer-events-auto opacity-70">
+            <button class="bg-[#fdfbf7] p-4 rounded-full shadow-lg mb-2 active:bg-[#d4c4a8]" ontouchstart="startMove('forward')" ontouchend="stopMove()">⬆️</button>
+            <div class="flex gap-4">
+                <button class="bg-[#fdfbf7] p-4 rounded-full shadow-lg active:bg-[#d4c4a8]" ontouchstart="startRotate('left')" ontouchend="stopRotate()">⬅️</button>
+                <button class="bg-[#fdfbf7] p-4 rounded-full shadow-lg active:bg-[#d4c4a8]" ontouchstart="startMove('backward')" ontouchend="stopMove()">⬇️</button>
+                <button class="bg-[#fdfbf7] p-4 rounded-full shadow-lg active:bg-[#d4c4a8]" ontouchstart="startRotate('right')" ontouchend="stopRotate()">➡️</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURAÇÃO DO JOGO ---
+        const LEVEL_SIZE = 10;
+        const CELL_SIZE = 4; // Tamanho de cada bloco no mundo 3D
+        
+        // 1: Parede, 0: Chão, 3: Saída, 4: Gato, 9: Start
+        const MAP = [
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            [1, 9, 0, 0, 1, 0, 0, 4, 3, 1],
+            [1, 0, 1, 0, 1, 0, 1, 1, 0, 1],
+            [1, 0, 1, 0, 0, 0, 0, 0, 0, 1],
+            [1, 4, 1, 1, 1, 1, 4, 1, 0, 1],
+            [1, 0, 0, 0, 0, 1, 0, 1, 0, 1],
+            [1, 1, 1, 1, 0, 1, 0, 0, 0, 1],
+            [1, 0, 4, 0, 0, 0, 0, 1, 0, 1],
+            [1, 0, 1, 1, 1, 1, 0, 1, 0, 1],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        ];
+
+        const RIDDLES = [
+            { q: "Quanto mais tiras de mim, maior eu fico. O que sou?", opts: ["O Medo", "Um Buraco", "O Tempo"], a: 1 },
+            { q: "Pertenço a ti, mas os outros usam-me mais. O que sou?", opts: ["O teu nome", "O teu dinheiro", "O teu chapéu"], a: 0 },
+            { q: "Tenho cidades, mas não casas. Tenho água, mas não peixes.", opts: ["Um Mapa", "O Deserto", "Um Espelho"], a: 0 },
+            { q: "O que é que tem de ser partido antes de poder ser usado?", opts: ["Um Ovo", "Uma Promessa", "Um Espelho"], a: 0 }
+        ];
+
+        // --- VARIÁVEIS GLOBAIS ---
+        let scene, camera, renderer;
+        let player = { mesh: null, speed: 0.15, rotSpeed: 0.04, dir: new THREE.Vector3(), moving: false };
+        let keys = { w: false, a: false, s: false, d: false, left: false, right: false, up: false, down: false };
+        let interactableObjects = []; // Gatos e Saída
+        let walls = [];
+        let isGameActive = false;
+        let currentInteractable = null;
+        let animationId;
+
+        // Estado da Vista de Cima
+        let topViewActive = false;
+        let topViewInterval = null;
+
+        // Mobile Controls State
+        let mobileMove = 0; // 1 fwd, -1 back
+        let mobileRot = 0; // 1 right, -1 left
+
+        // --- INICIALIZAÇÃO ---
+        function init() {
+            // Cena
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB); // Céu azul
+            scene.fog = new THREE.Fog(0x87CEEB, 0, 30); // Nevoeiro original para FPS
+
+            // Câmara (First Person)
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+            
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            document.getElementById('game-container').appendChild(renderer.domElement);
+
+            // Luzes
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(10, 20, 10);
+            dirLight.castShadow = true;
+            dirLight.shadow.camera.left = -20;
+            dirLight.shadow.camera.right = 20;
+            dirLight.shadow.camera.top = 20;
+            dirLight.shadow.camera.bottom = -20;
+            scene.add(dirLight);
+
+            // Chão (Xadrez de Relva)
+            createFloor();
+
+            // Construir Labirinto
+            buildMaze();
+
+            // Input Listeners
+            window.addEventListener('resize', onWindowResize);
+            window.addEventListener('keydown', (e) => handleKey(e, true));
+            window.addEventListener('keyup', (e) => handleKey(e, false));
+            
+            // Game Loop
+            animate();
+        }
+
+        function createFloor() {
+            const geometry = new THREE.PlaneGeometry(LEVEL_SIZE * CELL_SIZE * 2, LEVEL_SIZE * CELL_SIZE * 2);
+            // Textura procedural simples (quadriculado)
+            const canvas = document.createElement('canvas');
+            canvas.width = 64; canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#2d4a18'; // Verde escuro
+            ctx.fillRect(0, 0, 64, 64);
+            ctx.fillStyle = '#3a5f1e'; // Verde claro
+            ctx.fillRect(0, 0, 32, 32);
+            ctx.fillRect(32, 32, 32, 32);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(LEVEL_SIZE, LEVEL_SIZE);
+            texture.magFilter = THREE.NearestFilter;
+
+            const material = new THREE.MeshStandardMaterial({ map: texture });
+            const floor = new THREE.Mesh(geometry, material);
+            floor.rotation.x = -Math.PI / 2;
+            floor.receiveShadow = true;
+            scene.add(floor);
+        }
+
+        function buildMaze() {
+            // Geometria da Parede (Sebes)
+            const wallGeo = new THREE.BoxGeometry(CELL_SIZE, CELL_SIZE * 1.5, CELL_SIZE);
+            const wallMat = new THREE.MeshStandardMaterial({ color: 0x1a472a }); // Verde Sebe
+
+            // Geometria do Gato (Esfera Roxa com olhos)
+            const catGeo = new THREE.SphereGeometry(CELL_SIZE/3, 16, 16);
+            const catMat = new THREE.MeshStandardMaterial({ color: 0x800080, emissive: 0x330033 });
+
+            // Geometria da Saída (Toca/Buraco negro no chão com partículas douradas)
+            const exitGeo = new THREE.CylinderGeometry(CELL_SIZE/3, CELL_SIZE/3, 0.2, 16);
+            const exitMat = new THREE.MeshStandardMaterial({ color: 0x000000 });
+
+            for (let z = 0; z < MAP.length; z++) {
+                for (let x = 0; x < MAP[z].length; x++) {
+                    const type = MAP[z][x];
+                    const posX = x * CELL_SIZE - (MAP[0].length * CELL_SIZE) / 2;
+                    const posZ = z * CELL_SIZE - (MAP.length * CELL_SIZE) / 2;
+
+                    if (type === 1) {
+                        // Parede
+                        const wall = new THREE.Mesh(wallGeo, wallMat);
+                        wall.position.set(posX, CELL_SIZE * 0.75, posZ);
+                        wall.castShadow = true;
+                        wall.receiveShadow = true;
+                        scene.add(wall);
+                        // Adicionar colisor
+                        walls.push(new THREE.Box3().setFromObject(wall));
+                    } else if (type === 9) {
+                        // Player Start
+                        player.mesh = new THREE.Object3D();
+                        player.mesh.position.set(posX, 1.5, posZ); // Altura dos olhos
+                        scene.add(player.mesh);
+                    } else if (type === 4) {
+                        // Gato
+                        const cat = new THREE.Mesh(catGeo, catMat);
+                        cat.position.set(posX, 1.5, posZ);
+                        
+                        // Olhos do gato
+                        const eyeGeo = new THREE.SphereGeometry(0.15, 8, 8);
+                        const eyeMat = new THREE.MeshBasicMaterial({ color: 0xFFFF00 });
+                        const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+                        leftEye.position.set(-0.3, 0.2, 0.8);
+                        const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+                        rightEye.position.set(0.3, 0.2, 0.8);
+                        cat.add(leftEye);
+                        cat.add(rightEye);
+                        
+                        // Sorriso
+                        const smileGeo = new THREE.TorusGeometry(0.3, 0.05, 8, 16, Math.PI);
+                        const smile = new THREE.Mesh(smileGeo, eyeMat);
+                        smile.position.set(0, -0.1, 0.8);
+                        smile.rotation.x = Math.PI; // Sorriso para cima
+                        cat.add(smile);
+
+                        scene.add(cat);
+                        // Animação de flutuar
+                        cat.userData = { type: 'cat', originalY: 1.5, id: Math.random() };
+                        interactableObjects.push(cat);
+                    } else if (type === 3) {
+                        // Saída
+                        const exit = new THREE.Mesh(exitGeo, exitMat);
+                        exit.position.set(posX, 0.1, posZ);
+                        scene.add(exit);
+                        
+                        // Partículas (Dourado)
+                        const ringGeo = new THREE.TorusGeometry(CELL_SIZE/3, 0.05, 8, 16);
+                        const ringMat = new THREE.MeshBasicMaterial({ color: 0xFFD700 });
+                        const ring = new THREE.Mesh(ringGeo, ringMat);
+                        ring.position.y = 0.5;
+                        ring.rotation.x = Math.PI/2;
+                        exit.add(ring);
+                        
+                        exit.userData = { type: 'exit' };
+                        interactableObjects.push(exit);
+                    }
+                }
+            }
+
+            // Se não houver player (erro no mapa), criar no 0,0
+            if (!player.mesh) {
+                player.mesh = new THREE.Object3D();
+                player.mesh.position.set(0, 1.5, 0);
+                scene.add(player.mesh);
+            }
+        }
+
+        // --- LÓGICA DO JOGO ---
+
+        function handleKey(e, pressed) {
+            const k = e.key.toLowerCase();
+            if (k === 'w' || k === 'arrowup') keys.w = pressed;
+            if (k === 's' || k === 'arrowdown') keys.s = pressed;
+            if (k === 'a' || k === 'arrowleft') keys.left = pressed; // Rodar
+            if (k === 'd' || k === 'arrowright') keys.right = pressed; // Rodar
+        }
+
+        // Mobile Controls
+        window.startMove = (dir) => { mobileMove = dir === 'forward' ? 1 : -1; }
+        window.stopMove = () => { mobileMove = 0; }
+        window.startRotate = (dir) => { mobileRot = dir === 'left' ? 1 : -1; }
+        window.stopRotate = () => { mobileRot = 0; }
+
+        function checkCollision(newPos) {
+            const playerBox = new THREE.Box3();
+            playerBox.setFromCenterAndSize(newPos, new THREE.Vector3(1, 1, 1));
+
+            for (let wall of walls) {
+                if (playerBox.intersectsBox(wall)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function checkInteraction() {
+            const playerPos = player.mesh.position;
+            
+            for (let i = 0; i < interactableObjects.length; i++) {
+                const obj = interactableObjects[i];
+                if (!obj.visible) continue;
+
+                const dist = playerPos.distanceTo(obj.position);
+                
+                if (dist < 2.0) {
+                    if (obj.userData.type === 'cat') {
+                        showRiddle(obj);
+                        return;
+                    } else if (obj.userData.type === 'exit') {
+                        gameWin();
+                        return;
+                    }
+                }
+            }
+        }
+
+        function updatePlayer() {
+            if (!isGameActive) return;
+
+            // Rotação
+            let rot = 0;
+            if (keys.left || mobileRot === 1) rot += player.rotSpeed;
+            if (keys.right || mobileRot === -1) rot -= player.rotSpeed;
+            
+            player.mesh.rotation.y += rot;
+
+            // Movimento
+            let move = 0;
+            if (keys.w || mobileMove === 1) move -= player.speed;
+            if (keys.s || mobileMove === -1) move += player.speed;
+
+            if (move !== 0) {
+                const dir = new THREE.Vector3(0, 0, move);
+                dir.applyAxisAngle(new THREE.Vector3(0, 1, 0), player.mesh.rotation.y);
+                
+                const newPos = player.mesh.position.clone().add(dir);
+                
+                if (!checkCollision(newPos)) {
+                    player.mesh.position.copy(newPos);
+                }
+            }
+
+            // --- LÓGICA DE CÂMARA ---
+            if (topViewActive) {
+                // Vista Aérea (Drone)
+                // Posição fixa bem alta no centro aproximado
+                camera.position.set(0, 50, 0);
+                camera.rotation.set(-Math.PI / 2, 0, 0); // Olhar diretamente para baixo
+            } else {
+                // Vista Primeira Pessoa (FPS)
+                camera.position.copy(player.mesh.position);
+                camera.rotation.set(0, player.mesh.rotation.y, 0); // Copia apenas rotação Y (yaw)
+            }
+
+            checkInteraction();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Animar gatos
+            const time = Date.now() * 0.002;
+            interactableObjects.forEach(obj => {
+                if (obj.userData.type === 'cat' && obj.visible) {
+                    obj.position.y = obj.userData.originalY + Math.sin(time + obj.userData.id) * 0.2;
+                    obj.lookAt(player.mesh.position);
+                    obj.rotation.x = 0; 
+                    obj.rotation.z = 0;
+                }
+            });
+
+            updatePlayer();
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- SISTEMA DE UI E TOP VIEW ---
+
+        function activateTopView() {
+            if (topViewActive || !isGameActive) return;
+            
+            topViewActive = true;
+            
+            // CORREÇÃO: Aumentar distância do nevoeiro para ver o chão
+            if (scene.fog) scene.fog.far = 100;
+
+            const btn = document.getElementById('btn-topview');
+            let timeLeft = 30;
+            
+            btn.disabled = true;
+            btn.textContent = `⏳ ${timeLeft}s`;
+            
+            // Intervalo do cronómetro
+            topViewInterval = setInterval(() => {
+                timeLeft--;
+                btn.textContent = `⏳ ${timeLeft}s`;
+                
+                if (timeLeft <= 0) {
+                    deactivateTopView();
+                }
+            }, 1000);
+        }
+
+        function deactivateTopView() {
+            if (!topViewActive) return;
+            
+            topViewActive = false;
+            
+            // CORREÇÃO: Restaurar nevoeiro para ambiente claustrofóbico
+            if (scene.fog) scene.fog.far = 30;
+
+            clearInterval(topViewInterval);
+            const btn = document.getElementById('btn-topview');
+            btn.textContent = "👁️ Olho de Águia";
+            btn.disabled = false;
+        }
+
+        function startGame() {
+            document.getElementById('ui-layer').classList.add('hidden');
+            document.getElementById('screen-intro').classList.add('hidden');
+            document.getElementById('screen-riddle').classList.add('hidden');
+            document.getElementById('screen-gameover').classList.add('hidden');
+            document.getElementById('screen-win').classList.add('hidden');
+            
+            if (window.innerWidth < 768) {
+                document.getElementById('mobile-controls').classList.remove('hidden');
+            }
+
+            isGameActive = true;
+        }
+
+        function showRiddle(catObj) {
+            isGameActive = false;
+            currentInteractable = catObj;
+            
+            const riddle = RIDDLES[Math.floor(Math.random() * RIDDLES.length)];
+            const riddleEl = document.getElementById('riddle-text');
+            const optsEl = document.getElementById('riddle-options');
+            
+            riddleEl.textContent = `"${riddle.q}"`;
+            optsEl.innerHTML = '';
+            
+            riddle.opts.forEach((opt, idx) => {
+                const btn = document.createElement('button');
+                btn.className = "w-full book-btn py-2 px-4 rounded";
+                btn.textContent = opt;
+                btn.onclick = () => handleAnswer(idx, riddle.a);
+                optsEl.appendChild(btn);
+            });
+
+            document.getElementById('ui-layer').classList.remove('hidden');
+            document.getElementById('screen-riddle').classList.remove('hidden');
+            document.getElementById('mobile-controls').classList.add('hidden');
+        }
+
+        function handleAnswer(selected, correct) {
+            if (selected === correct) {
+                document.getElementById('ui-layer').classList.add('hidden');
+                document.getElementById('screen-riddle').classList.add('hidden');
+                if (window.innerWidth < 768) document.getElementById('mobile-controls').classList.remove('hidden');
+                currentInteractable.visible = false;
+                isGameActive = true;
+            } else {
+                document.getElementById('screen-riddle').classList.add('hidden');
+                document.getElementById('screen-gameover').classList.remove('hidden');
+            }
+        }
+
+        function gameWin() {
+            isGameActive = false;
+            document.getElementById('ui-layer').classList.remove('hidden');
+            document.getElementById('screen-win').classList.remove('hidden');
+            document.getElementById('mobile-controls').classList.add('hidden');
+        }
+
+        function resetGame() {
+            location.reload(); 
+        }
+
+        init();
+
+    </script>
+</body>
+</html>
