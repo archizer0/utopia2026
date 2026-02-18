@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Alice, Foge da Rainha das Copas</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700&family=Nunito:wght@400;700&display=swap');
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #2c0e37;
+            font-family: 'Nunito', sans-serif;
+            touch-action: none; /* Previne zoom e scroll em telemóveis */
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(to bottom, #87CEEB 0%, #E0F7FA 50%, #228B22 100%);
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .hud-text {
+            color: #3e2723;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 2px 2px 0px #fff;
+        }
+
+        #start-screen, #game-over-screen, #win-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 10;
+            pointer-events: auto;
+            text-align: center;
+        }
+
+        h1 {
+            font-family: 'Cinzel Decorative', cursive;
+            font-size: 3rem;
+            margin-bottom: 10px;
+            color: #FFD700;
+            text-shadow: 0 0 10px #FF0000;
+        }
+
+        p {
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+            max-width: 600px;
+            line-height: 1.5;
+        }
+
+        button {
+            padding: 15px 40px;
+            font-size: 1.5rem;
+            background: #E91E63;
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(233, 30, 99, 0.4);
+            font-family: 'Cinzel Decorative', cursive;
+            transition: transform 0.1s;
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        #progress-container {
+            width: 100%;
+            max-width: 400px;
+            height: 20px;
+            background: rgba(255,255,255,0.5);
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 0 auto;
+            border: 2px solid #3e2723;
+        }
+
+        #progress-bar {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #FFD700, #FFA500);
+            transition: width 0.1s;
+        }
+
+        /* Animação flutuante para o ecrã inicial */
+        .float {
+            animation: float 3s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+            100% { transform: translateY(0px); }
+        }
+
+        @media (max-width: 600px) {
+            h1 { font-size: 2rem; }
+            p { font-size: 1rem; padding: 0 20px; }
+            .hud-text { font-size: 18px; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="ui-layer">
+        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+            <div class="hud-text" style="white-space: nowrap;">Distância: <span id="score">0</span>m</div>
+            <div id="progress-container" style="margin: 0 15px;">
+                <div id="progress-bar"></div>
+            </div>
+            <div class="hud-text" style="text-align: right; font-size: 16px; line-height: 1.2; max-width: 150px;">
+                salta por cima das cartas e chega ao lanche!
+            </div>
+        </div>
+        <div class="hud-text" style="align-self: flex-end; opacity: 0.7;">Saltar: Espaço ou Toque</div>
+    </div>
+
+    <!-- Ecrã Inicial -->
+    <div id="start-screen">
+        <div class="float">
+            <h1>Alice, Foge da Rainha das Copas</h1>
+            <div style="font-size: 60px; margin: 10px;">👱‍♀️👗 👑❤️</div>
+        </div>
+        <p>A Rainha de Copas está furiosa! Ajuda a Alice a fugir para chegar ao lanche do Coelho e do Chapeleiro Louco!</p>
+        <button onclick="startGame()">Começar a Correr</button>
+    </div>
+
+    <!-- Game Over -->
+    <div id="game-over-screen" class="hidden">
+        <h1>"Cortem-lhe a Cabeça!"</h1>
+        <div style="font-size: 80px; margin: 20px;">👸💔</div>
+        <p>A Rainha apanhou-te. A Alice não chegou ao chá a tempo.</p>
+        <button onclick="resetGame()">Tentar de Novo</button>
+    </div>
+
+    <!-- Ecrã de Vitória -->
+    <div id="win-screen" class="hidden">
+        <h1 style="color: #4CAF50; text-shadow: 0 0 10px #fff;">Chegaste ao Chá!</h1>
+        <div style="font-size: 80px; margin: 20px;">☕🍰🎩</div>
+        <p>Parabéns! Escapaste à Rainha e juntaste-te ao Chapeleiro e ao Coelho para um feliz desaniversário!</p>
+        <button onclick="resetGame()">Jogar Novamente</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+   
+    // Elementos da UI
+    const startScreen = document.getElementById('start-screen');
+    const gameOverScreen = document.getElementById('game-over-screen');
+    const winScreen = document.getElementById('win-screen');
+    const scoreEl = document.getElementById('score');
+    const progressBar = document.getElementById('progress-bar');
+
+    // Estado do Jogo
+    let gameState = 'START'; // START, PLAYING, GAMEOVER, WIN
+    let frames = 0;
+    let gameSpeed = 5;
+    let distance = 0;
+    const GOAL_DISTANCE = 2000; // Distância para vencer
+
+    // Configuração do Canvas Responsivo
+    function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // Definição do Chão
+    let groundHeight = 100;
+
+    // --- PERSONAGENS E OBJETOS ---
+
+    const alice = {
+        x: canvas.width * 0.3, // Posição fixa no eixo X
+        y: 0,
+        width: 50,
+        height: 80,
+        vy: 0,
+        jumpPower: -18,
+        gravity: 0.8,
+        grounded: false,
+        emoji: '👱‍♀️',
+        draw: function() {
+            // Sombra
+            ctx.fillStyle = 'rgba(0,0,0,0.2)';
+            ctx.beginPath();
+            ctx.ellipse(this.x + 25, canvas.height - groundHeight + 10, 20, 5, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            let bounce = this.grounded ? 0 : -5;
+            let yPos = this.y + bounce;
+
+            // --- VESTIDO DA ALICE (Mais cor!) ---
+           
+            // 1. Saia Azul (Trapézio)
+            ctx.fillStyle = '#2196F3'; // Azul Alice brilhante
+            ctx.beginPath();
+            ctx.moveTo(this.x + 5, yPos + 80);  // Baixo esq
+            ctx.lineTo(this.x + 45, yPos + 80); // Baixo dir
+            ctx.lineTo(this.x + 35, yPos + 50); // Cintura dir
+            ctx.lineTo(this.x + 15, yPos + 50); // Cintura esq
+            ctx.fill();
+
+            // 2. Tronco Azul
+            ctx.fillRect(this.x + 15, yPos + 35, 20, 20);
+
+            // 3. Avental Branco
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(this.x + 20, yPos + 35, 10, 45);
+
+            // 4. Cabeça (Emoji)
+            // Ajustei o tamanho e posição para encaixar no vestido
+            ctx.font = '40px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(this.emoji, this.x + 25, yPos + 42);
+        },
+        update: function() {
+            // Física
+            this.vy += this.gravity;
+            this.y += this.vy;
+
+            // Colisão com o chão
+            if (this.y > canvas.height - groundHeight - this.height) {
+                this.y = canvas.height - groundHeight - this.height;
+                this.vy = 0;
+                this.grounded = true;
+            } else {
+                this.grounded = false;
+            }
+        },
+        jump: function() {
+            if (this.grounded) {
+                this.vy = this.jumpPower;
+                this.grounded = false;
+                createParticles(this.x + 25, this.y + 80, '#fff', 5); // Poeira
+            }
+        }
+    };
+
+    const queen = {
+        x: -100, // Começa fora do ecrã
+        targetX: 50, // Onde ela quer ficar
+        y: 0,
+        width: 70,
+        height: 90,
+        emoji: '👑',
+        anger: 0, // Aumenta se Alice errar
+        draw: function() {
+            // Movimento flutuante
+            let floatY = Math.sin(frames * 0.05) * 10;
+           
+            ctx.font = '80px Arial';
+            ctx.textAlign = 'center';
+            // Se estiver muito perto, fica vermelha ou maior
+            if (this.x > alice.x - 150) {
+                 ctx.fillText('🤬', this.x + 35, this.y + 70 + floatY); // Furiosa
+            } else {
+                 ctx.fillText('👸', this.x + 35, this.y + 70 + floatY); // Rainha
+            }
+           
+            // Carta na mão
+            ctx.font = '30px Arial';
+            ctx.fillText('❤️', this.x + 60, this.y + 90 + floatY);
+        },
+        update: function() {
+            // A Rainha segue a Alice no eixo Y mas com atraso (mais suave)
+            this.y += (alice.y - this.y) * 0.1;
+
+            // Lógica de perseguição
+            // Se a Alice tropeça, targetX aumenta (Rainha aproxima-se)
+            // Se corre bem, targetX diminui lentamente até um limite
+           
+            if (this.x < this.targetX) {
+                this.x += 1;
+            } else if (this.x > this.targetX) {
+                this.x -= 0.5;
+            }
+
+            // Game Over se tocar na Alice
+            if (this.x + this.width > alice.x + 20) { // +20 margem de erro
+                gameState = 'GAMEOVER';
+                gameOverScreen.classList.remove('hidden');
+            }
+        }
+    };
+
+    const obstacles = [];
+    const clouds = [];
+    const decorations = []; // Cogumelos, árvores
+
+    class Obstacle {
+        constructor() {
+            // Removidos os ouriços, agora apenas cartas aparecem
+            this.type = 'card';
+           
+            this.w = 40;
+            this.h = 60;
+            this.emoji = '🃏';
+            this.fontSize = '50px';
+            this.drawOffsetY = 50;
+
+            this.x = canvas.width;
+            this.y = canvas.height - groundHeight - this.h;
+            this.markedForDeletion = false;
+        }
+
+        update() {
+            this.x -= gameSpeed;
+            if (this.x < -this.w) this.markedForDeletion = true;
+
+            // Colisão Simples (AABB)
+            if (
+                alice.x < this.x + this.w - 10 &&
+                alice.x + alice.width > this.x + 10 &&
+                alice.y < this.y + this.h &&
+                alice.y + alice.height > this.y
+            ) {
+                // Colisão!
+                hitObstacle(this);
+            }
+        }
+
+        draw() {
+            ctx.textAlign = 'center';
+            ctx.font = `${this.fontSize} Arial`;
+            // Desenha o emoji centrado na largura do obstáculo
+            ctx.fillText(this.emoji, this.x + this.w/2, this.y + this.drawOffsetY);
+           
+            // Debug da caixa de colisão (comentar para esconder)
+            // ctx.strokeStyle = 'red';
+            // ctx.strokeRect(this.x, this.y, this.w, this.h);
+        }
+    }
+
+    class Particle {
+        constructor(x, y, color) {
+            this.x = x;
+            this.y = y;
+            this.size = Math.random() * 5 + 2;
+            this.speedX = Math.random() * 2 - 1;
+            this.speedY = Math.random() * -2 - 1;
+            this.color = color;
+            this.life = 1; // Opacidade
+        }
+        update() {
+            this.x += this.speedX;
+            this.y += this.speedY;
+            this.life -= 0.05;
+        }
+        draw() {
+            ctx.fillStyle = this.color;
+            ctx.globalAlpha = this.life;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.size, 0, Math.PI*2);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+        }
+    }
+    let particles = [];
+
+    // --- ELEMENTOS DE CENÁRIO ---
+   
+    class Decoration {
+        constructor() {
+            this.x = canvas.width;
+            this.y = canvas.height - groundHeight;
+            this.emoji = Math.random() > 0.5 ? '🍄' : '🌳';
+            this.size = Math.random() * 30 + 40;
+            this.speed = gameSpeed * 0.8; // Parallax
+        }
+        update() {
+            this.x -= this.speed;
+        }
+        draw() {
+            ctx.font = `${this.size}px Arial`;
+            ctx.globalAlpha = 0.8;
+            ctx.fillText(this.emoji, this.x, this.y);
+            ctx.globalAlpha = 1;
+        }
+    }
+
+    class TeaTable {
+        constructor() {
+            this.x = canvas.width;
+            this.y = canvas.height - groundHeight;
+        }
+        update() {
+            this.x -= gameSpeed;
+            // Se a Alice tocar na mesa
+            if (this.x < alice.x + alice.width - 50) {
+                gameState = 'WIN';
+                winScreen.classList.remove('hidden');
+            }
+        }
+        draw() {
+            ctx.textAlign = 'left';
+
+            // O Coelho Branco
+            ctx.font = '50px Arial';
+            ctx.fillText('🐇', this.x, this.y - 10);
+           
+            // A Mesa
+            ctx.fillStyle = '#8D6E63';
+            ctx.fillRect(this.x + 60, this.y - 40, 160, 10);
+            ctx.fillRect(this.x + 70, this.y - 40, 10, 40);
+            ctx.fillRect(this.x + 200, this.y - 40, 10, 40);
+
+            // Bolo e Chá
+            ctx.font = '30px Arial';
+            ctx.fillText('🎂', this.x + 70, this.y - 45);
+            ctx.fillText('🫖', this.x + 120, this.y - 45);
+            ctx.fillText('☕', this.x + 170, this.y - 45);
+
+            // O Chapeleiro Louco
+            ctx.textAlign = 'center';
+            ctx.font = '50px Arial';
+            ctx.fillText('🎩', this.x + 250, this.y - 50);
+            ctx.fillText('🤪', this.x + 250, this.y - 10);
+        }
+    }
+    let teaTable = null;
+
+    // --- LÓGICA DO JOGO ---
+
+    function createParticles(x, y, color, count) {
+        for(let i=0; i<count; i++) {
+            particles.push(new Particle(x, y, color));
+        }
+    }
+
+    function hitObstacle(obs) {
+        obs.markedForDeletion = true; // Remove obstáculo para não bater duas vezes
+        createParticles(alice.x, alice.y + 40, '#FF0000', 10);
+       
+        // Penalidade: Rainha aproxima-se
+        queen.targetX += 60;
+       
+        // Feedback visual de dano
+        ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+       
+        // Reduz velocidade momentaneamente
+        gameSpeed = 2;
+        setTimeout(() => { if(gameState==='PLAYING') gameSpeed = 5 + (distance/500); }, 500);
+    }
+
+    function spawnLogic() {
+        frames++;
+
+        // Aumenta dificuldade
+        let spawnRate = 120; // Frames
+        if (distance > 500) spawnRate = 90;
+        if (distance > 1000) spawnRate = 70;
+
+        if (frames % spawnRate === 0) {
+            obstacles.push(new Obstacle());
+        }
+
+        if (frames % 60 === 0 && Math.random() > 0.5) {
+            decorations.push(new Decoration());
+        }
+
+        // Recuperação da Rainha (ela recua lentamente se jogares bem)
+        if (frames % 10 === 0 && queen.targetX > -50) {
+            queen.targetX -= 1;
+        }
+    }
+
+    function update() {
+        if (gameState !== 'PLAYING') return;
+
+        // Limpar Canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Desenhar Céu/Fundo
+        // (Já feito pelo CSS, mas podemos adicionar nuvens se quisermos)
+
+        // Chão
+        ctx.fillStyle = '#4CAF50';
+        ctx.fillRect(0, canvas.height - groundHeight, canvas.width, groundHeight);
+       
+        // Padrão de xadrez no chão (estilo Alice)
+        ctx.fillStyle = '#388E3C';
+        let checkerSize = 40;
+        let offset = (frames * gameSpeed) % (checkerSize * 2);
+        for (let i = -offset; i < canvas.width; i += checkerSize * 2) {
+             ctx.fillRect(i, canvas.height - groundHeight, checkerSize, 20);
+        }
+
+        // Decoracões (Fundo)
+        decorations.forEach((d, i) => {
+            d.update();
+            d.draw();
+            if (d.x < -100) decorations.splice(i, 1);
+        });
+
+        // Entidades
+        if (teaTable) {
+            teaTable.update();
+            teaTable.draw();
+        } else {
+            spawnLogic();
+            distance++;
+            scoreEl.innerText = Math.floor(distance);
+           
+            // Progress Bar
+            let progress = Math.min((distance / GOAL_DISTANCE) * 100, 100);
+            progressBar.style.width = `${progress}%`;
+
+            // Ganhar
+            if (distance >= GOAL_DISTANCE && !teaTable) {
+                teaTable = new TeaTable();
+            }
+        }
+
+        obstacles.forEach((obs, index) => {
+            obs.update();
+            obs.draw();
+            if (obs.markedForDeletion) obstacles.splice(index, 1);
+        });
+
+        queen.update();
+        queen.draw();
+
+        alice.update();
+        alice.draw();
+
+        // Partículas
+        particles.forEach((p, i) => {
+            p.update();
+            p.draw();
+            if (p.life <= 0) particles.splice(i, 1);
+        });
+
+        requestAnimationFrame(update);
+    }
+
+    // --- CONTROLOS ---
+
+    function jumpAction() {
+        if (gameState === 'PLAYING') {
+            alice.jump();
+        }
+    }
+
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space' || e.code === 'ArrowUp') {
+            jumpAction();
+        }
+    });
+
+    window.addEventListener('touchstart', (e) => {
+        e.preventDefault(); // Impede scroll
+        jumpAction();
+    }, {passive: false});
+   
+    window.addEventListener('mousedown', jumpAction);
+
+    // --- GAME FLOW ---
+
+    function startGame() {
+        startScreen.classList.add('hidden');
+        resetGameVars();
+        gameState = 'PLAYING';
+        update();
+    }
+
+    function resetGame() {
+        gameOverScreen.classList.add('hidden');
+        winScreen.classList.add('hidden');
+        resetGameVars();
+        gameState = 'PLAYING';
+        update();
+    }
+
+    function resetGameVars() {
+        alice.y = 0;
+        alice.vy = 0;
+        alice.grounded = false;
+       
+        queen.x = -150;
+        queen.targetX = -50;
+       
+        obstacles.length = 0;
+        decorations.length = 0;
+        particles.length = 0;
+       
+        distance = 0;
+        frames = 0;
+        gameSpeed = 6; // Velocidade inicial ligeiramente mais rápida
+        teaTable = null;
+        progressBar.style.width = '0%';
+    }
+
+    // Desenha o estado inicial parado
+    function initialDraw() {
+        resizeCanvas();
+        ctx.fillStyle = '#4CAF50';
+        ctx.fillRect(0, canvas.height - groundHeight, canvas.width, groundHeight);
+    }
+    initialDraw();
+
+</script>
+</body>
+</html>
