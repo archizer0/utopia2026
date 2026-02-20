@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="pt-pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A Corrida Contra o Coelho - 5 Níveis</title>
+    <style>
+        body {
+            margin: 0;
+            background: #1a002a;
+            color: white;
+            font-family: 'Georgia', serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #game-wrapper {
+            position: relative;
+            border: 5px solid #9370db;
+            border-radius: 10px;
+            box-shadow: 0 0 30px rgba(147, 112, 219, 0.5);
+        }
+
+        canvas {
+            background: #2d004d;
+            display: block;
+        }
+
+        .hud {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            pointer-events: none;
+            display: none; 
+            background: rgba(0,0,0,0.6);
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #9370db;
+        }
+
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 20px;
+            box-sizing: border-box;
+            z-index: 10;
+        }
+
+        h1 { color: #ff69b4; margin-bottom: 10px; }
+
+        button {
+            padding: 12px 30px;
+            font-size: 18px;
+            background: #ff69b4;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            background: #ff1493;
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-wrapper">
+        <canvas id="puzzleCanvas"></canvas>
+        
+        <div id="game-hud" class="hud">
+            <div>Nível: <span id="level-label">1/5</span></div>
+            <div>Alice: <span id="size-label">Normal</span></div>
+            <div>Chave: <span id="keys-label">0/1</span></div>
+        </div>
+
+        <!-- Ecrã de Início -->
+        <div id="start-screen" class="overlay">
+            <h1>A Corrida Contra o Coelho</h1>
+            <p>Consegues vencer os 5 labirintos?<br><br>
+               🍄 GIGANTE | 🧪 PEQUENA | 🔑 CHAVE<br>
+               Cuidado: o Coelho agora joga a sério!</p>
+            <button onclick="initGame()">COMEÇAR A CORRER</button>
+        </div>
+
+        <!-- Ecrã de Fim de Jogo -->
+        <div id="win-screen" class="overlay" style="display: none;">
+            <h1 id="win-title">Vitória!</h1>
+            <p id="win-text"></p>
+            <button onclick="initGame()">RECOMEÇAR</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('puzzleCanvas');
+        const ctx = canvas.getContext('2d');
+        const sizeLabel = document.getElementById('size-label');
+        const keysLabel = document.getElementById('keys-label');
+        const levelLabel = document.getElementById('level-label');
+        const hud = document.getElementById('game-hud');
+
+        canvas.width = 650;
+        canvas.height = 400;
+
+        let gameRunning = false;
+        let keys = {};
+        let currentLevel = 0;
+        const totalLevels = 5;
+        let player, rabbit, platforms, items, exit;
+
+        const GRAVITY = 0.5;
+        const FRICTION = 0.8;
+
+        const levelData = [
+            { // Nível 1: Tutorial
+                platforms: [{x: 0, y: 380, w: 650, h: 20}, {x: 150, y: 280, w: 150, h: 20}, {x: 400, y: 200, w: 150, h: 20}],
+                items: [{x: 170, y: 250, type: 'mushroom', symbol: '🍄', collected: false}, {x: 450, y: 350, type: 'drink', symbol: '🧪', collected: false}, {x: 420, y: 170, type: 'key', symbol: '🔑', collected: false}],
+                exit: {x: 580, y: 330, w: 40, h: 50}
+            },
+            { // Nível 2: O Salto
+                platforms: [{x: 0, y: 380, w: 650, h: 20}, {x: 50, y: 300, w: 100, h: 15}, {x: 250, y: 240, w: 100, h: 15}, {x: 450, y: 180, w: 100, h: 15}, {x: 150, y: 120, w: 200, h: 15}],
+                items: [{x: 70, y: 270, type: 'drink', symbol: '🧪', collected: false}, {x: 480, y: 150, type: 'key', symbol: '🔑', collected: false}],
+                exit: {x: 20, y: 330, w: 40, h: 50}
+            },
+            { // Nível 3: Labirinto Vertical
+                platforms: [{x: 0, y: 380, w: 200, h: 20}, {x: 450, y: 380, w: 200, h: 20}, {x: 150, y: 300, w: 350, h: 15}, {x: 50, y: 200, w: 150, h: 15}, {x: 450, y: 150, w: 150, h: 15}, {x: 250, y: 80, w: 150, h: 15}],
+                items: [{x: 500, y: 350, type: 'mushroom', symbol: '🍄', collected: false}, {x: 300, y: 50, type: 'key', symbol: '🔑', collected: false}],
+                exit: {x: 580, y: 100, w: 40, h: 50}
+            },
+            { // Nível 4: Passagens Apertadas
+                platforms: [{x: 0, y: 380, w: 650, h: 20}, {x: 100, y: 300, w: 450, h: 10}, {x: 100, y: 200, w: 450, h: 10}, {x: 0, y: 100, w: 200, h: 10}],
+                items: [{x: 500, y: 350, type: 'drink', symbol: '🧪', collected: false}, {x: 120, y: 170, type: 'key', symbol: '🔑', collected: false}],
+                exit: {x: 30, y: 50, w: 40, h: 50}
+            },
+            { // Nível 5: O Desafio Final
+                platforms: [{x: 0, y: 380, w: 650, h: 20}, {x: 300, y: 300, w: 50, h: 15}, {x: 150, y: 220, w: 50, h: 15}, {x: 450, y: 220, w: 50, h: 15}, {x: 300, y: 140, w: 50, h: 15}, {x: 0, y: 100, w: 150, h: 15}, {x: 500, y: 100, w: 150, h: 15}],
+                items: [{x: 310, y: 270, type: 'mushroom', symbol: '🍄', collected: false}, {x: 310, y: 110, type: 'key', symbol: '🔑', collected: false}, {x: 20, y: 70, type: 'drink', symbol: '🧪', collected: false}],
+                exit: {x: 580, y: 50, w: 40, h: 50}
+            }
+        ];
+
+        class Entity {
+            constructor(x, y, w, h, color) {
+                this.startX = x; this.startY = y;
+                this.x = x; this.y = y;
+                this.width = w; this.height = h;
+                this.color = color;
+                this.vx = 0; this.vy = 0;
+                this.onGround = false;
+            }
+
+            applyPhysics() {
+                this.vy += GRAVITY;
+                this.vx *= FRICTION;
+                this.x += this.vx;
+                this.y += this.vy;
+
+                if (this.x < 0) { this.x = 0; this.vx = 0; }
+                if (this.x + this.width > canvas.width) { this.x = canvas.width - this.width; this.vx = 0; }
+                if (this.y > canvas.height) this.respawn();
+
+                this.onGround = false;
+                platforms.forEach(p => {
+                    if (this.x < p.x + p.w && this.x + this.width > p.x &&
+                        this.y < p.y + p.h && this.y + this.height > p.y) {
+                        if (this.vy > 0 && this.y + this.height - this.vy <= p.y) {
+                            this.y = p.y - this.height; this.vy = 0; this.onGround = true;
+                        } else if (this.vy < 0 && this.y - this.vy >= p.y + p.h) {
+                            this.y = p.y + p.h; this.vy = 0;
+                        }
+                    }
+                });
+            }
+
+            respawn() {
+                this.x = this.startX; this.y = this.startY;
+                this.vx = 0; this.vy = 0;
+            }
+        }
+
+        class Player extends Entity {
+            constructor() {
+                super(30, 300, 30, 45, '#87ceeb');
+                this.state = 'normal';
+                this.hasKey = false;
+            }
+
+            update() {
+                if (keys['ArrowLeft']) this.vx -= 0.8;
+                if (keys['ArrowRight']) this.vx += 0.8;
+                if (keys['ArrowUp'] && this.onGround) {
+                    this.vy = (this.state === 'grande') ? -12 : (this.state === 'pequeno') ? -9 : -10;
+                    this.onGround = false;
+                }
+                this.applyPhysics();
+                this.checkItems();
+            }
+
+            checkItems() {
+                items.forEach(item => {
+                    if (!item.collected && this.x < item.x + 20 && this.x + this.width > item.x &&
+                        this.y < item.y + 20 && this.y + this.height > item.y) {
+                        item.collected = true;
+                        if (item.type === 'mushroom') this.changeSize('grande');
+                        else if (item.type === 'drink') this.changeSize('pequeno');
+                        else if (item.type === 'key') { this.hasKey = true; keysLabel.innerText = "1/1"; }
+                    }
+                });
+
+                if (this.hasKey && this.x < exit.x + exit.w && this.x + this.width > exit.x &&
+                    this.y < exit.y + exit.h && this.y + this.height > exit.y) {
+                    nextLevel('alice');
+                }
+            }
+
+            changeSize(s) {
+                this.state = s;
+                sizeLabel.innerText = s === 'grande' ? 'Gigante!' : s === 'pequeno' ? 'Pequenina' : 'Normal';
+                if (s === 'grande') { this.width = 60; this.height = 90; }
+                else if (s === 'pequeno') { this.width = 15; this.height = 22; }
+                else { this.width = 30; this.height = 45; }
+            }
+
+            draw() {
+                const hR = this.width / 3;
+                const hX = this.x + this.width / 2;
+                const hY = this.y + (this.state === 'pequeno' ? 5 : 10);
+                // Cabelo
+                ctx.fillStyle = '#ffd700';
+                ctx.fillRect(this.x - 3, hY, this.width + 6, this.height * 0.8);
+                // Corpo
+                ctx.fillStyle = this.color;
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+                // Avental
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(this.x + this.width * 0.1, this.y + this.height * 0.3, this.width * 0.8, this.height * 0.4);
+                // Rosto
+                ctx.fillStyle = '#fce5cd';
+                ctx.beginPath(); ctx.arc(hX, hY, hR, 0, Math.PI * 2); ctx.fill();
+                // Testas/Cabelo frontal
+                ctx.fillStyle = '#ffd700';
+                ctx.beginPath(); ctx.arc(hX, hY, hR, Math.PI, 0); ctx.fill();
+                if (this.state !== 'pequeno') {
+                    ctx.fillStyle = '#000';
+                    ctx.beginPath(); ctx.arc(hX-hR/3, hY-2, hR/8, 0, Math.PI*2); ctx.arc(hX+hR/3, hY-2, hR/8, 0, Math.PI*2); ctx.fill();
+                    ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(hX, hY+2, hR/2, 0.1*Math.PI, 0.9*Math.PI); ctx.stroke();
+                }
+            }
+        }
+
+        class Rabbit extends Entity {
+            constructor() {
+                super(50, 300, 25, 35, '#ffffff');
+                this.hasKey = false;
+                this.jumpCooldown = 0;
+            }
+
+            update() {
+                // Inteligência Artificial do Coelho
+                const targetX = this.hasKey ? exit.x : (items.find(i => i.type === 'key' && !i.collected)?.x || exit.x);
+                const targetY = this.hasKey ? exit.y : (items.find(i => i.type === 'key' && !i.collected)?.y || exit.y);
+
+                // Movimento Horizontal
+                if (this.x < targetX - 5) this.vx += 0.45;
+                else if (this.x > targetX + 5) this.vx -= 0.45;
+
+                // Lógica Inteligente de Salto
+                if (this.onGround && this.jumpCooldown <= 0) {
+                    let shouldJump = false;
+                    if (targetY < this.y - 40) shouldJump = true;
+                    if (Math.abs(this.vx) < 0.1 && Math.abs(this.x - targetX) > 20) shouldJump = true;
+                    platforms.forEach(p => {
+                        if (this.x + this.width > p.x && this.x < p.x + p.w) {
+                           if (p.y < this.y && p.y > this.y - 120) shouldJump = true;
+                        }
+                    });
+
+                    if (shouldJump) {
+                        this.vy = -10;
+                        this.onGround = false;
+                        this.jumpCooldown = 20;
+                    }
+                }
+                if (this.jumpCooldown > 0) this.jumpCooldown--;
+
+                this.applyPhysics();
+
+                items.forEach(item => {
+                    if (item.type === 'key' && !item.collected && 
+                        this.x < item.x + 20 && this.x + this.width > item.x &&
+                        this.y < item.y + 20 && this.y + this.height > item.y) {
+                        item.collected = true; 
+                        this.hasKey = true;
+                    }
+                });
+
+                if (this.hasKey && this.x < exit.x + exit.w && this.x + this.width > exit.x &&
+                    this.y < exit.y + exit.h && this.y + this.height > exit.y) {
+                    nextLevel('rabbit');
+                }
+            }
+
+            draw() {
+                ctx.fillStyle = '#fff'; ctx.fillRect(this.x, this.y, this.width, this.height);
+                ctx.fillRect(this.x + 5, this.y - 10, 5, 12); ctx.fillRect(this.x + 15, this.y - 10, 5, 12);
+                ctx.fillStyle = 'gold'; ctx.beginPath(); ctx.arc(this.x + (this.vx > 0 ? this.width : 0), this.y + 20, 4, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = 'pink'; ctx.fillRect(this.x + this.width/2 - 2, this.y + 5, 4, 4);
+                ctx.fillStyle = '#000'; 
+                ctx.fillRect(this.x + 5, this.y + 5, 2, 2);
+                ctx.fillRect(this.x + 18, this.y + 5, 2, 2);
+            }
+        }
+
+        function initGame() {
+            currentLevel = 0;
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('win-screen').style.display = 'none';
+            hud.style.display = 'block';
+            player = new Player();
+            rabbit = new Rabbit();
+            loadLevel(currentLevel);
+            if (!gameRunning) {
+                gameRunning = true;
+                requestAnimationFrame(loop);
+            }
+        }
+
+        function loadLevel(idx) {
+            const data = levelData[idx];
+            platforms = JSON.parse(JSON.stringify(data.platforms));
+            items = JSON.parse(JSON.stringify(data.items));
+            exit = JSON.parse(JSON.stringify(data.exit));
+            player.respawn(); player.changeSize('normal'); player.hasKey = false;
+            rabbit.respawn(); rabbit.hasKey = false;
+            keysLabel.innerText = "0/1";
+            levelLabel.innerText = `${idx + 1}/5`;
+        }
+
+        function nextLevel(winner) {
+            if (winner === 'rabbit') {
+                gameOver("O Coelho Ganhou!", "O Coelho chegou primeiro! Estás atrasada!");
+                return;
+            }
+            currentLevel++;
+            if (currentLevel < totalLevels) {
+                loadLevel(currentLevel);
+            } else {
+                gameOver("Vitória!", "Completaste os 5 níveis! O País das Maravilhas está salvo.");
+            }
+        }
+
+        function gameOver(title, text) {
+            gameRunning = false;
+            document.getElementById('win-title').innerText = title;
+            document.getElementById('win-text').innerText = text;
+            document.getElementById('win-screen').style.display = 'flex';
+        }
+
+        function loop() {
+            if (!gameRunning) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            player.update(); rabbit.update();
+            
+            ctx.fillStyle = '#ffd700'; ctx.fillRect(exit.x, exit.y, exit.w, exit.h);
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(exit.x + 5, exit.y + 5, exit.w - 10, exit.h - 5);
+
+            ctx.fillStyle = '#4b0082';
+            platforms.forEach(p => {
+                ctx.fillRect(p.x, p.y, p.w, p.h);
+                ctx.strokeStyle = '#9370db'; ctx.lineWidth = 1; ctx.strokeRect(p.x, p.y, p.w, p.h);
+            });
+
+            ctx.font = '24px Arial';
+            items.forEach(item => { if (!item.collected) ctx.fillText(item.symbol, item.x, item.y + 15); });
+
+            rabbit.draw(); player.draw();
+            requestAnimationFrame(loop);
+        }
+
+        window.addEventListener('keydown', e => keys[e.code] = true);
+        window.addEventListener('keyup', e => keys[e.code] = false);
+    </script>
+</body>
+</html>
