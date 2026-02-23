@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice no País das Maravilhas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Fundo aos quadradinhos vermelhos e brancos */
+        body {
+            background: repeating-conic-gradient(#dc2626 0% 25%, #ffffff 0% 50%) 50% / 80px 80px;
+            font-family: 'Georgia', serif;
+            touch-action: none; /* Evita o scroll no telemóvel ao jogar */
+        }
+       
+        #game-container {
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            background-color: rgba(255, 255, 255, 0.9);
+            border: 8px solid #dc2626;
+        }
+
+        canvas {
+            display: block;
+            margin: 0 auto;
+            background-color: rgba(255, 255, 255, 0.4);
+        }
+
+        /* Animação suave para os botões */
+        .btn-hover:hover {
+            transform: scale(1.05);
+            transition: transform 0.2s;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex items-center justify-center overflow-hidden">
+
+    <div id="game-container" class="relative rounded-2xl overflow-hidden w-full max-w-md h-[700px] max-h-screen flex flex-col">
+       
+        <!-- Cabeçalho do Jogo -->
+        <div class="bg-red-600 text-white p-4 flex justify-between items-center z-10 border-b-4 border-red-800">
+            <div class="text-xl font-bold">Pontos: <span id="scoreDisplay">0</span></div>
+            <div class="text-xl font-bold">Vidas: <span id="livesDisplay">❤️❤️❤️</span></div>
+        </div>
+
+        <!-- Área do Canvas (O Jogo) -->
+        <div class="relative flex-grow">
+            <canvas id="gameCanvas"></canvas>
+           
+            <!-- Ecrã Inicial -->
+            <div id="startScreen" class="absolute inset-0 bg-white/90 flex flex-col items-center justify-center p-6 text-center z-20">
+                <h1 class="text-4xl font-extrabold text-red-700 mb-4 drop-shadow-md">Alice no País das Maravilhas</h1>
+                <p class="text-lg text-gray-800 mb-6 font-medium">
+                    Move a Alice (👧🏼) para apanhar o Chá (☕), os Relógios (⌚) e os Bolos (🍰).<br><br>
+                    Evita as Cartas (🃏) da Rainha de Copas!
+                </p>
+                <div class="flex gap-4 mb-6">
+                    <span class="text-3xl">☕ +10</span>
+                    <span class="text-3xl">⌚ +15</span>
+                    <span class="text-3xl">🍰 +20</span>
+                    <span class="text-3xl">🃏 ❌</span>
+                </div>
+                <button id="startBtn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-8 rounded-full shadow-lg text-xl btn-hover border-4 border-red-800">
+                    Começar a Jogar
+                </button>
+            </div>
+
+            <!-- Ecrã de Fim de Jogo -->
+            <div id="gameOverScreen" class="absolute inset-0 bg-black/80 flex flex-col items-center justify-center p-6 text-center z-20 hidden">
+                <h2 class="text-5xl font-extrabold text-red-500 mb-2 drop-shadow-lg">CORTEM-LHE A CABEÇA!</h2>
+                <p class="text-2xl text-white mb-6">Fim do Jogo</p>
+                <p class="text-xl text-white mb-8">Pontuação Final: <span id="finalScore" class="font-bold text-yellow-400 text-3xl">0</span></p>
+                <button id="restartBtn" class="bg-white hover:bg-gray-200 text-red-700 font-bold py-3 px-8 rounded-full shadow-lg text-xl btn-hover border-4 border-red-700">
+                    Jogar Novamente
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startScreen = document.getElementById('startScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const startBtn = document.getElementById('startBtn');
+        const restartBtn = document.getElementById('restartBtn');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const livesDisplay = document.getElementById('livesDisplay');
+        const finalScoreDisplay = document.getElementById('finalScore');
+
+        // Ajustar o canvas ao contentor
+        function resizeCanvas() {
+            canvas.width = canvas.parentElement.clientWidth;
+            canvas.height = canvas.parentElement.clientHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        // Chamar imediatamente para definir o tamanho inicial
+        setTimeout(resizeCanvas, 0);
+
+        // Variáveis do Jogo
+        let animationId;
+        let isPlaying = false;
+        let score = 0;
+        let lives = 3;
+        let frameCount = 0;
+
+        // O Jogador (Alice)
+        const player = {
+            x: 0,
+            y: 0,
+            size: 50,
+            speed: 7,
+            emoji: '👧🏼',
+            dx: 0
+        };
+
+        // Itens que caem
+        let items = [];
+        const itemTypes = [
+            { emoji: '☕', points: 10, type: 'good', chance: 40 },
+            { emoji: '⌚', points: 15, type: 'good', chance: 20 },
+            { emoji: '🍰', points: 20, type: 'good', chance: 10 },
+            { emoji: '🃏', points: 0, type: 'bad', chance: 30 }
+        ];
+
+        // Partículas flutuantes para feedback (+10, etc)
+        let floatingTexts = [];
+
+        // Controlos (Rato/Teclado/Toque)
+        let rightPressed = false;
+        let leftPressed = false;
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === 'd') rightPressed = true;
+            else if (e.key === 'ArrowLeft' || e.key === 'a') leftPressed = true;
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowRight' || e.key === 'd') rightPressed = false;
+            else if (e.key === 'ArrowLeft' || e.key === 'a') leftPressed = false;
+        });
+
+        // Controlo por rato/toque
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            player.x = mouseX - player.size / 2;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault(); // Impede o scroll
+            const rect = canvas.getBoundingClientRect();
+            const touchX = e.touches[0].clientX - rect.left;
+            player.x = touchX - player.size / 2;
+        }, { passive: false });
+
+        // Desenhar o fundo do jogo aos quadradinhos
+        function drawBackground() {
+            const tileSize = 40;
+            for (let y = 0; y < canvas.height; y += tileSize) {
+                for (let x = 0; x < canvas.width; x += tileSize) {
+                    // Alterna entre vermelho com transparência e branco com transparência
+                    ctx.fillStyle = ((x / tileSize + y / tileSize) % 2 === 0)
+                        ? 'rgba(220, 38, 38, 0.15)' // Vermelho suave
+                        : 'rgba(255, 255, 255, 0.3)'; // Branco suave
+                    ctx.fillRect(x, y, tileSize, tileSize);
+                }
+            }
+        }
+
+        // Inicializar o jogo
+        function initGame() {
+            resizeCanvas();
+            score = 0;
+            lives = 3;
+            items = [];
+            floatingTexts = [];
+            frameCount = 0;
+            player.x = canvas.width / 2 - player.size / 2;
+            player.y = canvas.height - player.size - 20;
+            updateUI();
+            isPlaying = true;
+           
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+           
+            gameLoop();
+        }
+
+        // Atualizar interface de vidas e pontos
+        function updateUI() {
+            scoreDisplay.innerText = score;
+            livesDisplay.innerText = '❤️'.repeat(lives);
+        }
+
+        // Criar novos itens
+        function spawnItem() {
+            // Aumentar a dificuldade gerando itens mais rápido conforme o tempo passa
+            const spawnRate = Math.max(20, 60 - Math.floor(frameCount / 600) * 5);
+           
+            if (frameCount % spawnRate === 0) {
+                // Escolher um tipo baseado na probabilidade
+                const rand = Math.random() * 100;
+                let sumChance = 0;
+                let selectedType = itemTypes[0];
+               
+                for (const item of itemTypes) {
+                    sumChance += item.chance;
+                    if (rand <= sumChance) {
+                        selectedType = item;
+                        break;
+                    }
+                }
+
+                const size = 35;
+                const x = Math.random() * (canvas.width - size);
+                // Aumentar velocidade de queda ligeiramente conforme os pontos aumentam
+                const speed = 2 + Math.random() * 2 + (score / 200);
+
+                items.push({
+                    x: x,
+                    y: -size,
+                    size: size,
+                    speed: speed,
+                    ...selectedType
+                });
+            }
+        }
+
+        // Adicionar texto flutuante (Ex: "+10")
+        function addFloatingText(text, x, y, color) {
+            floatingTexts.push({
+                text: text,
+                x: x,
+                y: y,
+                alpha: 1,
+                color: color
+            });
+        }
+
+        // Desenhar a Alice (Jogador)
+        function drawPlayer() {
+            ctx.font = `${player.size}px Arial`;
+            ctx.textAlign = "left";
+            ctx.textBaseline = "top";
+           
+            // Sombra para destacar
+            ctx.shadowColor = "rgba(0,0,0,0.5)";
+            ctx.shadowBlur = 10;
+            ctx.fillText(player.emoji, player.x, player.y);
+            ctx.shadowBlur = 0; // Reset
+        }
+
+        // O Ciclo Principal do Jogo
+        function gameLoop() {
+            if (!isPlaying) return;
+
+            // Limpar Canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+           
+            drawBackground();
+
+            // Movimento por teclado
+            if (rightPressed && player.x < canvas.width - player.size) {
+                player.x += player.speed;
+            } else if (leftPressed && player.x > 0) {
+                player.x -= player.speed;
+            }
+
+            // Limites do ecrã
+            if (player.x < 0) player.x = 0;
+            if (player.x + player.size > canvas.width) player.x = canvas.width - player.size;
+           
+            // Garantir que a Alice se mantém no fundo
+            player.y = canvas.height - player.size - 20;
+
+            drawPlayer();
+            spawnItem();
+
+            // Atualizar e desenhar itens
+            for (let i = items.length - 1; i >= 0; i--) {
+                const item = items[i];
+                item.y += item.speed;
+
+                // Desenhar item
+                ctx.font = `${item.size}px Arial`;
+                ctx.fillText(item.emoji, item.x, item.y);
+
+                // Deteção de Colisão (simples círculo/caixa)
+                const hitBoxShrink = 10; // Tornar a caixa de colisão um pouco mais pequena que o emoji
+                const collisionX = player.x < item.x + item.size - hitBoxShrink && player.x + player.size - hitBoxShrink > item.x;
+                const collisionY = player.y < item.y + item.size - hitBoxShrink && player.y + player.size - hitBoxShrink > item.y;
+
+                if (collisionX && collisionY) {
+                    // Colisão detetada!
+                    if (item.type === 'good') {
+                        score += item.points;
+                        addFloatingText(`+${item.points}`, item.x, item.y, '#16a34a'); // Verde
+                    } else if (item.type === 'bad') {
+                        lives -= 1;
+                        addFloatingText('Ai!', item.x, item.y, '#dc2626'); // Vermelho
+                       
+                        // Efeito de tremor simples
+                        canvas.style.transform = "translate(5px, 5px)";
+                        setTimeout(() => canvas.style.transform = "none", 100);
+
+                        if (lives <= 0) {
+                            gameOver();
+                        }
+                    }
+                    items.splice(i, 1);
+                    updateUI();
+                }
+                // Remover se sair do ecrã
+                else if (item.y > canvas.height) {
+                    items.splice(i, 1);
+                }
+            }
+
+            // Atualizar e desenhar textos flutuantes
+            for (let i = floatingTexts.length - 1; i >= 0; i--) {
+                const ft = floatingTexts[i];
+                ft.y -= 1; // Sobe lentamente
+                ft.alpha -= 0.02; // Desvanece
+
+                if (ft.alpha <= 0) {
+                    floatingTexts.splice(i, 1);
+                } else {
+                    ctx.globalAlpha = ft.alpha;
+                    ctx.fillStyle = ft.color;
+                    ctx.font = "bold 20px Arial";
+                    ctx.fillText(ft.text, ft.x, ft.y);
+                    ctx.globalAlpha = 1.0; // Reset
+                }
+            }
+
+            frameCount++;
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        // Função de Fim de Jogo
+        function gameOver() {
+            isPlaying = false;
+            cancelAnimationFrame(animationId);
+            finalScoreDisplay.innerText = score;
+            gameOverScreen.classList.remove('hidden');
+        }
+
+        // Eventos dos Botões
+        startBtn.addEventListener('click', initGame);
+        restartBtn.addEventListener('click', initGame);
+
+        // Primeiro render apenas do fundo (antes de jogar)
+        window.onload = () => {
+            resizeCanvas();
+            drawBackground();
+        };
+
+    </script>
+</body>
+</html>

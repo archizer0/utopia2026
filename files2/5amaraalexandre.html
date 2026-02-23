@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice no País das Maravilhas - Jogo com as Mãos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+   
+    <!-- MediaPipe para rastreamento de mãos -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            background: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        #game-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin: 0 auto;
+            aspect-ratio: 4/3;
+            background-color: rgba(0, 0, 0, 0.5);
+            border-radius: 1rem;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            border: 4px solid #fdbb2d;
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); /* Espelha o canvas para parecer um espelho real */
+        }
+
+        /* Os elementos UI não devem ser espelhados, por isso ficam numa camada acima do canvas */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Deixa os cliques passarem, se necessário */
+            z-index: 10;
+        }
+
+        .text-shadow {
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+        }
+
+        .pointer-events-auto {
+            pointer-events: auto;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col items-center justify-center p-4 text-white">
+
+    <div class="mb-4 text-center">
+        <h1 class="text-4xl font-bold text-shadow mb-2 text-yellow-300">Alice: Apanha Mágica</h1>
+        <p class="text-lg text-shadow">Guie a cesta com a sua mão. Apanhe 🍰 e 🧪. Evite as Cartas 🃏!</p>
+    </div>
+
+    <div id="game-container">
+        <!-- Vídeo escondido usado pelo MediaPipe -->
+        <video id="input_video" class="hidden" autoplay playsinline></video>
+       
+        <!-- Canvas onde o jogo é desenhado -->
+        <canvas id="output_canvas"></canvas>
+
+        <!-- Camada de Interface -->
+        <div id="ui-layer" class="flex flex-col justify-between p-4">
+            <!-- HUD (Pontuação e Vidas) -->
+            <div id="hud" class="flex justify-between items-start hidden">
+                <div class="bg-black/50 p-3 rounded-lg border border-white/20 backdrop-blur-sm">
+                    <span class="text-2xl font-bold text-yellow-400">Pontos: <span id="score">0</span></span>
+                </div>
+                <div class="bg-black/50 p-3 rounded-lg border border-white/20 backdrop-blur-sm flex gap-1">
+                    <span class="text-2xl" id="lives">❤️❤️❤️</span>
+                </div>
+            </div>
+
+            <!-- Ecrã de Carregamento -->
+            <div id="loading" class="absolute inset-0 flex flex-col items-center justify-center bg-black/80 pointer-events-auto z-50">
+                <div class="animate-spin text-6xl mb-4">🐇</div>
+                <h2 class="text-2xl font-bold mb-2">A carregar a Magia...</h2>
+                <p class="text-gray-300">Por favor, permita o acesso à câmera.</p>
+            </div>
+
+            <!-- Ecrã de Início -->
+            <div id="start-screen" class="absolute inset-0 flex flex-col items-center justify-center bg-black/60 hidden pointer-events-auto z-40">
+                <div class="bg-white/10 p-8 rounded-2xl backdrop-blur-md border border-white/30 text-center max-w-md">
+                    <div class="text-6xl mb-4">🧺</div>
+                    <h2 class="text-3xl font-bold text-yellow-300 mb-4">Tudo Pronto!</h2>
+                    <p class="mb-6 text-lg">Coloque a sua mão em frente à câmera.<br>Mova-a para a esquerda e direita para controlar a cesta.</p>
+                    <button id="start-btn" class="bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-500 hover:to-pink-500 text-white font-bold py-3 px-8 rounded-full shadow-lg transform transition hover:scale-105 active:scale-95 text-xl">
+                        Começar Aventura
+                    </button>
+                </div>
+            </div>
+
+            <!-- Ecrã de Fim de Jogo -->
+            <div id="game-over" class="absolute inset-0 flex flex-col items-center justify-center bg-black/80 hidden pointer-events-auto z-40">
+                <div class="bg-red-900/40 p-8 rounded-2xl backdrop-blur-md border border-red-500/50 text-center max-w-md">
+                    <h2 class="text-5xl font-bold text-red-500 mb-2 text-shadow">CORTEM-LHE A CABEÇA!</h2>
+                    <p class="text-xl mb-6">Apanhou demasiadas cartas.</p>
+                    <p class="text-2xl font-bold text-yellow-400 mb-8">Pontuação Final: <span id="final-score">0</span></p>
+                    <button id="restart-btn" class="bg-white text-red-900 hover:bg-gray-200 font-bold py-3 px-8 rounded-full shadow-lg transform transition hover:scale-105 active:scale-95 text-xl">
+                        Tentar Novamente
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Elementos DOM
+        const videoElement = document.getElementById('input_video');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const loadingScreen = document.getElementById('loading');
+        const startScreen = document.getElementById('start-screen');
+        const gameOverScreen = document.getElementById('game-over');
+        const hud = document.getElementById('hud');
+        const scoreEl = document.getElementById('score');
+        const livesEl = document.getElementById('lives');
+        const finalScoreEl = document.getElementById('final-score');
+        const startBtn = document.getElementById('start-btn');
+        const restartBtn = document.getElementById('restart-btn');
+
+        // Configurações do Jogo
+        const GAME_WIDTH = 800;
+        const GAME_HEIGHT = 600;
+        canvasElement.width = GAME_WIDTH;
+        canvasElement.height = GAME_HEIGHT;
+
+        let gameState = 'loading'; // loading, ready, playing, gameover
+        let score = 0;
+        let lives = 3;
+        let animationId;
+       
+        // Entidades do jogo
+        const player = {
+            x: GAME_WIDTH / 2,
+            y: GAME_HEIGHT - 100,
+            width: 80,
+            height: 80,
+            targetX: GAME_WIDTH / 2,
+            emoji: '🧺'
+        };
+
+        let items = [];
+        let spawnTimer = 0;
+        let spawnInterval = 60; // frames
+        let gameSpeed = 3;
+
+        const itemTypes = [
+            { emoji: '🍰', type: 'good', points: 10 },
+            { emoji: '🧪', type: 'good', points: 15 },
+            { emoji: '🃏', type: 'bad', damage: 1 },
+            { emoji: '⏱️', type: 'good', points: 20 }
+        ];
+
+        // Rastreamento de Mãos (MediaPipe)
+        let handX = 0.5; // Posição normalizada (0 a 1)
+
+        function onResults(results) {
+            // Desenhar o feed da câmera de fundo
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+            // Escurecer um pouco o vídeo para os emojis destacarem
+            canvasCtx.fillStyle = 'rgba(0,0,0,0.3)';
+            canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+               
+                // Desenhar a mão de forma mágica (pontos brilhantes)
+                drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#fdbb2d', lineWidth: 2});
+                drawLandmarks(canvasCtx, landmarks, {color: '#ffffff', lineWidth: 1, radius: 3});
+
+                // Obter a coordenada X da ponta do dedo indicador (landmark 8) ou centro da palma (9)
+                const indexFinger = landmarks[8];
+               
+                // O canvas está espelhado no CSS.
+                // A coordenada X do MediaPipe é relativa à imagem da câmera (não espelhada).
+                // x=0 (esquerda da câmera), x=1 (direita da câmera).
+                handX = indexFinger.x;
+            }
+
+            canvasCtx.restore();
+
+            // Lógica e renderização do jogo acontecem por cima
+            if (gameState === 'playing') {
+                updateGame();
+                drawGame();
+            } else if (gameState === 'ready' || gameState === 'gameover') {
+                // Manter o jogador visível no ecrã de menu para ver que o controlo funciona
+                updatePlayerPosition();
+                canvasCtx.save();
+                canvasCtx.scale(-1, 1); // Des-espelha temporariamente para desenhar texto/emojis corretamente
+                canvasCtx.translate(-canvasElement.width, 0);
+                drawEmoji(player.emoji, player.x, player.y, player.width);
+                canvasCtx.restore();
+            }
+
+            // Quando a câmera carregar pela primeira vez
+            if (gameState === 'loading') {
+                gameState = 'ready';
+                loadingScreen.classList.add('hidden');
+                startScreen.classList.remove('hidden');
+            }
+        }
+
+        const hands = new Hands({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }});
+       
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.6,
+            minTrackingConfidence: 0.6
+        });
+       
+        hands.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({image: videoElement});
+            },
+            width: 640,
+            height: 480
+        });
+       
+        camera.start().catch(err => {
+            alert("Erro ao aceder à câmera: " + err.message + "\nPor favor, permita o acesso para jogar.");
+            document.getElementById('loading').innerHTML = `<h2 class="text-2xl text-red-500">Erro de Câmera</h2><p>Por favor, recarregue a página e conceda permissão.</p>`;
+        });
+
+        // Lógica do Jogo
+        function spawnItem() {
+            const type = itemTypes[Math.floor(Math.random() * itemTypes.length)];
+            // Aumentar a probabilidade de cartas más à medida que o jogo avança
+            if (Math.random() < 0.3 + (score / 1000)) {
+                Object.assign(type, itemTypes[2]); // Força ser carta
+            }
+
+            items.push({
+                x: Math.random() * (GAME_WIDTH - 60) + 30, // Margem
+                y: -50,
+                width: 50,
+                height: 50,
+                emoji: type.emoji,
+                type: type.type,
+                points: type.points || 0,
+                damage: type.damage || 0,
+                speed: gameSpeed + (Math.random() * 2)
+            });
+        }
+
+        function updatePlayerPosition() {
+            // Converter a posição normalizada (0-1) da mão para coordenadas do canvas (0-WIDTH)
+            // Como o canvas está fisicamente invertido no CSS (transform: scaleX(-1)),
+            // a coordenada X tem de ser mapeada diretamente para que o movimento corresponda ao visual.
+            let targetX = handX * GAME_WIDTH;
+           
+            // Interpolação linear para movimento suave (lerp)
+            player.x += (targetX - player.x) * 0.15;
+
+            // Limitar dentro das bordas
+            if (player.x < player.width/2) player.x = player.width/2;
+            if (player.x > GAME_WIDTH - player.width/2) player.x = GAME_WIDTH - player.width/2;
+        }
+
+        function updateGame() {
+            updatePlayerPosition();
+
+            // Aumentar dificuldade
+            gameSpeed = 3 + (score / 150);
+            spawnInterval = Math.max(20, 60 - Math.floor(score / 50));
+
+            spawnTimer++;
+            if (spawnTimer >= spawnInterval) {
+                spawnItem();
+                spawnTimer = 0;
+            }
+
+            for (let i = items.length - 1; i >= 0; i--) {
+                let item = items[i];
+                item.y += item.speed;
+
+                // Colisão (AABB básica baseada no centro e raio aproximado)
+                const dx = player.x - item.x;
+                const dy = player.y - item.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < (player.width/2 + item.width/2) - 10) { // -10 para perdão de hitbox
+                    if (item.type === 'good') {
+                        score += item.points;
+                        scoreEl.innerText = score;
+                        createParticles(item.x, item.y, '#fdbb2d');
+                    } else if (item.type === 'bad') {
+                        lives -= item.damage;
+                        updateLivesDisplay();
+                        createParticles(item.x, item.y, '#ff0000');
+                       
+                        if (lives <= 0) {
+                            endGame();
+                        }
+                    }
+                    items.splice(i, 1);
+                    continue;
+                }
+
+                // Remover se sair do ecrã
+                if (item.y > GAME_HEIGHT + 50) {
+                    items.splice(i, 1);
+                }
+            }
+
+            // Atualizar partículas
+            for(let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.05;
+                if(p.life <= 0) particles.splice(i, 1);
+            }
+        }
+
+        // Sistema simples de partículas
+        let particles = [];
+        function createParticles(x, y, color) {
+            for(let i=0; i<10; i++) {
+                particles.push({
+                    x: x, y: y,
+                    vx: (Math.random() - 0.5) * 10,
+                    vy: (Math.random() - 0.5) * 10,
+                    life: 1,
+                    color: color
+                });
+            }
+        }
+
+        function drawEmoji(emoji, x, y, size) {
+            canvasCtx.font = `${size}px Arial`;
+            canvasCtx.textAlign = "center";
+            canvasCtx.textBaseline = "middle";
+            canvasCtx.fillText(emoji, x, y);
+        }
+
+        function drawGame() {
+            canvasCtx.save();
+           
+            // IMPORTANTE: Como o elemento <canvas> tem scaleX(-1) no CSS, tudo o que
+            // desenharmos "normalmente" ficará espelhado visualmente (texto ao contrário, emojis virados).
+            // Para consertar isso nos elementos do jogo, precisamos inverter o contexto novamente,
+            // transladar, desenhar e depois restaurar.
+            canvasCtx.scale(-1, 1);
+            canvasCtx.translate(-GAME_WIDTH, 0);
+
+            // Agora as coordenadas do jogo X precisam ser invertidas em relação ao GAME_WIDTH
+            // Ex: se o jogador está em X=100 (esquerda no código), precisamos desenhá-lo em (WIDTH - 100)
+           
+            const drawX = (x) => GAME_WIDTH - x;
+
+            // Desenhar Jogador
+            drawEmoji(player.emoji, drawX(player.x), player.y, player.width);
+
+            // Desenhar Items
+            for (let item of items) {
+                drawEmoji(item.emoji, drawX(item.x), item.y, item.width);
+            }
+
+            // Desenhar Partículas
+            for (let p of particles) {
+                canvasCtx.fillStyle = p.color;
+                canvasCtx.globalAlpha = p.life;
+                canvasCtx.beginPath();
+                canvasCtx.arc(drawX(p.x), p.y, 5, 0, Math.PI * 2);
+                canvasCtx.fill();
+            }
+
+            canvasCtx.restore();
+        }
+
+        function updateLivesDisplay() {
+            let heartStr = "";
+            for (let i = 0; i < Math.max(0, lives); i++) heartStr += "❤️";
+            for (let i = lives; i < 3; i++) heartStr += "🖤"; // Vidas perdidas
+            livesEl.innerText = heartStr;
+        }
+
+        function startGame() {
+            score = 0;
+            lives = 3;
+            items = [];
+            particles = [];
+            gameSpeed = 3;
+            spawnTimer = 0;
+            scoreEl.innerText = score;
+            updateLivesDisplay();
+           
+            gameState = 'playing';
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+            hud.classList.remove('hidden');
+        }
+
+        function endGame() {
+            gameState = 'gameover';
+            hud.classList.add('hidden');
+            gameOverScreen.classList.remove('hidden');
+            finalScoreEl.innerText = score;
+        }
+
+        // Eventos dos botões
+        startBtn.addEventListener('click', startGame);
+        restartBtn.addEventListener('click', startGame);
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>A Fuga do Coelho Branco</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #1e293b; /* slate-800 */
+            touch-action: none; /* Prevent scroll on mobile */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        canvas {
+            background-color: transparent; /* Removido o verde para ver a webcam */
+            position: relative;
+            z-index: 5;
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+       
+        /* Mobile Controls */
+        #d-pad {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: grid;
+            grid-template-columns: 60px 60px 60px;
+            grid-template-rows: 60px 60px;
+            gap: 10px;
+            z-index: 10;
+        }
+        @media (min-width: 768px) {
+            #d-pad { display: none; } /* Hide on desktop */
+        }
+        .d-btn {
+            background-color: rgba(255, 255, 255, 0.3);
+            border: 2px solid rgba(255, 255, 255, 0.6);
+            border-radius: 50%;
+            color: white;
+            font-size: 24px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            user-select: none;
+            cursor: pointer;
+        }
+        .d-btn:active { background-color: rgba(255, 255, 255, 0.6); }
+        #btn-up { grid-column: 2; grid-row: 1; }
+        #btn-left { grid-column: 1; grid-row: 2; }
+        #btn-down { grid-column: 2; grid-row: 2; }
+        #btn-right { grid-column: 3; grid-row: 2; }
+
+        /* UI Overlays */
+        .overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 20;
+            text-align: center;
+            padding: 20px;
+        }
+        .hidden { display: none !important; }
+       
+        /* Camera UI */
+        .cam-video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+            transform: scaleX(-1); /* Espelhar a câmara */
+            z-index: 1;
+            opacity: 0.5; /* Escurecer um pouco a câmara para o labirinto sobressair */
+        }
+        @media (max-width: 768px) {
+            .cam-video { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <video id="input_video" class="cam-video" autoplay playsinline></video>
+    <!-- O Canvas do Jogo -->
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+    <!-- Controlos Touch -->
+    <div id="d-pad">
+        <div class="d-btn" id="btn-up">⬆️</div>
+        <div class="d-btn" id="btn-left">⬅️</div>
+        <div class="d-btn" id="btn-down">⬇️</div>
+        <div class="d-btn" id="btn-right">➡️</div>
+    </div>
+
+    <!-- Ecrã Inicial -->
+    <div id="start-screen" class="overlay">
+        <h1 class="text-5xl font-bold mb-4 text-pink-400">Alice no País das Maravilhas</h1>
+        <p class="text-xl mb-2 text-yellow-300">Modo Realidade Aumentada! 📸</p>
+        <p class="text-lg mb-6 max-w-md">Sai pela porta 🚪 e chega à coroa 👑 da Rainha de Copas... mas não deixes que ela te apanhe!</p>
+        <p class="text-sm text-gray-300 mb-4">A tua <b>WEBCAM</b> é o cenário!<br>Usa a tua <b>MÃO</b> em frente à câmara para guiar o coelho.</p>
+        <p id="loading-cam" class="text-yellow-400 mb-4 font-bold animate-pulse">A ligar a magia da câmara (aceita as permissões)...</p>
+        <button id="start-btn" class="px-8 py-3 bg-pink-600 hover:bg-pink-500 rounded-full text-xl font-bold transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+            Aguardar Câmara...
+        </button>
+    </div>
+
+    <!-- Ecrã de Fim (Derrota) -->
+    <div id="lose-screen" class="overlay hidden">
+        <div class="text-6xl mb-4">👸🗡️</div>
+        <h1 class="text-5xl font-bold mb-4 text-red-500">Cortem-lhe a Cabeça!</h1>
+        <p class="text-xl mb-8">A Rainha de Copas apanhou-te!</p>
+        <button id="restart-btn-lose" class="px-8 py-3 bg-red-600 hover:bg-red-500 rounded-full text-xl font-bold transition">
+            Tentar Novamente
+        </button>
+    </div>
+
+    <!-- Ecrã de Fim (Vitória) -->
+    <div id="win-screen" class="overlay hidden">
+        <div class="text-6xl mb-4">👑🐇</div>
+        <h1 class="text-5xl font-bold mb-4 text-yellow-400">Vitória!</h1>
+        <p class="text-xl mb-8">Chegaste à coroa são e salvo!</p>
+        <button id="restart-btn-win" class="px-8 py-3 bg-yellow-500 hover:bg-yellow-400 text-slate-900 rounded-full text-xl font-bold transition">
+            Jogar Novamente
+        </button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Estado do Jogo
+    let gameState = 'START'; // START, PLAYING, GAME_OVER, WIN
+   
+    // Estado da Mão (MediaPipe)
+    let handX = 0.5;
+    let handY = 0.5;
+    let isHandVisible = false;
+    let targetX = 400;
+    let targetY = 300;
+
+    // Controlos
+    const keys = {
+        ArrowUp: false,
+        ArrowDown: false,
+        ArrowLeft: false,
+        ArrowRight: false
+    };
+
+    // Entidades do Jogo
+    const player = { x: 50, y: 50, size: 40, speed: 5, emoji: '🐇' };
+    const queen = { x: 400, y: 500, size: 45, speed: 2.8, emoji: '👸' };
+    const startDoor = { x: 30, y: 30, size: 60, emoji: '🚪' };
+    const crownGoal = { x: 700, y: 500, size: 50, emoji: '👑' };
+
+    // Labirinto / Obstáculos (Arbustos)
+    const walls = [
+        { x: 150, y: 0, w: 40, h: 350 },
+        { x: 150, y: 450, w: 40, h: 150 },
+        { x: 350, y: 150, w: 40, h: 450 },
+        { x: 550, y: 0, w: 40, h: 400 }
+    ];
+
+    // Escuta de Teclado
+    window.addEventListener('keydown', (e) => {
+        if (keys.hasOwnProperty(e.code) || keys.hasOwnProperty(e.key)) {
+            keys[e.code] || keys[e.key] ? null : keys[e.code || e.key] = true;
+        }
+        // Compatibilidade com WASD
+        if(e.key === 'w' || e.key === 'W') keys.ArrowUp = true;
+        if(e.key === 's' || e.key === 'S') keys.ArrowDown = true;
+        if(e.key === 'a' || e.key === 'A') keys.ArrowLeft = true;
+        if(e.key === 'd' || e.key === 'D') keys.ArrowRight = true;
+    });
+
+    window.addEventListener('keyup', (e) => {
+        if (keys.hasOwnProperty(e.code) || keys.hasOwnProperty(e.key)) {
+            keys[e.code] = false;
+            keys[e.key] = false;
+        }
+        if(e.key === 'w' || e.key === 'W') keys.ArrowUp = false;
+        if(e.key === 's' || e.key === 'S') keys.ArrowDown = false;
+        if(e.key === 'a' || e.key === 'A') keys.ArrowLeft = false;
+        if(e.key === 'd' || e.key === 'D') keys.ArrowRight = false;
+    });
+
+    // Escuta de Touch (Telemóvel)
+    const addTouchControl = (btnId, keyName) => {
+        const btn = document.getElementById(btnId);
+        btn.addEventListener('touchstart', (e) => { e.preventDefault(); keys[keyName] = true; });
+        btn.addEventListener('touchend', (e) => { e.preventDefault(); keys[keyName] = false; });
+    };
+    addTouchControl('btn-up', 'ArrowUp');
+    addTouchControl('btn-down', 'ArrowDown');
+    addTouchControl('btn-left', 'ArrowLeft');
+    addTouchControl('btn-right', 'ArrowRight');
+
+    // Botões da UI
+    document.getElementById('start-btn').addEventListener('click', startGame);
+    document.getElementById('restart-btn-lose').addEventListener('click', startGame);
+    document.getElementById('restart-btn-win').addEventListener('click', startGame);
+
+    function startGame() {
+        document.getElementById('start-screen').classList.add('hidden');
+        document.getElementById('lose-screen').classList.add('hidden');
+        document.getElementById('win-screen').classList.add('hidden');
+       
+        // Reset posições
+        player.x = 60;
+        player.y = 60;
+       
+        // Colocar a rainha um pouco longe
+        queen.x = 400;
+        queen.y = 500;
+       
+        gameState = 'PLAYING';
+        gameLoop();
+    }
+
+    // Lógica de Colisão de Retângulos (AABB)
+    function checkCollision(r1, r2) {
+        return (
+            r1.x < r2.x + r2.w &&
+            r1.x + r1.size > r2.x &&
+            r1.y < r2.y + r2.h &&
+            r1.y + r1.size > r2.y
+        );
+    }
+
+    // Colisão entre Entidades
+    function checkEntityCollision(e1, e2, margin = 10) {
+        // Usar uma margem para tornar o jogo mais justo (hitbox mais pequena)
+        return (
+            e1.x + margin < e2.x + e2.size - margin &&
+            e1.x + e1.size - margin > e2.x + margin &&
+            e1.y + margin < e2.y + e2.size - margin &&
+            e1.y + e1.size - margin > e2.y + margin
+        );
+    }
+
+    function update() {
+        if (gameState !== 'PLAYING') return;
+
+        // 1. Mover o Jogador (Coelho)
+        let nextPlayerX = player.x;
+        let nextPlayerY = player.y;
+
+        if (isHandVisible) {
+            // O coelho segue a posição exata da mão
+            let centerX = player.x + player.size / 2;
+            let centerY = player.y + player.size / 2;
+            let dx = targetX - centerX;
+            let dy = targetY - centerY;
+            let dist = Math.sqrt(dx * dx + dy * dy);
+           
+            if (dist > player.speed) {
+                nextPlayerX += (dx / dist) * player.speed;
+                nextPlayerY += (dy / dist) * player.speed;
+            }
+        } else {
+            if (keys.ArrowUp) nextPlayerY -= player.speed;
+            if (keys.ArrowDown) nextPlayerY += player.speed;
+            if (keys.ArrowLeft) nextPlayerX -= player.speed;
+            if (keys.ArrowRight) nextPlayerX += player.speed;
+        }
+
+        // Manter dentro do Canvas
+        nextPlayerX = Math.max(0, Math.min(canvas.width - player.size, nextPlayerX));
+        nextPlayerY = Math.max(0, Math.min(canvas.height - player.size, nextPlayerY));
+
+        // Verificar colisões com paredes para o eixo X
+        let hitWallX = false;
+        for (let w of walls) {
+            if (checkCollision({x: nextPlayerX, y: player.y, size: player.size}, w)) {
+                hitWallX = true; break;
+            }
+        }
+        if (!hitWallX) player.x = nextPlayerX;
+
+        // Verificar colisões com paredes para o eixo Y
+        let hitWallY = false;
+        for (let w of walls) {
+            if (checkCollision({x: player.x, y: nextPlayerY, size: player.size}, w)) {
+                hitWallY = true; break;
+            }
+        }
+        if (!hitWallY) player.y = nextPlayerY;
+
+        // 2. Mover o Inimigo (Rainha)
+        let nextQueenX = queen.x;
+        let nextQueenY = queen.y;
+
+        // Lógica simples de perseguição (vetor na direção do jogador)
+        const dx = player.x - queen.x;
+        const dy = player.y - queen.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+       
+        if (dist > 0) {
+            nextQueenX += (dx / dist) * queen.speed;
+            nextQueenY += (dy / dist) * queen.speed;
+        }
+
+        // A Rainha desliza pelas paredes para não ficar totalmente encravada
+        let qHitWallX = false;
+        for (let w of walls) {
+            if (checkCollision({x: nextQueenX, y: queen.y, size: queen.size}, w)) {
+                qHitWallX = true; break;
+            }
+        }
+        if (!qHitWallX) queen.x = nextQueenX;
+
+        let qHitWallY = false;
+        for (let w of walls) {
+            if (checkCollision({x: queen.x, y: nextQueenY, size: queen.size}, w)) {
+                qHitWallY = true; break;
+            }
+        }
+        if (!qHitWallY) queen.y = nextQueenY;
+
+
+        // 3. Verificar Condições de Vitória/Derrota
+        // Derrota: Rainha toca no Coelho
+        if (checkEntityCollision(player, queen, 15)) {
+            gameState = 'GAME_OVER';
+            document.getElementById('lose-screen').classList.remove('hidden');
+        }
+
+        // Vitória: Coelho toca na Coroa
+        if (checkEntityCollision(player, crownGoal, 10)) {
+            gameState = 'WIN';
+            document.getElementById('win-screen').classList.remove('hidden');
+        }
+    }
+
+    function drawEntity(entity) {
+        ctx.font = `${entity.size}px Arial`;
+        ctx.textBaseline = 'top';
+        ctx.fillText(entity.emoji, entity.x, entity.y);
+    }
+
+    function draw() {
+        // Limpar ecrã em vez de fundo verde, para vermos a Webcam!
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Desenhar Arbustos/Paredes com alguma transparência
+        ctx.fillStyle = 'rgba(20, 83, 45, 0.85)'; // Verde muito escuro translúcido
+        for (let w of walls) {
+            // Sombra do arbusto
+            ctx.shadowColor = 'rgba(0,0,0,0.5)';
+            ctx.shadowBlur = 10;
+            ctx.shadowOffsetX = 5;
+            ctx.shadowOffsetY = 5;
+           
+            // Desenhar o bloco de arbusto
+            ctx.fillRect(w.x, w.y, w.w, w.h);
+           
+            // Retirar sombra para o resto
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+
+            // Detalhes no arbusto (pequenas folhas)
+            ctx.fillStyle = 'rgba(22, 101, 52, 0.85)';
+            ctx.fillRect(w.x + 5, w.y + 5, w.w - 10, w.h - 10);
+            ctx.fillStyle = 'rgba(20, 83, 45, 0.85)';
+        }
+
+        // Desenhar a Porta de Início
+        drawEntity(startDoor);
+
+        // Desenhar o Objetivo (Coroa)
+        // Adicionar um brilho à coroa
+        ctx.shadowColor = '#fbbf24';
+        ctx.shadowBlur = 20;
+        drawEntity(crownGoal);
+        ctx.shadowBlur = 0;
+
+        // Desenhar a Rainha
+        drawEntity(queen);
+
+        // Desenhar o Coelho (Jogador)
+        drawEntity(player);
+
+        // Desenhar o cursor da mão (Feedback Visual)
+        if (isHandVisible) {
+            ctx.fillStyle = 'rgba(236, 72, 153, 0.7)';
+            ctx.beginPath();
+            ctx.arc(targetX, targetY, 15, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.shadowColor = '#ec4899';
+            ctx.shadowBlur = 15;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+           
+            // Desenhar uma linha mágica a puxar o coelho
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(236, 72, 153, 0.4)';
+            ctx.lineWidth = 3;
+            ctx.setLineDash([5, 5]);
+            ctx.moveTo(player.x + player.size / 2, player.y + player.size / 2);
+            ctx.lineTo(targetX, targetY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+    }
+
+    function gameLoop() {
+        if (gameState === 'PLAYING') {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+    }
+
+    // Desenhar a primeira frame por trás do ecrã inicial
+    draw();
+
+    // ==========================================
+    // Configuração do MediaPipe (Deteção de Mão)
+    // ==========================================
+
+    function onResults(results) {
+        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+            isHandVisible = true;
+            const indexFinger = results.multiHandLandmarks[0][8]; // Ponta do dedo indicador
+            handX = indexFinger.x;
+            handY = indexFinger.y;
+
+            // Limpar teclas virtuais
+            keys.ArrowUp = false;
+            keys.ArrowDown = false;
+            keys.ArrowLeft = false;
+            keys.ArrowRight = false;
+
+            // Converter posição do dedo diretamente para as coordenadas do ecrã
+            targetX = (1 - handX) * canvas.width; // Espelhado para bater certo
+            targetY = handY * canvas.height;
+           
+            // Atualizar UI quando a câmara estiver pronta
+            const startBtn = document.getElementById('start-btn');
+            if (startBtn.disabled) {
+                document.getElementById('loading-cam').classList.add('hidden');
+                startBtn.disabled = false;
+                startBtn.innerText = "Começar Aventura";
+            }
+        } else {
+            isHandVisible = false;
+            keys.ArrowUp = false;
+            keys.ArrowDown = false;
+            keys.ArrowLeft = false;
+            keys.ArrowRight = false;
+        }
+    }
+
+    const hands = new Hands({
+        locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }
+    });
+   
+    hands.setOptions({
+        maxNumHands: 1,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.6,
+        minTrackingConfidence: 0.6
+    });
+    hands.onResults(onResults);
+
+    const videoElement = document.getElementById('input_video');
+    const camera = new Camera(videoElement, {
+        onFrame: async () => {
+            await hands.send({image: videoElement});
+        },
+        width: 640,
+        height: 480
+    });
+   
+    // TRATAMENTO DE ERROS DA CÂMARA (FALLBACK)
+    // Se a permissão for ignorada ou recusada, permite jogar com o teclado.
+    function ativarModoTeclado() {
+        const startBtn = document.getElementById('start-btn');
+        const loadingText = document.getElementById('loading-cam');
+        if (startBtn.disabled) {
+            loadingText.classList.remove('animate-pulse', 'text-yellow-400');
+            loadingText.classList.add('text-red-400');
+            loadingText.innerHTML = "⚠️ Câmara não autorizada.<br>Podes usar o Teclado ou Botões para jogar!";
+            startBtn.disabled = false;
+            startBtn.innerText = "Jogar sem Câmara";
+        }
+    }
+
+    camera.start().catch((err) => {
+        console.warn("Aviso: Câmara bloqueada.", err);
+        ativarModoTeclado();
+    });
+
+    // Captura global de erros de permissão rejeitada
+    window.addEventListener('unhandledrejection', (event) => {
+        if (event.reason && (event.reason.name === 'NotAllowedError' || event.reason.name === 'NotFoundError')) {
+            ativarModoTeclado();
+            event.preventDefault(); // Impede o erro de travar completamente
+        }
+    });
+
+</script>
+</body>
+</html>

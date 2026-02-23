@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="pt-pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice no País das Maravilhas - Exploração 3D</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Palatino', serif; background: #000; }
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            pointer-events: none;
+        }
+        #instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            background: rgba(0,0,0,0.5);
+            padding: 10px 20px;
+            border-radius: 20px;
+            text-align: center;
+            pointer-events: none;
+        }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <h1>Alice no País das Maravilhas</h1>
+        <p>Explora o mundo surrealista</p>
+    </div>
+
+    <div id="instructions">
+        Usa as setas ou WASD para mover | Espaço para Saltar | Roda o rato para olhar
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        // Configurações do Jogo
+        let scene, camera, renderer, clock;
+        let player, playerVelocity = new THREE.Vector3();
+        let canJump = false;
+        let objects = [];
+        let keys = {};
+
+        // Inicialização
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a0a2e); // Céu roxo escuro surreal
+            scene.fog = new THREE.FogExp2(0x1a0a2e, 0.02);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+           
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            document.body.appendChild(renderer.domElement);
+
+            clock = new THREE.Clock();
+
+            // Luzes
+            const ambientLight = new THREE.AmbientLight(0x404040, 2);
+            scene.add(ambientLight);
+
+            const moonLight = new THREE.DirectionalLight(0x8888ff, 1);
+            moonLight.position.set(50, 100, 50);
+            moonLight.castShadow = true;
+            scene.add(moonLight);
+
+            // Criar o Chão (Tabuleiro de Xadrez)
+            createChessboard();
+
+            // Criar Elementos do Mundo
+            createMushrooms();
+            createFloatingCards();
+            createGiantTeaSet();
+
+            // Criar a Alice (Jogador)
+            createAlice();
+
+            // Eventos
+            window.addEventListener('keydown', (e) => keys[e.code] = true);
+            window.addEventListener('keyup', (e) => keys[e.code] = false);
+            window.addEventListener('resize', onWindowResize);
+           
+            // Controlo de Rato para Câmara
+            document.addEventListener('mousemove', (e) => {
+                if (document.pointerLockElement === document.body) {
+                    player.rotation.y -= e.movementX * 0.002;
+                }
+            });
+
+            document.body.addEventListener('click', () => {
+                document.body.requestPointerLock();
+            });
+
+            animate();
+        }
+
+        function createChessboard() {
+            const size = 100;
+            const divisions = 20;
+            const tileSize = size / divisions;
+
+            for (let i = 0; i < divisions; i++) {
+                for (let j = 0; j < divisions; j++) {
+                    const color = (i + j) % 2 === 0 ? 0xffffff : 0x222222;
+                    const geometry = new THREE.PlaneGeometry(tileSize, tileSize);
+                    const material = new THREE.MeshStandardMaterial({ color: color });
+                    const tile = new THREE.Mesh(geometry, material);
+                    tile.rotation.x = -Math.PI / 2;
+                    tile.position.set(
+                        (i - divisions / 2) * tileSize,
+                        0,
+                        (j - divisions / 2) * tileSize
+                    );
+                    tile.receiveShadow = true;
+                    scene.add(tile);
+                }
+            }
+        }
+
+        function createAlice() {
+            // Representação simples da Alice (Vestido azul e avental)
+            const group = new THREE.Group();
+           
+            // Corpo (Cone para o vestido)
+            const bodyGeo = new THREE.ConeGeometry(0.5, 1.5, 8);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0x4488ff });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 0.75;
+            group.add(body);
+
+            // Cabeça
+            const headGeo = new THREE.SphereGeometry(0.3, 16, 16);
+            const headMat = new THREE.MeshStandardMaterial({ color: 0xffdbac });
+            const head = new THREE.Mesh(headGeo, headMat);
+            head.position.y = 1.7;
+            group.add(head);
+
+            // Cabelo
+            const hairGeo = new THREE.SphereGeometry(0.32, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+            const hairMat = new THREE.MeshStandardMaterial({ color: 0xffd700 });
+            const hair = new THREE.Mesh(hairGeo, hairMat);
+            hair.position.y = 1.75;
+            group.add(hair);
+
+            player = group;
+            player.position.set(0, 0, 0);
+            scene.add(player);
+           
+            // A câmara segue o jogador
+            camera.position.set(0, 2, 5);
+            player.add(camera);
+        }
+
+        function createMushrooms() {
+            for (let i = 0; i < 15; i++) {
+                const group = new THREE.Group();
+               
+                // Caule
+                const stemGeo = new THREE.CylinderGeometry(0.2, 0.4, 1.5);
+                const stemMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee });
+                const stem = new THREE.Mesh(stemGeo, stemMat);
+                group.add(stem);
+
+                // Chapéu
+                const capGeo = new THREE.SphereGeometry(1, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+                const capMat = new THREE.MeshStandardMaterial({ color: Math.random() * 0xffffff });
+                const cap = new THREE.Mesh(capGeo, capMat);
+                cap.position.y = 0.75;
+                group.add(cap);
+
+                group.position.set(
+                    (Math.random() - 0.5) * 40,
+                    0.75,
+                    (Math.random() - 0.5) * 40
+                );
+                group.scale.setScalar(0.5 + Math.random() * 2);
+                scene.add(group);
+                objects.push(group);
+            }
+        }
+
+        function createFloatingCards() {
+            const cardGeo = new THREE.BoxGeometry(0.6, 0.9, 0.05);
+            for (let i = 0; i < 20; i++) {
+                const cardMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+                const card = new THREE.Mesh(cardGeo, cardMat);
+               
+                card.position.set(
+                    (Math.random() - 0.5) * 50,
+                    2 + Math.random() * 10,
+                    (Math.random() - 0.5) * 50
+                );
+                card.rotation.set(Math.random(), Math.random(), Math.random());
+                scene.add(card);
+               
+                // Adicionar um símbolo simples (coração/espadas seria textura, aqui usamos cor)
+                if (Math.random() > 0.5) card.material.color.set(0xff0000);
+            }
+        }
+
+        function createGiantTeaSet() {
+            // Uma chávena gigante
+            const cupGroup = new THREE.Group();
+            const bodyGeo = new THREE.CylinderGeometry(2, 1.5, 2, 20);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            cupGroup.add(body);
+
+            const handleGeo = new THREE.TorusGeometry(0.8, 0.2, 10, 20);
+            const handle = new THREE.Mesh(handleGeo, bodyMat);
+            handle.position.x = 1.8;
+            cupGroup.add(handle);
+
+            cupGroup.position.set(-15, 1, -15);
+            scene.add(cupGroup);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+
+            // Movimento do Jogador
+            const moveSpeed = 10 * delta;
+            const rotationSpeed = 2 * delta;
+
+            if (keys['KeyW'] || keys['ArrowUp']) {
+                player.translateZ(-moveSpeed);
+            }
+            if (keys['KeyS'] || keys['ArrowDown']) {
+                player.translateZ(moveSpeed);
+            }
+            if (keys['KeyA'] || keys['ArrowLeft']) {
+                player.translateX(-moveSpeed);
+            }
+            if (keys['KeyD'] || keys['ArrowRight']) {
+                player.translateX(moveSpeed);
+            }
+
+            // Salto
+            if (keys['Space'] && canJump) {
+                playerVelocity.y = 10;
+                canJump = false;
+            }
+
+            // Gravidade simples
+            player.position.y += playerVelocity.y * delta;
+            if (player.position.y > 0) {
+                playerVelocity.y -= 25 * delta;
+            } else {
+                player.position.y = 0;
+                playerVelocity.y = 0;
+                canJump = true;
+            }
+
+            // Animação de flutuação dos objetos
+            scene.children.forEach(child => {
+                if (child.type === 'Group' && child !== player) {
+                    child.rotation.y += 0.01;
+                }
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>

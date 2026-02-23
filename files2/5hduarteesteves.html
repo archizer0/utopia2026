@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice: Resgate no Jardim 3D</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'serif'; }
+        #video-container {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 180px;
+            height: 135px;
+            border: 3px solid #ffd700;
+            border-radius: 12px;
+            overflow: hidden;
+            z-index: 10;
+            transform: scaleX(-1);
+            box-shadow: 0 0 15px rgba(255,215,0,0.5);
+        }
+        video { width: 100%; height: 100%; object-fit: cover; }
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            z-index: 10;
+            pointer-events: none;
+        }
+        .msg-box {
+            background: rgba(0,0,0,0.8);
+            padding: 20px;
+            border-radius: 15px;
+            border: 2px solid #3b82f6;
+        }
+        #loading-overlay {
+            position: fixed;
+            inset: 0;
+            background: radial-gradient(circle, #1a472a 0%, #0a2012 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            z-index: 100;
+        }
+        .gesture-indicator {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+        .moving { background: #22c55e; color: white; }
+        .stopped { background: #ef4444; color: white; }
+    </style>
+</head>
+<body>
+
+    <div id="loading-overlay">
+        <h1 class="text-5xl font-bold mb-4 text-center">Jardim das Maravilhas</h1>
+        <p class="text-xl mb-8">Gira a tua mão para guiar a Alice!</p>
+        <div class="bg-white/10 p-6 rounded-xl border border-white/20 text-center">
+            <p class="mb-2 text-yellow-400 font-bold">NOVO CONTROLO:</p>
+            <p class="mb-2">🔄 **Gira a mão** para VIRAR a Alice</p>
+            <p class="mb-2">✊ **Punho Fechado** para CORRER</p>
+            <p>✋ **Mão Aberta** para PARAR</p>
+        </div>
+        <div class="mt-8 animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
+    </div>
+
+    <div id="ui">
+        <div class="msg-box">
+            <h2 class="text-2xl font-bold mb-1">O Coelho está a 67m 🪨</h2>
+            <div id="gesture-status" class="gesture-indicator stopped">Mão Aberta: Parada</div>
+            <p id="rotation-ui" class="text-sm mt-2 text-green-300">Giro da Mão: 0°</p>
+            <p id="distance-ui" class="text-lg mt-1 text-blue-400">Distância: 67m</p>
+        </div>
+    </div>
+
+    <div id="video-container">
+        <video id="input_video"></video>
+    </div>
+
+    <script>
+        let scene, camera, renderer, clock;
+        let alice, rabbit, rock, soldiers = [];
+        let aliceArms = [], aliceLegs = [];
+        let gameActive = false;
+       
+        // Estado do Gesto
+        let isFist = false;
+        let handAngle = 0; // Ângulo de inclinação da mão
+        let moveSpeed = 0;
+
+        const videoElement = document.getElementById('input_video');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const gestureStatus = document.getElementById('gesture-status');
+        const rotationUi = document.getElementById('rotation-ui');
+        const distanceUi = document.getElementById('distance-ui');
+
+        function init3D() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xa0d8ef);
+            scene.fog = new THREE.Fog(0xa0d8ef, 15, 100);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+           
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            document.body.appendChild(renderer.domElement);
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+            const sunLight = new THREE.DirectionalLight(0xffffff, 0.9);
+            sunLight.position.set(50, 100, 50);
+            sunLight.castShadow = true;
+            scene.add(sunLight);
+
+            // Relvado
+            const ground = new THREE.Mesh(
+                new THREE.PlaneGeometry(1000, 1000),
+                new THREE.MeshPhongMaterial({ color: 0x4caf50 })
+            );
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            // Vegetação (Árvores e Flores)
+            const trunkGeo = new THREE.CylinderGeometry(0.3, 0.5, 3);
+            const trunkMat = new THREE.MeshPhongMaterial({ color: 0x5d4037 });
+            const leafGeo = new THREE.DodecahedronGeometry(1.8, 1);
+            const leafMat = new THREE.MeshPhongMaterial({ color: 0x2e7d32 });
+
+            for(let i = 0; i < 100; i++) {
+                const tree = new THREE.Group();
+                const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+                trunk.position.y = 1.5;
+                const leaves = new THREE.Mesh(leafGeo, leafMat);
+                leaves.position.y = 4;
+                tree.add(trunk, leaves);
+               
+                let tx = Math.random() * 300 - 150;
+                let tz = Math.random() * 300 - 150;
+                // Evitar o caminho direto inicial
+                if (Math.abs(tx) < 10 && tz < 0 && tz > -75) tx += 15;
+                tree.position.set(tx, 0, tz);
+                scene.add(tree);
+            }
+
+            // Flores coloridas
+            const colors = [0xffffff, 0xffeb3b, 0xf44336, 0xe91e63, 0x9c27b0];
+            for(let i = 0; i < 400; i++) {
+                const flower = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.12, 5, 5),
+                    new THREE.MeshPhongMaterial({ color: colors[Math.floor(Math.random() * colors.length)] })
+                );
+                flower.position.set(Math.random() * 300 - 150, 0.05, Math.random() * 300 - 150);
+                scene.add(flower);
+            }
+
+            // A Rocha a 67 metros
+            rock = new THREE.Mesh(
+                new THREE.DodecahedronGeometry(3.5, 0),
+                new THREE.MeshPhongMaterial({ color: 0x808080 })
+            );
+            rock.scale.y = 0.5;
+            rock.position.set(0, 1.2, -67);
+            scene.add(rock);
+
+            // O Coelho
+            rabbit = new THREE.Group();
+            const rMat = new THREE.MeshPhongMaterial({ color: 0xffffff });
+            const rb = new THREE.Mesh(new THREE.SphereGeometry(0.4), rMat);
+            const rh = new THREE.Mesh(new THREE.SphereGeometry(0.25), rMat);
+            rh.position.set(0, 0.35, 0.25);
+            const reL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.5, 0.02), rMat);
+            reL.position.set(-0.1, 0.6, 0.2);
+            const reR = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.5, 0.02), rMat);
+            reR.position.set(0.1, 0.6, 0.2);
+            rabbit.add(rb, rh, reL, reR);
+            rabbit.position.set(0.5, 0.4, -67.8);
+            scene.add(rabbit);
+
+            // Alice (Menina)
+            alice = new THREE.Group();
+            const skinMat = new THREE.MeshPhongMaterial({ color: 0xffdbac });
+            const dressMat = new THREE.MeshPhongMaterial({ color: 0x3b82f6 });
+           
+            const dress = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.2, 12), dressMat);
+            dress.position.y = 0.6;
+            alice.add(dress);
+
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 16, 16), skinMat);
+            head.position.y = 1.35;
+            alice.add(head);
+
+            const hair = new THREE.Mesh(new THREE.SphereGeometry(0.35, 16, 16, 0, Math.PI*2, 0, Math.PI/1.6), new THREE.MeshPhongMaterial({color: 0xffd700}));
+            hair.position.y = 1.4;
+            alice.add(hair);
+
+            const legGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.6);
+            for(let i=0; i<2; i++) {
+                const leg = new THREE.Mesh(legGeo, skinMat);
+                leg.position.set(i===0 ? -0.18 : 0.18, 0.3, 0);
+                alice.add(leg);
+                aliceLegs.push(leg);
+            }
+            scene.add(alice);
+
+            // Soldados
+            for(let i = 0; i < 7; i++) {
+                const s = new THREE.Group();
+                const card = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.2, 0.1), new THREE.MeshPhongMaterial({color: 0xffffff}));
+                const h = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.11), new THREE.MeshPhongMaterial({color: 0xff0000}));
+                s.add(card, h);
+                s.position.set(Math.random()*120-60, 0.6, Math.random()*120-60);
+                s.userData = { angle: Math.random()*Math.PI*2, timer: 0 };
+                soldiers.push(s);
+                scene.add(s);
+            }
+
+            clock = new THREE.Clock();
+            gameActive = true;
+            animate();
+        }
+
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
+
+        hands.onResults((results) => {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                loadingOverlay.style.display = 'none';
+                const landmarks = results.multiHandLandmarks[0];
+               
+                // 1. Deteção de Giro (Rotação da Mão)
+                // Calculamos o ângulo entre o pulso (0) e a base do dedo médio (9)
+                const wrist = landmarks[0];
+                const middleBase = landmarks[9];
+               
+                // Ângulo em radianos
+                const angle = Math.atan2(middleBase.y - wrist.y, middleBase.x - wrist.x);
+                // Convertemos para algo controlável (o normal é perto de -PI/2 quando a mão está vertical)
+                // Ajustamos para que 0 seja a mão vertical
+                let rawAngle = angle + Math.PI/2;
+
+                // ZONA MORTA: Se a inclinação for pequena, não roda (evita rodar constantemente)
+                if (Math.abs(rawAngle) < 0.25) {
+                    handAngle = 0;
+                } else {
+                    handAngle = rawAngle;
+                }
+
+                // 2. Deteção de Punho (Caminhar)
+                const tips = [8, 12, 16, 20];
+                const pips = [6, 10, 14, 18];
+                let closedCount = 0;
+                tips.forEach((t, i) => { if(landmarks[t].y > landmarks[pips[i]].y) closedCount++; });
+                isFist = (closedCount >= 3);
+
+                // UI update
+                rotationUi.innerText = `Giro da Mão: ${Math.round(handAngle * (180/Math.PI))}°`;
+                if(isFist) {
+                    gestureStatus.innerText = "Punho: A CORRER! ✊";
+                    gestureStatus.className = "gesture-indicator moving";
+                } else {
+                    gestureStatus.innerText = "Mão Aberta: Parada ✋";
+                    gestureStatus.className = "gesture-indicator stopped";
+                }
+            } else {
+                // Se a mão não for detetada, garante que a Alice para
+                handAngle = 0;
+                isFist = false;
+                gestureStatus.innerText = "Sem Mão: Parada ✋";
+                gestureStatus.className = "gesture-indicator stopped";
+            }
+        });
+
+        const cameraUtils = new Camera(videoElement, {
+            onFrame: async () => { await hands.send({image: videoElement}); },
+            width: 640, height: 480
+        });
+        cameraUtils.start();
+
+        function animate() {
+            if(!gameActive) return;
+            requestAnimationFrame(animate);
+            const time = clock.getElapsedTime();
+            const delta = 0.016;
+
+            // Rotação: A Alice vira conforme o ângulo da mão
+            // Usamos uma sensibilidade para que o giro seja sentido
+            alice.rotation.y -= handAngle * 0.1;
+
+            if(isFist) {
+                moveSpeed = Math.min(moveSpeed + 0.015, 0.25);
+                const dir = new THREE.Vector3(0, 0, 1).applyQuaternion(alice.quaternion);
+                alice.position.add(dir.multiplyScalar(moveSpeed));
+               
+                aliceLegs[0].rotation.x = Math.sin(time * 14) * 0.7;
+                aliceLegs[1].rotation.x = -Math.sin(time * 14) * 0.7;
+            } else {
+                moveSpeed *= 0.88;
+                const dir = new THREE.Vector3(0, 0, 1).applyQuaternion(alice.quaternion);
+                alice.position.add(dir.multiplyScalar(moveSpeed));
+                aliceLegs.forEach(l => l.rotation.x *= 0.8);
+            }
+
+            // Câmara em 3ª pessoa
+            const camOffset = new THREE.Vector3(0, 5, -10).applyQuaternion(alice.quaternion);
+            camera.position.lerp(alice.position.clone().add(camOffset), 0.1);
+           
+            // CORREÇÃO: A câmara olha agora na direção para onde a Alice está virada
+            const lookTarget = alice.position.clone().add(new THREE.Vector3(0, 1.5, 5).applyQuaternion(alice.quaternion));
+            camera.lookAt(lookTarget);
+
+            // Coelho
+            const distToRabbit = alice.position.distanceTo(rabbit.position);
+            distanceUi.innerText = `Distância: ${Math.floor(distToRabbit)}m`;
+
+            if(distToRabbit < 12) {
+                let flee = new THREE.Vector3().subVectors(rabbit.position, alice.position).normalize();
+                rabbit.position.add(flee.multiplyScalar(0.18));
+                rabbit.lookAt(alice.position.x, 0.4, alice.position.z);
+            }
+            rabbit.position.y = 0.4 + Math.abs(Math.sin(time * 7)) * 0.4;
+
+            // Soldados
+            soldiers.forEach(s => {
+                const dR = s.position.distanceTo(rabbit.position);
+                if(dR < 16) {
+                    s.lookAt(rabbit.position);
+                    s.translateZ(0.08);
+                } else {
+                    s.userData.timer -= delta;
+                    if(s.userData.timer <= 0) {
+                        s.userData.angle = Math.random() * Math.PI * 2;
+                        s.userData.timer = 2 + Math.random() * 4;
+                    }
+                    s.rotation.y += (s.userData.angle - s.rotation.y) * 0.05;
+                    s.translateZ(0.04);
+                }
+                if(dR < 1.0) gameOver("Os Soldados da Rainha apanharam o coelho!");
+            });
+
+            if(distToRabbit < 1.8) gameOver("Parabéns! Salvaste o Coelho Branco!");
+
+            renderer.render(scene, camera);
+        }
+
+        function gameOver(msg) {
+            gameActive = false;
+            alert(msg);
+            location.reload();
+        }
+
+        window.onload = init3D;
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

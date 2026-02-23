@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Um Jantar Louco - Damas</title>
+    <style>
+        :root {
+            /* Paleta País das Maravilhas */
+            --bg-gradient: linear-gradient(135deg, #4b0082, #2c3e50, #000);
+            --board-dark: #8e44ad; /* Roxo Mágico */
+            --board-light: #dcdde1; /* Branco Chá */
+            --highlight: rgba(255, 255, 0, 0.7); /* Amarelo Brilhante */
+            --capture-hint: rgba(255, 0, 0, 0.5); /* Vermelho Copas */
+            --p1-color: #3498db; /* Azul Alice */
+            --p2-color: #2c3e50; /* Preto Chapeleiro */
+        }
+
+        body {
+            font-family: 'Georgia', serif;
+            background: var(--bg-gradient);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            color: #fff;
+            overflow-x: hidden;
+        }
+
+        .game-container {
+            text-align: center;
+            padding: 20px;
+            position: relative;
+        }
+
+        /* Decoração de naipes ao fundo */
+        .decoration {
+            position: fixed;
+            font-size: 15rem;
+            opacity: 0.05;
+            z-index: -1;
+            user-select: none;
+        }
+        .spade { top: 0; left: 0; }
+        .heart { bottom: 0; right: 0; color: #e74c3c; }
+
+        .game-title {
+            font-size: 3rem;
+            margin-bottom: 10px;
+            color: #ff7675;
+            text-shadow: 3px 3px 0px #4b0082;
+            font-style: italic;
+        }
+
+        .status-bar {
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            padding: 10px 30px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 50px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        #board {
+            display: grid;
+            grid-template-columns: repeat(8, 65px);
+            grid-template-rows: repeat(8, 65px);
+            border: 12px solid #5d4037;
+            border-radius: 10px;
+            box-shadow: 0 0 50px rgba(0,0,0,0.8), inset 0 0 20px rgba(0,0,0,0.5);
+            user-select: none;
+            background-color: #5d4037;
+        }
+
+        @media (max-width: 550px) {
+            #board {
+                grid-template-columns: repeat(8, 11vw);
+                grid-template-rows: repeat(8, 11vw);
+            }
+            .game-title { font-size: 2rem; }
+        }
+
+        .cell {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .cell.dark { background-color: var(--board-dark); }
+        .cell.light { background-color: var(--board-light); }
+
+        .piece {
+            width: 80%;
+            height: 80%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            position: relative;
+            z-index: 2;
+        }
+
+        /* Estilo para as Cadeiras (Alice / Brancas) */
+        .piece.p1 svg {
+            fill: #a29bfe; /* Roxo clarinho/Lavanda */
+            filter: drop-shadow(0 3px 2px rgba(0,0,0,0.7));
+        }
+
+        /* Estilo para as Chávenas (Chapeleiro / Pretas) */
+        .piece.p2 svg {
+            fill: #1e272e;
+            filter: drop-shadow(0 3px 2px rgba(0,0,0,0.7));
+        }
+
+        /* Cartola da Dama */
+        .piece.king::after {
+            content: '🎩';
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            font-size: 1.5rem;
+            z-index: 10;
+            filter: drop-shadow(0 0 5px gold);
+        }
+
+        .selected {
+            filter: brightness(1.3) drop-shadow(0 0 15px var(--highlight)) !important;
+            transform: scale(1.2) rotate(10deg);
+        }
+
+        /* Movimentos Válidos (Sorriso do Gato) */
+        .valid-move::after {
+            content: '◡';
+            font-size: 2rem;
+            color: var(--highlight);
+            position: absolute;
+            z-index: 1;
+            font-weight: bold;
+        }
+
+        .valid-capture {
+            background-color: var(--capture-hint) !important;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.6; }
+            50% { opacity: 1; }
+            100% { opacity: 0.6; }
+        }
+
+        .controls {
+            margin-top: 30px;
+        }
+
+        button {
+            padding: 12px 30px;
+            font-size: 1.1rem;
+            background-color: #d63031;
+            color: white;
+            border: 3px solid #ff7675;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-family: 'Georgia', serif;
+            font-weight: bold;
+            box-shadow: 0 4px 0 #b71c1c;
+        }
+
+        button:hover {
+            background-color: #ff7675;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 0 #b71c1c;
+        }
+
+        button:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px 0 #b71c1c;
+        }
+
+        #message-box {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 40px;
+            background: rgba(255, 255, 255, 0.95);
+            color: #2c3e50;
+            border-radius: 20px;
+            box-shadow: 0 0 100px rgba(0,0,0,0.8);
+            display: none;
+            z-index: 1000;
+            font-weight: bold;
+            font-size: 2rem;
+            text-align: center;
+            border: 5px solid #8e44ad;
+            min-width: 300px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="decoration spade">♠</div>
+    <div class="decoration heart">♥</div>
+
+    <div id="message-box"></div>
+
+    <div class="game-container">
+        <h1 class="game-title">Um Jantar Louco</h1>
+        <div class="status-bar" id="status">Vez das Cadeiras de Alice</div>
+        <div id="board"></div>
+        <div class="controls">
+            <button onclick="resetGame()">Reiniciar o Banquete!</button>
+        </div>
+    </div>
+
+    <script>
+        const boardElement = document.getElementById('board');
+        const statusElement = document.getElementById('status');
+        const messageBox = document.getElementById('message-box');
+
+        // Ícones SVG
+        const chairIcon = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M7 13h10V7h3V3H4v4h3v6zm0 2v6h2v-6h6v6h2v-6h1v-2H6v2h1z"/></svg>`;
+        const teaIcon = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 3H4v10c0 2.21 1.79 4 4 4h6c2.21 0 4-1.79 4-4v-3h2c1.11 0 2-.89 2-2V5c0-1.11-.89-2-2-2zm0 5h-2V5h2v3zM4 19h16v2H4z"/></svg>`;
+
+        let board = [];
+        let turn = 1; // 1: Cadeiras, 2: Chávenas
+        let selectedPiece = null;
+        let validMoves = [];
+        let mustCapture = false;
+
+        function showMessage(text) {
+            messageBox.innerHTML = `<div>${text}</div><button style="margin-top:20px; font-size: 1rem; padding: 10px 20px;" onclick="location.reload()">Jogar Novamente</button>`;
+            messageBox.style.display = 'block';
+        }
+
+        function initBoard() {
+            board = Array(8).fill(null).map(() => Array(8).fill(0));
+           
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    if ((r + c) % 2 !== 0) {
+                        if (r < 3) board[r][c] = 2; // Chávenas (Pretas)
+                        else if (r > 4) board[r][c] = 1; // Cadeiras (Brancas)
+                    }
+                }
+            }
+            render();
+        }
+
+        function render() {
+            boardElement.innerHTML = '';
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = `cell ${(r + c) % 2 === 0 ? 'light' : 'dark'}`;
+                   
+                    const pieceVal = board[r][c];
+                    if (pieceVal !== 0) {
+                        const piece = document.createElement('div');
+                        const isP1 = Math.floor(pieceVal) === 1;
+                        piece.className = `piece ${isP1 ? 'p1' : 'p2'} ${pieceVal % 1 !== 0 ? 'king' : ''}`;
+                        piece.innerHTML = isP1 ? chairIcon : teaIcon;
+                       
+                        if (selectedPiece && selectedPiece.r === r && selectedPiece.c === c) {
+                            piece.classList.add('selected');
+                        }
+                        cell.appendChild(piece);
+                    }
+
+                    const move = validMoves.find(m => m.r === r && m.c === c);
+                    if (move) {
+                        cell.classList.add(move.capture ? 'valid-capture' : 'valid-move');
+                    }
+
+                    cell.addEventListener('click', () => handleCellClick(r, c));
+                    boardElement.appendChild(cell);
+                }
+            }
+           
+            statusElement.textContent = turn === 1 ? "Vez das Cadeiras de Alice" : "Vez das Chávenas do Chapeleiro";
+            statusElement.style.color = turn === 1 ? "#a29bfe" : "#fff";
+        }
+
+        function handleCellClick(r, c) {
+            const piece = board[r][c];
+
+            if (piece !== 0 && Math.floor(piece) === turn) {
+                if (mustCapture && (selectedPiece && (selectedPiece.r !== r || selectedPiece.c !== c))) {
+                    return;
+                }
+               
+                selectedPiece = { r, c };
+                validMoves = getValidMoves(r, c);
+                render();
+                return;
+            }
+
+            const move = validMoves.find(m => m.r === r && m.c === c);
+            if (move) {
+                executeMove(selectedPiece.r, selectedPiece.c, r, c, move.capture);
+                return;
+            }
+
+            if (!mustCapture) {
+                selectedPiece = null;
+                validMoves = [];
+                render();
+            }
+        }
+
+        function getValidMoves(r, c) {
+            const piece = board[r][c];
+            const isKing = piece % 1 !== 0;
+            const moves = [];
+            const directions = isKing ? [[1,1], [1,-1], [-1,1], [-1,-1]] :
+                              (turn === 1 ? [[-1,1], [-1,-1]] : [[1,1], [1,-1]]);
+
+            directions.forEach(d => {
+                const nr = r + d[0] * 2;
+                const nc = c + d[1] * 2;
+                const midR = r + d[0];
+                const midC = c + d[1];
+
+                if (inBounds(nr, nc)) {
+                    const midPiece = board[midR][midC];
+                    if (midPiece !== 0 && Math.floor(midPiece) !== turn && board[nr][nc] === 0) {
+                        moves.push({ r: nr, c: nc, capture: { r: midR, c: midC } });
+                    }
+                }
+            });
+
+            if (moves.length === 0 && !mustCapture) {
+                directions.forEach(d => {
+                    const nr = r + d[0];
+                    const nc = c + d[1];
+                    if (inBounds(nr, nc) && board[nr][nc] === 0) {
+                        moves.push({ r: nr, c: nc });
+                    }
+                });
+            }
+
+            return moves;
+        }
+
+        function inBounds(r, c) {
+            return r >= 0 && r < 8 && c >= 0 && c < 8;
+        }
+
+        function executeMove(fromR, fromC, toR, toC, capture) {
+            let piece = board[fromR][fromC];
+
+            if (turn === 1 && toR === 0) piece = 1.1;
+            if (turn === 2 && toR === 7) piece = 2.1;
+
+            board[toR][toC] = piece;
+            board[fromR][fromC] = 0;
+
+            if (capture) {
+                board[capture.r][capture.c] = 0;
+                const extraMoves = getValidMoves(toR, toC).filter(m => m.capture);
+                if (extraMoves.length > 0) {
+                    selectedPiece = { r: toR, c: toC };
+                    validMoves = extraMoves;
+                    mustCapture = true;
+                    render();
+                    return;
+                }
+            }
+
+            mustCapture = false;
+            selectedPiece = null;
+            validMoves = [];
+            turn = turn === 1 ? 2 : 1;
+            render();
+            checkGameOver();
+        }
+
+        function checkGameOver() {
+            let p1Exists = false;
+            let p2Exists = false;
+           
+            for(let r=0; r<8; r++) {
+                for(let c=0; c<8; c++) {
+                    if(Math.floor(board[r][c]) === 1) p1Exists = true;
+                    if(Math.floor(board[r][c]) === 2) p2Exists = true;
+                }
+            }
+
+            if(!p1Exists) showMessage("O Chapeleiro Louco venceu o jantar!");
+            if(!p2Exists) showMessage("Alice venceu o jantar!");
+        }
+
+        function resetGame() {
+            turn = 1;
+            selectedPiece = null;
+            validMoves = [];
+            mustCapture = false;
+            initBoard();
+        }
+
+        window.onload = initBoard;
+    </script>
+</body>
+</html>

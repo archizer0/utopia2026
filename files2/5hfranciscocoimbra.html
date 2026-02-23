@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice no País das Maravilhas</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #1a1a1a;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: white;
+        }
+
+        #gameCanvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* Câmara no canto superior esquerdo */
+        #webcam {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 200px;
+            height: 150px;
+            object-fit: cover;
+            border: 4px solid #gold;
+            border-radius: 12px;
+            box-shadow: 0 0 15px rgba(255, 215, 0, 0.5);
+            /* Espelhar a câmara para parecer um reflexo natural */
+            transform: scaleX(-1);
+            z-index: 10;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            text-align: right;
+            z-index: 10;
+            pointer-events: none;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 15px;
+            border-radius: 10px;
+            border: 2px solid #8b4513;
+        }
+
+        #score-display {
+            font-size: 28px;
+            font-weight: bold;
+            color: #ffeb3b;
+            margin-bottom: 5px;
+        }
+
+        #level-display {
+            font-size: 18px;
+            color: #fff;
+        }
+
+        /* Ecrã inicial e de Game Over */
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        h1 {
+            color: #ffeb3b;
+            font-size: 48px;
+            text-shadow: 2px 2px 4px #000;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        p {
+            font-size: 20px;
+            max-width: 600px;
+            text-align: center;
+            line-height: 1.5;
+            margin-bottom: 30px;
+        }
+
+        button {
+            padding: 15px 40px;
+            font-size: 24px;
+            font-weight: bold;
+            color: #fff;
+            background: #d32f2f;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(211, 47, 47, 0.4);
+            transition: all 0.3s ease;
+        }
+
+        button:hover {
+            background: #b71c1c;
+            transform: translateY(-2px);
+        }
+
+        .instructions {
+            background: rgba(255,255,255,0.1);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Jogo e Câmara -->
+    <video id="webcam" autoplay playsinline></video>
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Interface (Pontuação) -->
+    <div id="ui-layer">
+        <div id="score-display">Soldados: 0</div>
+        <div id="level-display">Guardas: 0</div>
+    </div>
+
+    <!-- Ecrãs Overlay (Menu / Game Over) -->
+    <div id="overlay">
+        <h1 id="overlay-title">Alice e a Floresta dos Cartões</h1>
+        <div class="instructions" id="overlay-desc">
+            <p><strong>Objetivo:</strong> Salva os <strong>Soldados (Cartões Pretos ♠️♣️)</strong> espalhados pela floresta.</p>
+            <p><strong>Cuidado:</strong> Foge dos <strong>Guardas da Rainha (Cartões Vermelhos ♥️♦️)</strong>!</p>
+            <p><strong>Como Jogar:</strong> Mexe a tua mão ou corpo em frente à câmara! A Alice (👧🏼) vai seguir o centro do teu movimento mágico.</p>
+        </div>
+        <button id="start-btn">Iniciar Jogo Mágico</button>
+    </div>
+
+    <script>
+        // --- CONFIGURAÇÕES GERAIS ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const video = document.getElementById('webcam');
+        const overlay = document.getElementById('overlay');
+        const startBtn = document.getElementById('start-btn');
+        const overlayTitle = document.getElementById('overlay-title');
+        const overlayDesc = document.getElementById('overlay-desc');
+        const scoreDisplay = document.getElementById('score-display');
+        const levelDisplay = document.getElementById('level-display');
+
+        // Redimensionar canvas para o ecrã inteiro
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // --- VARIÁVEIS DO JOGO ---
+        let gameActive = false;
+        let score = 0;
+        let animationId;
+       
+        // Entidades
+        let alice = { x: canvas.width/2, y: canvas.height/2, size: 25, speed: 0.1 };
+        let soldiers = []; // Colecionáveis
+        let guards = [];   // Inimigos
+        let decorations = []; // Árvores e cogumelos da floresta
+
+        // Captura de Movimento
+        const motionCanvas = document.createElement('canvas');
+        const motionCtx = motionCanvas.getContext('2d', { willReadFrequently: true });
+        motionCanvas.width = 160; // Resolução baixa para ser super rápido
+        motionCanvas.height = 120;
+        let previousPixels = null;
+        let targetX = canvas.width / 2;
+        let targetY = canvas.height / 2;
+
+        // --- SISTEMA DE VISÃO (Deteção de Movimento) ---
+        async function setupCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 320, height: 240, facingMode: "user" }
+                });
+                video.srcObject = stream;
+                return new Promise((resolve) => {
+                    video.onloadedmetadata = () => resolve(true);
+                });
+            } catch (err) {
+                alert("Erro ao aceder à câmara. Precisas de permitir a câmara para poderes jogar controlando a Alice com o movimento!");
+                return false;
+            }
+        }
+
+        function processMotion() {
+            if (!video.videoWidth) return;
+
+            // Desenhar o vídeo espelhado no canvas de processamento (para a direita ser a direita)
+            motionCtx.save();
+            motionCtx.translate(motionCanvas.width, 0);
+            motionCtx.scale(-1, 1);
+            motionCtx.drawImage(video, 0, 0, motionCanvas.width, motionCanvas.height);
+            motionCtx.restore();
+
+            const currentData = motionCtx.getImageData(0, 0, motionCanvas.width, motionCanvas.height);
+            const currentPixels = currentData.data;
+
+            let motionX = 0;
+            let motionY = 0;
+            let motionCount = 0;
+
+            if (previousPixels) {
+                // Percorrer os píxeis para encontrar diferenças (movimento)
+                for (let i = 0; i < currentPixels.length; i += 4) {
+                    const diffR = Math.abs(currentPixels[i] - previousPixels[i]);
+                    const diffG = Math.abs(currentPixels[i+1] - previousPixels[i+1]);
+                    const diffB = Math.abs(currentPixels[i+2] - previousPixels[i+2]);
+
+                    // Se a diferença de cor for significativa, conta como movimento
+                    if (diffR + diffG + diffB > 120) {
+                        const pixelIndex = i / 4;
+                        const x = pixelIndex % motionCanvas.width;
+                        const y = Math.floor(pixelIndex / motionCanvas.width);
+
+                        motionX += x;
+                        motionY += y;
+                        motionCount++;
+                    }
+                }
+            }
+
+            // Atualizar os píxeis anteriores para a próxima frame
+            previousPixels = new Uint8ClampedArray(currentPixels);
+
+            // Se houve movimento suficiente, calcular o centro de massa
+            if (motionCount > 100) {
+                const avgX = motionX / motionCount;
+                const avgY = motionY / motionCount;
+
+                // Mapear as coordenadas da câmara para as proporções do ecrã do jogo
+                targetX = (avgX / motionCanvas.width) * canvas.width;
+                targetY = (avgY / motionCanvas.height) * canvas.height;
+            }
+        }
+
+        // --- LÓGICA DO JOGO ---
+        function initGame() {
+            score = 0;
+            alice.x = canvas.width / 2;
+            alice.y = canvas.height / 2;
+            soldiers = [];
+            guards = [];
+            decorations = [];
+            updateUI();
+           
+            // Gerar a Floresta
+            for(let i=0; i<30; i++) {
+                decorations.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    type: Math.random() > 0.7 ? '🍄' : '🌳',
+                    size: 30 + Math.random() * 40
+                });
+            }
+
+            spawnSoldier();
+            spawnGuard();
+            gameActive = true;
+            overlay.classList.add('hidden');
+           
+            gameLoop();
+        }
+
+        function spawnSoldier() {
+            soldiers.push({
+                x: Math.random() * (canvas.width - 100) + 50,
+                y: Math.random() * (canvas.height - 100) + 50,
+                symbol: Math.random() > 0.5 ? '♠️' : '♣️'
+            });
+        }
+
+        function spawnGuard() {
+            // Guardas nascem fora da visão ou nos cantos para não apanharem a Alice de imediato
+            const edge = Math.floor(Math.random() * 4);
+            let x, y;
+            if (edge === 0) { x = Math.random() * canvas.width; y = -50; } // Topo
+            else if (edge === 1) { x = canvas.width + 50; y = Math.random() * canvas.height; } // Direita
+            else if (edge === 2) { x = Math.random() * canvas.width; y = canvas.height + 50; } // Fundo
+            else { x = -50; y = Math.random() * canvas.height; } // Esquerda
+
+            guards.push({
+                x: x,
+                y: y,
+                speed: 1.5 + (score * 0.1), // Ficam mais rápidos à medida que ganhas pontos
+                symbol: Math.random() > 0.5 ? '♥️' : '♦️'
+            });
+            updateUI();
+        }
+
+        function updateUI() {
+            scoreDisplay.textContent = `Soldados: ${score}`;
+            levelDisplay.textContent = `Guardas a perseguir-te: ${guards.length}`;
+        }
+
+        function gameOver() {
+            gameActive = false;
+            cancelAnimationFrame(animationId);
+            overlayTitle.textContent = "Apanhada pela Rainha!";
+            overlayTitle.style.color = "#f44336";
+            overlayDesc.innerHTML = `<p>Sobreviveste à floresta e salvaste <strong>${score} soldados</strong>!</p><p>Ajeita-te em frente à câmara para tentar de novo.</p>`;
+            startBtn.textContent = "Jogar Novamente";
+            overlay.classList.remove('hidden');
+        }
+
+        function updatePositions() {
+            // 1. Mover Alice em direção ao movimento detetado (interpolação suave)
+            alice.x += (targetX - alice.x) * alice.speed;
+            alice.y += (targetY - alice.y) * alice.speed;
+
+            // Limitar a Alice dentro do ecrã
+            alice.x = Math.max(30, Math.min(canvas.width - 30, alice.x));
+            alice.y = Math.max(30, Math.min(canvas.height - 30, alice.y));
+
+            // 2. Verificar apanha de soldados
+            for (let i = soldiers.length - 1; i >= 0; i--) {
+                let s = soldiers[i];
+                let dist = Math.hypot(alice.x - s.x, alice.y - s.y);
+                if (dist < alice.size + 20) {
+                    soldiers.splice(i, 1);
+                    score++;
+                    updateUI();
+                    spawnSoldier();
+                    // A cada 3 soldados salvos, aparece mais um guarda!
+                    if (score % 3 === 0) spawnGuard();
+                }
+            }
+
+            // 3. Mover guardas atrás da Alice
+            for (let g of guards) {
+                let dx = alice.x - g.x;
+                let dy = alice.y - g.y;
+                let dist = Math.hypot(dx, dy);
+               
+                if (dist > 0) {
+                    g.x += (dx / dist) * g.speed;
+                    g.y += (dy / dist) * g.speed;
+                }
+
+                // Colisão com os guardas
+                if (dist < alice.size + 20) {
+                    gameOver();
+                }
+            }
+        }
+
+        // --- RENDERIZAÇÃO ---
+        function drawCard(x, y, symbol, isRed) {
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.roundRect(x - 20, y - 30, 40, 60, 5); // Cartão com cantos arredondados
+            ctx.fill();
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            ctx.fillStyle = isRed ? '#d32f2f' : '#000';
+            ctx.font = '24px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(symbol, x, y);
+        }
+
+        function drawGame() {
+            // Fundo da Floresta
+            ctx.fillStyle = '#1b3a1d'; // Verde floresta escuro
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Decorações
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            for (let d of decorations) {
+                ctx.font = `${d.size}px Arial`;
+                ctx.fillText(d.type, d.x, d.y);
+            }
+
+            // Desenhar Soldados
+            for (let s of soldiers) {
+                drawCard(s.x, s.y, s.symbol, false);
+            }
+
+            // Desenhar Guardas
+            for (let g of guards) {
+                drawCard(g.x, g.y, g.symbol, true);
+            }
+
+            // Desenhar a Alice
+            // Efeito visual - aura da alice (mostra onde o jogo acha que estás a ir)
+            ctx.beginPath();
+            ctx.arc(targetX, targetY, 15, 0, Math.PI*2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.fill();
+
+            // A própria Alice (emoji)
+            ctx.font = '45px Arial';
+            ctx.fillText('👧🏼', alice.x, alice.y + 5);
+        }
+
+        function gameLoop() {
+            if (!gameActive) return;
+
+            processMotion();
+            updatePositions();
+            drawGame();
+
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        // --- EVENTOS ---
+        startBtn.addEventListener('click', async () => {
+            startBtn.disabled = true;
+            startBtn.textContent = "A Ligar Câmara...";
+            const camReady = await setupCamera();
+            if (camReady) {
+                startBtn.disabled = false;
+                initGame();
+            } else {
+                startBtn.textContent = "Erro na Câmara";
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Alice no País das Maravilhas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: radial-gradient(circle at center, #4b1d52 0%, #1a0024 100%);
+            font-family: 'Georgia', serif;
+            user-select: none;
+            touch-action: none; /* Previne scroll no telemóvel ao jogar */
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        .glass-panel {
+            background: rgba(30, 10, 40, 0.6);
+            backdrop-filter: blur(12px);
+            border: 2px solid rgba(255, 150, 200, 0.3);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+       
+        /* Animação suave para o fundo */
+        @keyframes floatBg {
+            0% { background-position: 0% 0%; }
+            50% { background-position: 100% 100%; }
+            100% { background-position: 0% 0%; }
+        }
+    </style>
+</head>
+<body class="text-white">
+
+    <!-- Interface HUD (Heads Up Display) -->
+    <div id="hud" class="hidden absolute top-0 left-0 w-full p-4 md:p-6 flex justify-between items-start pointer-events-none z-10 text-2xl md:text-4xl font-bold drop-shadow-[0_4px_4px_rgba(0,0,0,0.8)]">
+        <div class="flex flex-col">
+            <div id="scoreHUD" class="text-yellow-400">Pontos: 0</div>
+        </div>
+        <div class="flex flex-col items-end">
+            <div id="timeHUD" class="text-cyan-300">Tempo: 30s</div>
+        </div>
+    </div>
+
+    <!-- Ecrã Inicial -->
+    <div id="startScreen" class="absolute inset-0 flex items-center justify-center z-20 transition-opacity duration-300">
+        <div class="glass-panel p-8 rounded-3xl text-center max-w-lg mx-4">
+            <h1 class="text-4xl md:text-5xl font-extrabold text-pink-400 mb-2 drop-shadow-lg tracking-wide">Alice no<br>País das Maravilhas</h1>
+            <p class="text-pink-200 text-lg mb-6 italic">O País das Maravilhas está a cair!</p>
+           
+            <div class="text-left space-y-3 mb-8 bg-black/30 p-4 rounded-xl text-sm md:text-base">
+                <p>Mova a Alice (esquerda/direita) para apanhar ou desviar-se:</p>
+                <div class="flex items-center gap-3"><span class="text-2xl">🃏</span> <span><b>Cartas:</b> +5 pontos</span></div>
+                <div class="flex items-center gap-3"><span class="text-2xl">🐇</span> <span><b>Coelho Branco:</b> +10 segundos</span></div>
+                <div class="flex items-center gap-3"><span class="text-2xl">🎩</span> <span><b>Chapeleiro Maluco:</b> -2 pontos</span></div>
+                <div class="flex items-center gap-3 text-red-400"><span class="text-2xl">♥️</span> <span><b>Rainha de Copas:</b> MORTE INSTANTÂNEA!</span></div>
+            </div>
+
+            <button id="startBtn" class="w-full bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-bold py-4 px-8 rounded-full shadow-lg shadow-pink-500/30 transform transition hover:scale-105 active:scale-95 text-xl uppercase tracking-wider">
+                Entrar na Toca
+            </button>
+        </div>
+    </div>
+
+    <!-- Ecrã de Fim de Jogo -->
+    <div id="gameOverScreen" class="hidden absolute inset-0 flex items-center justify-center z-20 transition-opacity duration-300">
+        <div class="glass-panel p-8 rounded-3xl text-center max-w-md mx-4">
+            <h1 id="gameOverTitle" class="text-5xl font-extrabold text-red-500 mb-2 drop-shadow-lg">Fim de Jogo!</h1>
+            <p id="gameOverReason" class="text-xl mb-6 text-gray-200 italic">"Cortem-lhe a cabeça!"</p>
+           
+            <div class="bg-black/40 rounded-2xl p-6 mb-8 border border-white/10">
+                <div class="text-gray-400 uppercase text-sm font-bold tracking-widest mb-1">Pontuação Final</div>
+                <div class="text-6xl font-black text-yellow-400 drop-shadow-md"><span id="finalScore">0</span></div>
+            </div>
+
+            <button id="restartBtn" class="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-bold py-4 px-8 rounded-full shadow-lg shadow-blue-500/30 transform transition hover:scale-105 active:scale-95 text-xl uppercase tracking-wider">
+                Jogar Novamente
+            </button>
+        </div>
+    </div>
+
+    <!-- Canvas do Jogo -->
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+       
+        // Elementos UI
+        const startScreen = document.getElementById('startScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const hud = document.getElementById('hud');
+        const startBtn = document.getElementById('startBtn');
+        const restartBtn = document.getElementById('restartBtn');
+        const scoreHUD = document.getElementById('scoreHUD');
+        const timeHUD = document.getElementById('timeHUD');
+        const finalScoreEl = document.getElementById('finalScore');
+        const gameOverReasonEl = document.getElementById('gameOverReason');
+
+        // Estado do Jogo
+        let gameState = 'START'; // START, PLAYING, GAMEOVER
+        let score = 0;
+        let timeLeft = 30;
+        let lastTime = 0;
+        let spawnTimer = 0;
+        let gameDifficulty = 1;
+
+        // Entidades
+        let player = { x: 0, y: 0, size: 80, targetX: 0 };
+        let items = [];
+        let particles = [];
+
+        // Configurações dos Objetos que caem
+        const ITEM_TYPES = [
+            { type: 'card', emoji: '🃏', prob: 0.55, val: 5, color: '#FFD700', text: '+5' },
+            { type: 'hatter', emoji: '🎩', prob: 0.25, val: -2, color: '#FF4444', text: '-2' },
+            { type: 'rabbit', emoji: '🐇', prob: 0.10, val: 10, color: '#00FFFF', text: '+10s' },
+            { type: 'queen', emoji: '♥️', prob: 0.10, val: 0, color: '#FF0000', text: 'MORTA!' } // Rainha
+        ];
+
+        // Redimensionar Canvas
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            if(gameState === 'START') {
+                player.x = canvas.width / 2;
+                player.targetX = canvas.width / 2;
+            }
+            player.y = canvas.height - 100;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Controlos
+        let keys = { ArrowLeft: false, ArrowRight: false };
+       
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'ArrowLeft') keys.ArrowLeft = true;
+            if (e.code === 'ArrowRight') keys.ArrowRight = true;
+        });
+        window.addEventListener('keyup', (e) => {
+            if (e.code === 'ArrowLeft') keys.ArrowLeft = false;
+            if (e.code === 'ArrowRight') keys.ArrowRight = false;
+        });
+
+        // Controlo por rato / touch
+        function updatePlayerTarget(x) {
+            // Manter a Alice dentro do ecrã
+            player.targetX = Math.max(player.size/2, Math.min(canvas.width - player.size/2, x));
+        }
+
+        canvas.addEventListener('mousemove', (e) => {
+            if(gameState === 'PLAYING') updatePlayerTarget(e.clientX);
+        });
+        canvas.addEventListener('touchmove', (e) => {
+            if(gameState === 'PLAYING') {
+                e.preventDefault();
+                updatePlayerTarget(e.touches[0].clientX);
+            }
+        }, { passive: false });
+        canvas.addEventListener('touchstart', (e) => {
+            if(gameState === 'PLAYING') updatePlayerTarget(e.touches[0].clientX);
+        });
+
+        // Iniciar Jogo
+        function startGame() {
+            score = 0;
+            timeLeft = 30;
+            items = [];
+            particles = [];
+            gameDifficulty = 1;
+            player.x = canvas.width / 2;
+            player.targetX = canvas.width / 2;
+           
+            updateHUD();
+           
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+            hud.classList.remove('hidden');
+           
+            gameState = 'PLAYING';
+            lastTime = performance.now();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function gameOver(reason) {
+            gameState = 'GAMEOVER';
+            hud.classList.add('hidden');
+            gameOverScreen.classList.remove('hidden');
+           
+            finalScoreEl.innerText = score;
+           
+            if (reason === 'time') {
+                gameOverReasonEl.innerText = "O tempo esgotou-se! Acordaste do sonho.";
+            } else if (reason === 'queen') {
+                gameOverReasonEl.innerText = "A Rainha de Copas apanhou-te! \"Cortem-lhe a cabeça!\"";
+            }
+        }
+
+        startBtn.addEventListener('click', startGame);
+        restartBtn.addEventListener('click', startGame);
+
+        // Atualizar HUD
+        function updateHUD() {
+            scoreHUD.innerText = `Pontos: ${score}`;
+            timeHUD.innerText = `Tempo: ${Math.ceil(timeLeft)}s`;
+           
+            if (timeLeft <= 5) timeHUD.classList.replace('text-cyan-300', 'text-red-500');
+            else timeHUD.classList.replace('text-red-500', 'text-cyan-300');
+        }
+
+        // Sistema de Partículas (Efeitos visuais)
+        class Particle {
+            constructor(x, y, text, color) {
+                this.x = x;
+                this.y = y;
+                this.text = text;
+                this.color = color;
+                this.life = 1.0;
+                this.vy = -50 - Math.random() * 50;
+                this.vx = (Math.random() - 0.5) * 40;
+            }
+            update(dt) {
+                this.x += this.vx * dt;
+                this.y += this.vy * dt;
+                this.life -= dt * 1.5;
+            }
+            draw(ctx) {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, this.life);
+                ctx.fillStyle = this.color;
+                ctx.font = 'bold 28px Arial';
+                ctx.textAlign = 'center';
+                ctx.shadowColor = 'black';
+                ctx.shadowBlur = 4;
+                ctx.fillText(this.text, this.x, this.y);
+                ctx.restore();
+            }
+        }
+
+        // Lógica de Atualização
+        function update(dt) {
+            // Tempo
+            timeLeft -= dt;
+            if (timeLeft <= 0) {
+                timeLeft = 0;
+                gameOver('time');
+                return;
+            }
+
+            // Dificuldade progressiva
+            gameDifficulty = 1 + (30 - timeLeft) * 0.05;
+
+            // Movimento da Alice (Teclado)
+            const speed = 600 * dt;
+            if (keys.ArrowLeft) player.targetX -= speed;
+            if (keys.ArrowRight) player.targetX += speed;
+           
+            // Limitar Target
+            player.targetX = Math.max(player.size/2, Math.min(canvas.width - player.size/2, player.targetX));
+
+            // Interpolação suave para o movimento (Lerp)
+            player.x += (player.targetX - player.x) * 15 * dt;
+
+            // Gerar Items
+            spawnTimer -= dt;
+            if (spawnTimer <= 0) {
+                spawnItem();
+                spawnTimer = (Math.random() * 0.6 + 0.3) / gameDifficulty; // Fica mais rápido com o tempo
+            }
+
+            // Atualizar Items
+            for (let i = items.length - 1; i >= 0; i--) {
+                let item = items[i];
+                item.y += item.vy * dt;
+                item.rotation += item.rotSpeed * dt;
+
+                // Colisão (AABB / Círculos)
+                let dx = player.x - item.x;
+                let dy = player.y - item.y;
+                let dist = Math.sqrt(dx*dx + dy*dy);
+
+                if (dist < (player.size/2 + item.size/2) * 0.7) {
+                    // Colidiu!
+                    handleCollision(item);
+                    items.splice(i, 1);
+                    continue;
+                }
+
+                // Saiu do ecrã
+                if (item.y > canvas.height + 50) {
+                    items.splice(i, 1);
+                }
+            }
+
+            // Atualizar Partículas
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].update(dt);
+                if (particles[i].life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+
+            updateHUD();
+        }
+
+        function spawnItem() {
+            let rand = Math.random();
+            let cumulativeProb = 0;
+            let selectedType = ITEM_TYPES[0];
+
+            for (let type of ITEM_TYPES) {
+                cumulativeProb += type.prob;
+                if (rand <= cumulativeProb) {
+                    selectedType = type;
+                    break;
+                }
+            }
+
+            let baseSpeed = (canvas.height * 0.3) * gameDifficulty;
+
+            items.push({
+                ...selectedType,
+                x: Math.random() * (canvas.width - 60) + 30,
+                y: -50,
+                size: 50,
+                vy: baseSpeed + Math.random() * (baseSpeed * 0.5),
+                rotation: 0,
+                rotSpeed: (Math.random() - 0.5) * 5
+            });
+        }
+
+        function handleCollision(item) {
+            particles.push(new Particle(item.x, item.y, item.text, item.color));
+
+            if (item.type === 'queen') {
+                gameOver('queen');
+            } else if (item.type === 'rabbit') {
+                timeLeft += 10;
+                // Efeito visual no tempo
+                timeHUD.classList.add('scale-150', 'text-green-400');
+                setTimeout(() => timeHUD.classList.remove('scale-150', 'text-green-400'), 300);
+            } else if (item.type === 'card') {
+                score += 5;
+            } else if (item.type === 'hatter') {
+                score -= 2;
+                // Animação de dano no ecrã (opcional)
+                canvas.style.transform = `translate(${(Math.random()-0.5)*20}px, ${(Math.random()-0.5)*20}px)`;
+                setTimeout(() => canvas.style.transform = 'none', 50);
+            }
+        }
+
+        // Desenhar Chão em xadrez distorcido (estilo País das Maravilhas)
+        function drawBackground() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+           
+            // Chão
+            ctx.save();
+            ctx.translate(0, canvas.height - 150);
+            ctx.scale(1, 0.3);
+           
+            let tileSize = 100;
+            let offset = (performance.now() * 0.05) % (tileSize * 2);
+           
+            for (let x = -tileSize*2; x < canvas.width + tileSize*2; x += tileSize) {
+                for (let y = 0; y < 600; y += tileSize) {
+                    let isBlack = (Math.floor((x - offset)/tileSize) + Math.floor(y/tileSize)) % 2 === 0;
+                    ctx.fillStyle = isBlack ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.1)';
+                    ctx.fillRect(x - offset, y, tileSize, tileSize);
+                }
+            }
+            ctx.restore();
+        }
+
+        // Ciclo de Renderização
+        function draw() {
+            drawBackground();
+
+            // Desenhar Items
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+           
+            for (let item of items) {
+                ctx.save();
+                ctx.translate(item.x, item.y);
+                ctx.rotate(item.rotation);
+                ctx.font = `${item.size}px Arial`;
+               
+                // Adicionar fundo branco para o coração da rainha destacar
+                if (item.type === 'queen') {
+                    ctx.fillStyle = 'white';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, item.size * 0.4, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                ctx.fillText(item.emoji, 0, 0);
+                ctx.restore();
+            }
+
+            // Desenhar Alice
+            ctx.save();
+            ctx.translate(player.x, player.y);
+           
+            // Efeito de movimento
+            let floatY = Math.sin(performance.now() * 0.005) * 5;
+           
+            // Alice
+            ctx.font = `${player.size * 0.9}px Arial`;
+            ctx.fillText('👱‍♀️', 0, floatY);
+            ctx.restore();
+
+            // Desenhar Partículas
+            for (let p of particles) {
+                p.draw(ctx);
+            }
+        }
+
+        // Loop Principal do Jogo
+        function gameLoop(timestamp) {
+            if (!lastTime) lastTime = timestamp;
+            let dt = (timestamp - lastTime) / 1000; // Segundos
+            lastTime = timestamp;
+
+            // Prevenir saltos gigantes no tempo se a tab ficar inativa
+            if (dt > 0.1) dt = 0.1;
+
+            if (gameState === 'PLAYING') {
+                update(dt);
+                draw();
+            }
+
+            if (gameState === 'PLAYING' || gameState === 'START') {
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        // Renderizar o fundo inicial (mesmo antes do jogo começar)
+        drawBackground();
+        requestAnimationFrame(gameLoop);
+
+    </script>
+</body>
+</html>

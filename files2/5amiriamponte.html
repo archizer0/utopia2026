@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Alice no País das Maravilhas</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Lato:wght@400;700&display=swap');
+
+        body {
+            margin: 0;
+            background-color: #ffffff;
+            /* Padrão Xadrez Vermelho e Branco */
+            background-image: conic-gradient(#cc0000 90deg, #ffffff 90deg 180deg, #cc0000 180deg 270deg, #ffffff 270deg);
+            background-size: 60px 60px;
+            color: #f0f0f0;
+            font-family: 'Lato', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        h1 {
+            font-family: 'Cinzel', serif;
+            color: #ffffff;
+            text-shadow: 2px 2px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+            background-color: rgba(0, 0, 0, 0.6);
+            padding: 5px 15px;
+            border-radius: 10px;
+            margin: 5px 0;
+            font-size: 1.5rem;
+            text-align: center;
+        }
+
+        #game-container {
+            position: relative;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
+            border: 5px solid #000000; /* Borda preta sólida */
+            border-radius: 8px;
+            background-color: #1a0521;
+        }
+
+        canvas {
+            display: block;
+            background-color: #2e8b57;
+            max-width: 100vw;
+            max-height: 70vh;
+            image-rendering: pixelated;
+        }
+
+        /* Overlays */
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(18, 5, 26, 0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 20px;
+            box-sizing: border-box;
+            z-index: 20;
+        }
+
+        .hidden { display: none !important; }
+
+        .btn {
+            background: linear-gradient(135deg, #cc0000, #800000);
+            border: 2px solid #ffcccc;
+            color: white;
+            padding: 12px 30px;
+            font-size: 1.2rem;
+            font-family: 'Cinzel', serif;
+            cursor: pointer;
+            margin-top: 15px;
+            border-radius: 5px;
+            user-select: none;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        .btn:active { transform: scale(0.95); }
+
+        .instructions {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 10px;
+            border-radius: 8px;
+            margin: 10px 0;
+            max-width: 90%;
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+
+        /* Controlos de Ecrã */
+        #controls {
+            margin-top: 10px;
+            display: grid;
+            grid-template-columns: repeat(3, 60px);
+            grid-template-rows: repeat(2, 60px);
+            gap: 5px;
+            justify-content: center;
+        }
+
+        .control-btn {
+            width: 60px;
+            height: 60px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 2px solid #ffffff;
+            color: white;
+            border-radius: 50%;
+            font-size: 1.8rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+       
+        .control-btn:active { background: rgba(204, 0, 0, 0.6); }
+
+        .up { grid-column: 2; grid-row: 1; }
+        .left { grid-column: 1; grid-row: 2; }
+        .down { grid-column: 2; grid-row: 2; }
+        .right { grid-column: 3; grid-row: 2; }
+
+        /* Mensagem do gato removida visualmente (display: none) mas mantida no código para não partir lógica */
+        #cat-message {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Alice no País das Maravilhas</h1>
+
+    <div id="game-container">
+        <canvas id="gameCanvas" width="600" height="600"></canvas>
+       
+        <div id="cat-message"></div>
+
+        <!-- Ecrã Inicial -->
+        <div id="start-screen" class="overlay">
+            <h2 style="color: #e0b0ff; font-family: 'Cinzel', serif;">A Busca pelo Relógio</h2>
+            <div class="instructions">
+                <p>Encontra o <strong>Relógio</strong> ⌚ antes que a Rainha te apanhe!</p>
+                <p>Alice, tu és a 👧 com o brilho dourado.</p>
+            </div>
+            <button class="btn" onclick="startGame()">Começar Jogo</button>
+        </div>
+
+        <!-- Game Over -->
+        <div id="game-over-screen" class="overlay hidden">
+            <h2 style="color: #ff4444;">Foste Apanhada!</h2>
+            <button class="btn" onclick="startGame()">Tentar Novamente</button>
+        </div>
+
+        <!-- Win Screen -->
+        <div id="win-screen" class="overlay hidden">
+            <h2 style="color: #44ff44;">Vitória!</h2>
+            <p>Encontraste o relógio!</p>
+            <button class="btn" onclick="startGame()">Jogar Outra Vez</button>
+        </div>
+    </div>
+
+    <!-- Controlos -->
+    <div id="controls">
+        <div class="control-btn up" onclick="handleInput('ArrowUp')">⬆️</div>
+        <div class="control-btn left" onclick="handleInput('ArrowLeft')">⬅️</div>
+        <div class="control-btn down" onclick="handleInput('ArrowDown')">⬇️</div>
+        <div class="control-btn right" onclick="handleInput('ArrowRight')">➡️</div>
+    </div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const TILE_SIZE = 30;
+    const COLS = 20;
+    const ROWS = 20;
+   
+    let gameActive = false;
+    let animationId = null;
+   
+    let alice = { x: 1, y: 1 };
+    let rabbit = { x: 1, y: 1, moveTimer: 0 };
+    let watch = { x: 0, y: 0 };
+    let enemies = [];
+    let walls = [];
+    let cat = { active: false, timer: 0, cooldown: 600 };
+   
+    const FOG_RADIUS = 3.5;
+
+    window.addEventListener('keydown', function(e) {
+        if(["Space","ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].indexOf(e.code) > -1) {
+            e.preventDefault();
+        }
+        handleInput(e.key);
+    });
+
+    function startGame() {
+        document.getElementById('start-screen').classList.add('hidden');
+        document.getElementById('game-over-screen').classList.add('hidden');
+        document.getElementById('win-screen').classList.add('hidden');
+       
+        if (animationId) cancelAnimationFrame(animationId);
+        generateLevel();
+        gameActive = true;
+        gameLoop();
+    }
+
+    function generateLevel() {
+        let mapSolvable = false;
+       
+        // Continua a gerar mapas até encontrar um que tenha saída garantida!
+        while (!mapSolvable) {
+            walls = [];
+            enemies = [];
+           
+            // Paredes
+            for (let y = 0; y < ROWS; y++) {
+                for (let x = 0; x < COLS; x++) {
+                    if (x === 0 || x === COLS - 1 || y === 0 || y === ROWS - 1) {
+                        walls.push({x, y});
+                    } else if (Math.random() < 0.25) {
+                        walls.push({x, y});
+                    }
+                }
+            }
+
+            alice = { x: 1, y: 1 };
+            // Limpa uma área 2x2 à volta da Alice para ela nunca nascer presa
+            ensureEmpty(1, 1); ensureEmpty(1, 2); ensureEmpty(2, 1); ensureEmpty(2, 2);
+
+            let placed = false;
+            let attempts = 0;
+            while (!placed && attempts < 1000) {
+                attempts++;
+                let wx = Math.floor(Math.random() * (COLS - 4)) + 2;
+                let wy = Math.floor(Math.random() * (ROWS - 4)) + 2;
+                if (!isWall(wx, wy) && (Math.abs(wx - alice.x) + Math.abs(wy - alice.y) > 10)) {
+                    watch = { x: wx, y: wy };
+                    placed = true;
+                }
+            }
+            if (!placed) watch = { x: COLS - 2, y: ROWS - 2 };
+            ensureEmpty(watch.x, watch.y);
+           
+            // Verifica se o mapa tem solução
+            mapSolvable = isPathClear(alice.x, alice.y, watch.x, watch.y);
+        }
+
+        rabbit = { x: alice.x, y: alice.y, moveTimer: 0 };
+
+        spawnEnemy('queen');
+        spawnEnemy('guard');
+        spawnEnemy('guard');
+        spawnEnemy('guard');
+
+        cat.active = false;
+        cat.timer = 0;
+    }
+
+    // Função que verifica se é possível chegar ao relógio
+    function isPathClear(startX, startY, endX, endY) {
+        let queue = [{x: startX, y: startY}];
+        let visited = new Set();
+        visited.add(`${startX},${startY}`);
+
+        while (queue.length > 0) {
+            let curr = queue.shift();
+            if (curr.x === endX && curr.y === endY) return true;
+
+            let dirs = [[0,1], [0,-1], [1,0], [-1,0]];
+            for (let dir of dirs) {
+                let nx = curr.x + dir[0];
+                let ny = curr.y + dir[1];
+                if (nx >= 0 && nx < COLS && ny >= 0 && ny < ROWS && !isWall(nx, ny)) {
+                    let key = `${nx},${ny}`;
+                    if (!visited.has(key)) {
+                        visited.add(key);
+                        queue.push({x: nx, y: ny});
+                    }
+                }
+            }
+        }
+        return false; // Caminho bloqueado
+    }
+
+    function spawnEnemy(type) {
+        let placed = false;
+        let attempts = 0;
+        while (!placed && attempts < 100) {
+            attempts++;
+            let ex = Math.floor(Math.random() * (COLS - 2)) + 1;
+            let ey = Math.floor(Math.random() * (ROWS - 2)) + 1;
+           
+            let distToAlice = Math.abs(ex - alice.x) + Math.abs(ey - alice.y);
+            let distToWatch = Math.abs(ex - watch.x) + Math.abs(ey - watch.y);
+           
+            // Regra: A Rainha tem de estar longe do relógio (> 10 blocos)
+            // Os guardas também não podem estar colados (> 4 blocos)
+            let minSafeDist = (type === 'queen') ? 10 : 4;
+
+            if (!isWall(ex, ey) && distToAlice > 6 && distToWatch > minSafeDist) {
+                enemies.push({ x: ex, y: ey, type: type, moveTimer: 0 });
+                placed = true;
+            }
+        }
+    }
+
+    function ensureEmpty(x, y) {
+        walls = walls.filter(w => w.x !== x || w.y !== y);
+    }
+
+    function isWall(x, y) {
+        return walls.some(w => w.x === x && w.y === y);
+    }
+
+    function handleInput(key) {
+        if (!gameActive) return;
+        let newX = alice.x;
+        let newY = alice.y;
+        if (key === 'ArrowUp') newY--;
+        if (key === 'ArrowDown') newY++;
+        if (key === 'ArrowLeft') newX--;
+        if (key === 'ArrowRight') newX++;
+
+        // A Alice volta a bater nas paredes do labirinto
+        if (!isWall(newX, newY)) {
+            alice.x = newX;
+            alice.y = newY;
+            checkCollisions();
+            draw();
+        }
+    }
+
+    function moveRabbit() {
+        rabbit.moveTimer++;
+        if (rabbit.moveTimer < 30) return;
+        rabbit.moveTimer = 0;
+
+        // Nova Lógica: Sempre perto da Alice
+        let distToAlice = Math.abs(rabbit.x - alice.x) + Math.abs(rabbit.y - alice.y);
+        let targetX, targetY;
+
+        // Se o coelho estiver longe (> 3 casas), volta para a Alice
+        if (distToAlice > 3) {
+            targetX = alice.x;
+            targetY = alice.y;
+        } else {
+            // Se estiver perto, vai em direção ao relógio (para guiar)
+            targetX = watch.x;
+            targetY = watch.y;
+        }
+
+        let dx = Math.sign(targetX - rabbit.x);
+        let dy = Math.sign(targetY - rabbit.y);
+       
+        // O Coelho agora também ignora paredes para te acompanhar sempre
+        if (dx !== 0) {
+            rabbit.x += dx;
+        } else if (dy !== 0) {
+            rabbit.y += dy;
+        }
+    }
+
+    function moveEnemies() {
+        enemies.forEach(enemy => {
+            enemy.moveTimer++;
+            let speed = enemy.type === 'queen' ? 35 : 45;
+            if (enemy.moveTimer >= speed) {
+                enemy.moveTimer = 0;
+                let dist = Math.abs(enemy.x - alice.x) + Math.abs(enemy.y - alice.y);
+                if (dist < 10 || cat.active) {
+                    let dx = Math.sign(alice.x - enemy.x);
+                    let dy = Math.sign(alice.y - enemy.y);
+                    if (Math.abs(dx) > 0 && !isWall(enemy.x + dx, enemy.y)) enemy.x += dx;
+                    else if (Math.abs(dy) > 0 && !isWall(enemy.x, enemy.y + dy)) enemy.y += dy;
+                } else {
+                    let dirs = [[0,1],[0,-1],[1,0],[-1,0]];
+                    let dir = dirs[Math.floor(Math.random()*dirs.length)];
+                    if(!isWall(enemy.x+dir[0], enemy.y+dir[1])) {
+                        enemy.x += dir[0];
+                        enemy.y += dir[1];
+                    }
+                }
+            }
+        });
+    }
+
+    function checkCollisions() {
+        if (alice.x === watch.x && alice.y === watch.y) endGame(true);
+        for(let enemy of enemies) {
+            if (alice.x === enemy.x && alice.y === enemy.y) endGame(false);
+        }
+    }
+
+    function updateCat() {
+        cat.timer++;
+        // O Gato ativa-se na mesma para limpar o nevoeiro
+        if (!cat.active && cat.timer > cat.cooldown) {
+            cat.active = true;
+            cat.timer = 0;
+            // Mensagem removida a pedido do utilizador
+        }
+        if (cat.active && cat.timer > 250) {
+            cat.active = false;
+            cat.timer = 0;
+        }
+    }
+
+    // Função mantida para compatibilidade, mas vazia
+    function showCatMessage(text) {
+        // Nada acontece
+    }
+
+    function endGame(win) {
+        gameActive = false;
+        cancelAnimationFrame(animationId);
+        if (win) document.getElementById('win-screen').classList.remove('hidden');
+        else document.getElementById('game-over-screen').classList.remove('hidden');
+    }
+
+    function draw() {
+        ctx.fillStyle = '#2e8b57';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = '#1a472a';
+        walls.forEach(w => {
+            ctx.fillRect(w.x * TILE_SIZE, w.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+            ctx.fillStyle = '#225e36';
+            ctx.fillRect(w.x * TILE_SIZE+4, w.y * TILE_SIZE+4, TILE_SIZE-8, TILE_SIZE-8);
+            ctx.fillStyle = '#1a472a';
+        });
+
+        drawEmoji('⌚', watch.x, watch.y);
+        drawEmoji('🐇', rabbit.x, rabbit.y);
+       
+        enemies.forEach(e => {
+            if (e.type === 'queen') drawEmoji('👑', e.x, e.y);
+            else drawEmoji('🃏', e.x, e.y);
+        });
+
+        // Destaque da Alice
+        let ax = alice.x * TILE_SIZE + TILE_SIZE/2;
+        let ay = alice.y * TILE_SIZE + TILE_SIZE/2;
+       
+        ctx.beginPath();
+        ctx.arc(ax, ay, TILE_SIZE/1.5, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 100, 0.5)';
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(ax, ay, TILE_SIZE/2.5, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 200, 0.8)';
+        ctx.fill();
+
+        drawEmoji('👧', alice.x, alice.y);
+
+        if (!cat.active) {
+            applyFog();
+        }
+    }
+
+    function drawEmoji(emoji, x, y) {
+        ctx.font = `${TILE_SIZE - 4}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillText(emoji, x * TILE_SIZE + TILE_SIZE/2, y * TILE_SIZE + TILE_SIZE/2 + 2);
+    }
+
+    function applyFog() {
+        for (let y = 0; y < ROWS; y++) {
+            for (let x = 0; x < COLS; x++) {
+                let dist = Math.sqrt(Math.pow(x - alice.x, 2) + Math.pow(y - alice.y, 2));
+                if (dist > FOG_RADIUS) {
+                    ctx.fillStyle = 'rgba(20, 5, 30, 0.98)';
+                    ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                }
+                else if (dist > FOG_RADIUS - 1.5) {
+                    ctx.fillStyle = 'rgba(20, 5, 30, 0.5)';
+                    ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                }
+            }
+        }
+    }
+
+    function gameLoop() {
+        if (!gameActive) return;
+        moveEnemies();
+        moveRabbit();
+        updateCat();
+        checkCollisions();
+        if (gameActive) {
+            draw();
+            animationId = requestAnimationFrame(gameLoop);
+        }
+    }
+   
+    draw();
+
+</script>
+</body>
+</html>

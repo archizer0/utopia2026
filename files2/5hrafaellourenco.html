@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Apanhador de Estrelas - Jogo de Câmara</title>
+    <!-- Tailwind CSS para estilos rápidos -->
+    <script src="https://cdn.tailwindcss.com"></script>
+   
+    <!-- Bibliotecas MediaPipe para Rastreamento de Mãos -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #1a202c; color: white; font-family: sans-serif; }
+        canvas { display: block; width: 100vw; height: 100vh; object-fit: cover; transform: scaleX(-1); /* Efeito de espelho */ }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 20px; box-sizing: border-box; }
+        .interactive-btn { pointer-events: auto; }
+        /* Esconder o vídeo original, usamos apenas o canvas para desenhar */
+        video { display: none; }
+    </style>
+</head>
+<body>
+
+    <!-- Elementos de Vídeo e Canvas -->
+    <video id="input_video" autoplay playsinline></video>
+    <canvas id="output_canvas"></canvas>
+
+    <!-- Camada de Interface do Utilizador (UI) -->
+    <div id="ui-layer">
+        <div class="flex justify-between items-start">
+            <div class="text-3xl font-bold drop-shadow-md">
+                Pontuação: <span id="scoreVal" class="text-yellow-400">0</span>
+            </div>
+            <div class="text-xl font-bold drop-shadow-md text-red-400">
+                Vidas: <span id="livesVal">3</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ecrãs de Sobreposição (Carregamento, Início, Fim de Jogo) -->
+    <div id="overlay" class="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-50 transition-opacity duration-300">
+        <div id="loading-screen" class="text-center">
+            <div class="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-blue-500 mx-auto mb-4"></div>
+            <h1 class="text-2xl font-bold mb-2">A carregar IA de Visão...</h1>
+            <p class="text-gray-400">Por favor, permite o acesso à câmara.</p>
+        </div>
+
+        <div id="start-screen" class="text-center hidden">
+            <h1 class="text-5xl font-bold mb-4 text-yellow-400 drop-shadow-lg">Apanhador de Estrelas</h1>
+            <p class="text-xl mb-8 max-w-md mx-auto">Usa a tua mão em frente à câmara para controlar o cesto. Apanha as estrelas (⭐) e evita as bombas (💣)!</p>
+            <button id="start-btn" class="interactive-btn bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 px-8 rounded-full text-2xl shadow-lg transition transform hover:scale-105">
+                Começar a Jogar
+            </button>
+        </div>
+
+        <div id="game-over-screen" class="text-center hidden">
+            <h1 class="text-6xl font-bold mb-4 text-red-500 drop-shadow-lg">Fim do Jogo</h1>
+            <p class="text-2xl mb-2">Pontuação Final: <span id="final-score" class="text-yellow-400 font-bold">0</span></p>
+            <p class="text-lg text-gray-300 mb-8">As bombas apanharam-te!</p>
+            <button id="restart-btn" class="interactive-btn bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-8 rounded-full text-xl shadow-lg transition transform hover:scale-105">
+                Jogar Novamente
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // --- Elementos DOM ---
+        const videoElement = document.getElementById('input_video');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const overlay = document.getElementById('overlay');
+        const loadingScreen = document.getElementById('loading-screen');
+        const startScreen = document.getElementById('start-screen');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const scoreUI = document.getElementById('scoreVal');
+        const livesUI = document.getElementById('livesVal');
+        const finalScoreUI = document.getElementById('final-score');
+
+        // --- Variáveis do Jogo ---
+        let isPlaying = false;
+        let score = 0;
+        let lives = 3;
+        let items = []; // Array para guardar estrelas e bombas
+        let playerX = 0.5; // Posição X normalizada (0 a 1)
+        let playerY = 0.8; // Posição Y normalizada (0 a 1)
+        let lastFrameTime = 0;
+        let difficultyMultiplier = 1;
+
+        // --- Configurações do Jogo ---
+        const PLAYER_SIZE = 80;
+        const ITEM_SIZE = 40;
+        const SPAWN_RATE = 1000; // ms entre o aparecimento de novos itens
+        let lastSpawnTime = 0;
+
+        // Ajustar tamanho do canvas ao ecrã
+        function resizeCanvas() {
+            canvasElement.width = window.innerWidth;
+            canvasElement.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // --- Lógica Principal do Jogo ---
+
+        function startGame() {
+            score = 0;
+            lives = 3;
+            items = [];
+            difficultyMultiplier = 1;
+            isPlaying = true;
+            updateUI();
+            overlay.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+            startScreen.classList.add('hidden');
+            lastFrameTime = performance.now();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function gameOver() {
+            isPlaying = false;
+            finalScoreUI.innerText = score;
+            overlay.classList.remove('hidden');
+            gameOverScreen.classList.remove('hidden');
+        }
+
+        function updateUI() {
+            scoreUI.innerText = score;
+            livesUI.innerText = lives;
+        }
+
+        function spawnItem(timestamp) {
+            if (timestamp - lastSpawnTime > SPAWN_RATE / difficultyMultiplier) {
+                const isBomb = Math.random() > 0.7; // 30% de chance de ser bomba
+                items.push({
+                    x: Math.random() * 0.8 + 0.1, // Posição X normalizada (evitar bordas)
+                    y: -0.1, // Começa acima do ecrã
+                    type: isBomb ? 'bomb' : 'star',
+                    speed: (Math.random() * 0.003 + 0.002) * difficultyMultiplier
+                });
+                lastSpawnTime = timestamp;
+            }
+        }
+
+        function updatePhysics(deltaTime) {
+            difficultyMultiplier += deltaTime * 0.00001; // Aumentar dificuldade lentamente
+
+            for (let i = items.length - 1; i >= 0; i--) {
+                let item = items[i];
+                item.y += item.speed * (deltaTime / 16); // Normalizar velocidade pelos frames
+
+                // Coordenadas reais em pixeis para colisão
+                // NOTA: Como o canvas tem scaleX(-1) (espelhado), temos de inverter o playerX na lógica de colisão
+                // para que corresponda à perceção visual do utilizador.
+                const visualPlayerX = 1 - playerX;
+
+                const pX = visualPlayerX * canvasElement.width;
+                const pY = playerY * canvasElement.height;
+                const iX = item.x * canvasElement.width;
+                const iY = item.y * canvasElement.height;
+
+                // Deteção de colisão simples (distância entre círculos)
+                const dist = Math.hypot(pX - iX, pY - iY);
+
+                if (dist < (PLAYER_SIZE/2 + ITEM_SIZE/2)) {
+                    // Colisão detetada!
+                    if (item.type === 'star') {
+                        score += 10;
+                    } else if (item.type === 'bomb') {
+                        lives -= 1;
+                        // Efeito visual rápido de ecrã vermelho
+                        document.body.style.backgroundColor = 'red';
+                        setTimeout(() => document.body.style.backgroundColor = '#1a202c', 100);
+                    }
+                    items.splice(i, 1);
+                    updateUI();
+
+                    if (lives <= 0) {
+                        gameOver();
+                    }
+                } else if (item.y > 1.1) {
+                    // Item saiu do ecrã
+                    if (item.type === 'star') {
+                        // Opcional: penalizar por deixar cair estrelas?
+                        // lives -= 1; updateUI(); if(lives<=0) gameOver();
+                    }
+                    items.splice(i, 1);
+                }
+            }
+        }
+
+        function drawGame() {
+            // Limpar canvas (não é estritamente necessário se o vídeo cobrir tudo, mas boa prática)
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+            // 1. Desenhar a imagem da câmara (já espelhada pelo CSS, mas desenhamos diretamente)
+            // Aqui guardamos o estado, espelhamos o contexto para desenhar o vídeo, e restauramos.
+            canvasCtx.save();
+            canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
+           
+            // Adicionar uma ligeira sobreposição escura para destacar o jogo
+            canvasCtx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+            canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.restore();
+
+            // 2. Desenhar itens (Estrelas e Bombas)
+            canvasCtx.font = `${ITEM_SIZE}px Arial`;
+            canvasCtx.textAlign = 'center';
+            canvasCtx.textBaseline = 'middle';
+           
+            items.forEach(item => {
+                const x = item.x * canvasElement.width;
+                const y = item.y * canvasElement.height;
+                canvasCtx.fillText(item.type === 'star' ? '⭐' : '💣', x, y);
+            });
+
+            // 3. Desenhar Jogador (Cesto) guiado pela mão
+            const pX = (1 - playerX) * canvasElement.width; // Inverter X por causa do efeito espelho visual
+            const pY = playerY * canvasElement.height;
+           
+            canvasCtx.font = `${PLAYER_SIZE}px Arial`;
+            canvasCtx.fillText('🧺', pX, pY);
+           
+            // Desenhar um brilho suave à volta do cesto
+            canvasCtx.beginPath();
+            canvasCtx.arc(pX, pY, PLAYER_SIZE/2 + 10, 0, 2 * Math.PI);
+            canvasCtx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+            canvasCtx.fill();
+        }
+
+        function gameLoop(timestamp) {
+            if (!isPlaying) return;
+
+            const deltaTime = timestamp - lastFrameTime;
+            lastFrameTime = timestamp;
+
+            spawnItem(timestamp);
+            updatePhysics(deltaTime);
+            drawGame();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // --- Configuração da Inteligência Artificial (MediaPipe) ---
+
+        function onResults(results) {
+            // Desenhar feed da câmara no fundo independentemente do estado do jogo para feedback visual contínuo
+            if (!isPlaying && results.image) {
+                canvasCtx.save();
+                canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+                canvasCtx.restore();
+            }
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                // Apanhar a primeira mão detetada
+                const landmarks = results.multiHandLandmarks[0];
+               
+                // Usar o ponto médio da palma da mão (ponto 9) para maior estabilidade
+                const palmX = landmarks[9].x;
+                const palmY = landmarks[9].y;
+
+                // Suavizar o movimento (interpolação linear)
+                playerX = playerX + (palmX - playerX) * 0.3;
+                playerY = playerY + (palmY - playerY) * 0.3;
+            }
+        }
+
+        const hands = new Hands({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }});
+
+        hands.setOptions({
+            maxNumHands: 1, // Apenas precisamos de rastrear uma mão para este jogo
+            modelComplexity: 1, // Equilíbrio entre performance e precisão
+            minDetectionConfidence: 0.6,
+            minTrackingConfidence: 0.6
+        });
+
+        hands.onResults(onResults);
+
+        // Inicializar a Câmara
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({image: videoElement});
+            },
+            width: 640,
+            height: 480
+        });
+
+        // Iniciar câmara e gerir UI inicial
+        camera.start().then(() => {
+            loadingScreen.classList.add('hidden');
+            startScreen.classList.remove('hidden');
+        }).catch(err => {
+            console.error("Erro ao aceder à câmara:", err);
+            loadingScreen.innerHTML = `
+                <h1 class="text-2xl font-bold text-red-500 mb-2">Erro de Câmara</h1>
+                <p class="text-gray-300">Não foi possível aceder à câmara. Por favor, verifica as permissões do teu navegador.</p>
+            `;
+        });
+
+        // --- Controlos de UI ---
+        document.getElementById('start-btn').addEventListener('click', startGame);
+        document.getElementById('restart-btn').addEventListener('click', startGame);
+
+    </script>
+</body>
+</html>

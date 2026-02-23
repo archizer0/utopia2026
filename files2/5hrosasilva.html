@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Alice: Pintando as Rosas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Playfair Display', serif;
+            /* Padrão de tabuleiro de xadrez verde (Jardim da Rainha) */
+            background-color: #0f172a;
+            background-image: repeating-linear-gradient(45deg, #143620 25%, transparent 25%, transparent 75%, #143620 75%, #143620), repeating-linear-gradient(45deg, #143620 25%, #1a472a 25%, #1a472a 75%, #143620 75%, #143620);
+            background-position: 0 0, 40px 40px;
+            background-size: 80px 80px;
+            touch-action: manipulation; /* Evita zoom duplo em telas touch */
+            overflow: hidden;
+        }
+
+        .bush {
+            box-shadow: inset 0 10px 20px rgba(0,0,0,0.5), 0 4px 6px rgba(0,0,0,0.3);
+            position: relative;
+        }
+
+        .entity {
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.2s ease;
+            user-select: none;
+            -webkit-user-select: none;
+            filter: drop-shadow(0 4px 4px rgba(0,0,0,0.4));
+        }
+
+        /* Animações */
+        @keyframes popIn {
+            0% { transform: scale(0); opacity: 0; }
+            80% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            50% { transform: translateX(5px); }
+            75% { transform: translateX(-5px); }
+        }
+
+        @keyframes paintRed {
+            0% { transform: scale(1); filter: brightness(1) drop-shadow(0 4px 4px rgba(0,0,0,0.4)); }
+            50% { transform: scale(1.2); filter: brightness(1.5) drop-shadow(0 0 15px red); }
+            100% { transform: scale(0); filter: brightness(1) drop-shadow(0 0 0 red); opacity: 0; }
+        }
+
+        .animate-pop { animation: popIn 0.3s forwards; }
+        .animate-shake { animation: shake 0.3s forwards; }
+        .animate-paint { animation: paintRed 0.4s forwards; }
+
+        .glass-panel {
+            background: rgba(20, 20, 20, 0.85);
+            backdrop-filter: blur(8px);
+            border: 2px solid #b91c1c;
+            box-shadow: 0 0 20px rgba(0,0,0,0.8), inset 0 0 15px rgba(185, 28, 28, 0.3);
+        }
+
+        .blood-drip {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            width: 2px;
+            height: 100%;
+            background: red;
+            opacity: 0;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body class="min-h-screen text-white flex flex-col items-center justify-center p-4">
+
+    <!-- Interface Superior -->
+    <div class="w-full max-w-md glass-panel rounded-2xl p-5 mb-6 z-10 relative overflow-hidden">
+        <div class="flex justify-between items-end mb-2">
+            <div>
+                <p class="text-sm text-gray-400 uppercase tracking-widest mb-1">Pontuação</p>
+                <p id="score" class="text-3xl font-bold text-yellow-400">0</p>
+            </div>
+            <div class="text-right">
+                <p class="text-sm text-gray-400 uppercase tracking-widest mb-1">Fúria da Rainha</p>
+                <p id="anger-text" class="text-2xl font-bold text-red-500">0%</p>
+            </div>
+        </div>
+       
+        <!-- Barra de Fúria -->
+        <div class="w-full h-5 bg-gray-800 rounded-full overflow-hidden border border-gray-600 relative">
+            <div id="anger-bar" class="h-full bg-gradient-to-r from-green-500 via-yellow-500 to-red-600 w-0 transition-all duration-300"></div>
+        </div>
+    </div>
+
+    <!-- Grade do Jardim (Área de Jogo) -->
+    <div class="relative w-full max-w-md aspect-square bg-black/40 p-4 rounded-3xl border-4 border-emerald-900 shadow-2xl backdrop-blur-sm z-10">
+        <div id="grid" class="grid grid-cols-3 grid-rows-3 gap-3 w-full h-full">
+            <!-- As células serão injetadas via JavaScript -->
+        </div>
+    </div>
+
+    <!-- Modal de Início / Game Over -->
+    <div id="modal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 transition-opacity duration-300">
+        <div class="glass-panel max-w-md w-full p-8 rounded-3xl text-center relative border-4 border-red-800">
+            <!-- Decoração de Cartas -->
+            <div class="absolute top-4 left-4 text-3xl text-red-500">♥</div>
+            <div class="absolute bottom-4 right-4 text-3xl text-red-500 rotate-180">♥</div>
+
+            <h1 id="modal-title" class="text-4xl md:text-5xl font-bold text-red-500 mb-4 leading-tight tracking-wide">Pintando as Rosas</h1>
+           
+            <div id="modal-content" class="text-lg text-gray-300 mb-8 space-y-4 text-left bg-black/30 p-4 rounded-xl">
+                <p>A Rainha de Copas está inspecionando o jardim!</p>
+                <ul class="list-disc pl-5 space-y-2">
+                    <li>💮 Clique nas <b>Rosas Brancas</b> rápido para pintá-las!</li>
+                    <li>🌹 <b>NÃO</b> clique nas Rosas Vermelhas!</li>
+                    <li>😸 O <b>Gato de Cheshire</b> diminui a fúria da Rainha.</li>
+                </ul>
+                <p class="text-center font-bold text-red-400 mt-4">Se a fúria chegar a 100%... CORTEM-LHE A CABEÇA!</p>
+            </div>
+
+            <div id="final-score-container" class="hidden mb-6">
+                <p class="text-gray-400 uppercase tracking-widest text-sm">Rosas Pintadas</p>
+                <p id="final-score" class="text-5xl font-bold text-yellow-400">0</p>
+            </div>
+
+            <button id="start-btn" class="w-full bg-red-700 hover:bg-red-600 text-white font-bold py-4 px-8 rounded-xl text-xl transition-all duration-200 transform hover:scale-105 active:scale-95 shadow-[0_0_20px_rgba(185,28,28,0.5)]">
+                Iniciar Pintura
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // --- SISTEMA DE ÁUDIO (Web Audio API) ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+       
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+           
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+           
+            const now = audioCtx.currentTime;
+           
+            if (type === 'paint') {
+                // Som de "esguicho" ou pincelada mágica
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(600, now);
+                osc.frequency.exponentialRampToValueAtTime(1200, now + 0.1);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                osc.start(now);
+                osc.stop(now + 0.1);
+            } else if (type === 'error') {
+                // Som de erro grave
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.exponentialRampToValueAtTime(80, now + 0.3);
+                gain.gain.setValueAtTime(0.4, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            } else if (type === 'cat') {
+                // Som mágico/misterioso
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(400, now);
+                osc.frequency.linearRampToValueAtTime(800, now + 0.4);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.4);
+                osc.start(now);
+                osc.stop(now + 0.4);
+            } else if (type === 'gameover') {
+                // Som dramático de queda
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(200, now);
+                osc.frequency.exponentialRampToValueAtTime(20, now + 1);
+                gain.gain.setValueAtTime(0.5, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 1);
+                osc.start(now);
+                osc.stop(now + 1);
+            }
+        }
+
+        // --- LÓGICA DO JOGO ---
+        const gridEl = document.getElementById('grid');
+        const scoreEl = document.getElementById('score');
+        const angerTextEl = document.getElementById('anger-text');
+        const angerBarEl = document.getElementById('anger-bar');
+        const modal = document.getElementById('modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalContent = document.getElementById('modal-content');
+        const finalScoreContainer = document.getElementById('final-score-container');
+        const finalScoreEl = document.getElementById('final-score');
+        const startBtn = document.getElementById('start-btn');
+
+        let cells = [];
+        let score = 0;
+        let anger = 0;
+        let isPlaying = false;
+       
+        // Controle de dificuldade
+        let spawnIntervalId = null;
+        let currentSpawnRate = 1200; // Tempo entre nascimentos de rosas
+        let entityLifetime = 2500;   // Quanto tempo a rosa fica na tela
+
+        const ENTITIES = {
+            WHITE_ROSE: { symbol: '💮', type: 'white', size: 'text-6xl md:text-7xl' },
+            RED_ROSE: { symbol: '🌹', type: 'red', size: 'text-6xl md:text-7xl' },
+            CAT: { symbol: '😸', type: 'cat', size: 'text-5xl md:text-6xl' }
+        };
+
+        // Inicializar Grade
+        function initGrid() {
+            gridEl.innerHTML = '';
+            cells = [];
+            for (let i = 0; i < 9; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'bush bg-emerald-800 rounded-full flex items-center justify-center cursor-pointer relative overflow-hidden transition-transform active:scale-95';
+               
+                // Adicionando um padrão de folhas sutil no fundo do arbusto
+                const leafPattern = document.createElement('div');
+                leafPattern.className = 'absolute inset-0 opacity-20';
+                leafPattern.style.backgroundImage = 'radial-gradient(circle at 30% 30%, #22c55e 2px, transparent 2px), radial-gradient(circle at 70% 60%, #16a34a 2px, transparent 2px)';
+                leafPattern.style.backgroundSize = '20px 20px';
+                cell.appendChild(leafPattern);
+
+                const content = document.createElement('div');
+                content.className = 'entity absolute inset-0 flex items-center justify-center opacity-0 scale-0 pointer-events-none';
+                cell.appendChild(content);
+
+                cell.addEventListener('mousedown', () => handleClick(i));
+                cell.addEventListener('touchstart', (e) => { e.preventDefault(); handleClick(i); }); // Suporte mobile
+
+                gridEl.appendChild(cell);
+                cells.push({
+                    el: content,
+                    parent: cell,
+                    state: null,
+                    timeoutId: null
+                });
+            }
+        }
+
+        function updateUI() {
+            scoreEl.innerText = score;
+            // Garantir que a fúria fique entre 0 e 100
+            anger = Math.max(0, Math.min(100, anger));
+            angerTextEl.innerText = `${Math.floor(anger)}%`;
+            angerBarEl.style.width = `${anger}%`;
+
+            if (anger > 75) {
+                angerBarEl.classList.add('animate-pulse');
+            } else {
+                angerBarEl.classList.remove('animate-pulse');
+            }
+        }
+
+        function clearCell(index) {
+            const cell = cells[index];
+            if (cell.timeoutId) {
+                clearTimeout(cell.timeoutId);
+                cell.timeoutId = null;
+            }
+           
+            // Se estava sendo pintada, mantém a classe de animação até terminar, caso contrário desvanece
+            if (!cell.el.classList.contains('animate-paint')) {
+                cell.el.style.opacity = '0';
+                cell.el.style.transform = 'scale(0)';
+            }
+           
+            setTimeout(() => {
+                cell.el.innerHTML = '';
+                cell.el.className = 'entity absolute inset-0 flex items-center justify-center opacity-0 scale-0 pointer-events-none';
+                cell.state = null;
+            }, 300); // Tempo para a animação de saída concluir
+        }
+
+        function handleClick(index) {
+            if (!isPlaying) return;
+            const cell = cells[index];
+           
+            if (!cell.state) return; // Célula vazia
+
+            if (cell.state.type === 'white') {
+                // Sucesso! Pintou a rosa
+                playSound('paint');
+                score += 10;
+               
+                // Mudar visual para Rosa Vermelha rapidamente antes de sumir
+                cell.el.innerHTML = ENTITIES.RED_ROSE.symbol;
+                cell.el.classList.remove('animate-pop');
+                cell.el.classList.add('animate-paint');
+               
+                // Aumentar dificuldade levemente
+                if (score % 50 === 0) {
+                    currentSpawnRate = Math.max(400, currentSpawnRate - 100);
+                    entityLifetime = Math.max(800, entityLifetime - 150);
+                    resetSpawner();
+                }
+
+            } else if (cell.state.type === 'red') {
+                // Erro! Pintou o que já estava vermelho
+                playSound('error');
+                anger += 15;
+                cell.parent.classList.add('animate-shake');
+                setTimeout(() => cell.parent.classList.remove('animate-shake'), 300);
+                showFloatingText(cell.parent, "-15% 👑", "text-red-500");
+               
+            } else if (cell.state.type === 'cat') {
+                // Bônus! Gato de Cheshire
+                playSound('cat');
+                anger = Math.max(0, anger - 20);
+                score += 25;
+                showFloatingText(cell.parent, "Meow!", "text-purple-400");
+                cell.el.style.opacity = '0';
+                cell.el.style.transform = 'scale(1.5) rotate(180deg)'; // Some girando
+            }
+
+            const stateType = cell.state.type;
+           
+            // Limpa lógicas, a animação do CSS cuida do visual saindo
+            if (cell.timeoutId) clearTimeout(cell.timeoutId);
+            cell.state = null;
+           
+            if(stateType !== 'white') {
+                 setTimeout(() => { clearCell(index); }, 10);
+            } else {
+                 setTimeout(() => { clearCell(index); }, 400); // Espera animação de pintar
+            }
+
+            updateUI();
+            checkGameOver();
+        }
+
+        function showFloatingText(parentEl, text, colorClass) {
+            const floatEl = document.createElement('div');
+            floatEl.className = `absolute text-xl font-bold ${colorClass} pointer-events-none z-20`;
+            floatEl.innerText = text;
+            floatEl.style.top = '20%';
+            floatEl.style.left = '50%';
+            floatEl.style.transform = 'translate(-50%, -50%)';
+            floatEl.style.transition = 'all 0.8s ease-out';
+           
+            parentEl.appendChild(floatEl);
+           
+            // Força o reflow para a transição funcionar
+            void floatEl.offsetWidth;
+           
+            floatEl.style.top = '-50%';
+            floatEl.style.opacity = '0';
+           
+            setTimeout(() => {
+                if(parentEl.contains(floatEl)) parentEl.removeChild(floatEl);
+            }, 800);
+        }
+
+        function spawnEntity() {
+            if (!isPlaying) return;
+
+            const emptyIndices = cells
+                .map((c, i) => c.state === null ? i : -1)
+                .filter(i => i !== -1);
+
+            if (emptyIndices.length === 0) return; // Grade cheia
+
+            const randomIndex = emptyIndices[Math.floor(Math.random() * emptyIndices.length)];
+            const cell = cells[randomIndex];
+
+            // Probabilidades: 65% Branca, 25% Vermelha, 10% Gato
+            const rand = Math.random();
+            let entityConfig;
+           
+            if (rand < 0.65) {
+                entityConfig = ENTITIES.WHITE_ROSE;
+            } else if (rand < 0.90) {
+                entityConfig = ENTITIES.RED_ROSE;
+            } else {
+                entityConfig = ENTITIES.CAT;
+            }
+
+            cell.state = entityConfig;
+            cell.el.innerHTML = entityConfig.symbol;
+            cell.el.className = `entity absolute inset-0 flex items-center justify-center pointer-events-none animate-pop ${entityConfig.size}`;
+           
+            // Define o tempo que a entidade fica visível
+            cell.timeoutId = setTimeout(() => {
+                if (isPlaying && cell.state) {
+                    // Se for branca e sumir sem clicar -> Punição
+                    if (cell.state.type === 'white') {
+                        anger += 10;
+                        cell.el.style.filter = 'grayscale(100%)'; // Murcha visualmente
+                        updateUI();
+                        checkGameOver();
+                    }
+                    clearCell(randomIndex);
+                }
+            }, entityLifetime);
+        }
+
+        function resetSpawner() {
+            if (spawnIntervalId) clearInterval(spawnIntervalId);
+            spawnIntervalId = setInterval(spawnEntity, currentSpawnRate);
+        }
+
+        function checkGameOver() {
+            if (anger >= 100) {
+                gameOver();
+            }
+        }
+
+        function gameOver() {
+            isPlaying = false;
+            if (spawnIntervalId) clearInterval(spawnIntervalId);
+           
+            // Limpar todos os timeouts das células
+            cells.forEach(c => {
+                if (c.timeoutId) clearTimeout(c.timeoutId);
+            });
+
+            playSound('gameover');
+
+            // Flash vermelho na tela
+            const flash = document.createElement('div');
+            flash.className = 'fixed inset-0 bg-red-600 z-40 transition-opacity duration-1000 opacity-50 pointer-events-none';
+            document.body.appendChild(flash);
+           
+            setTimeout(() => {
+                flash.style.opacity = '0';
+                setTimeout(() => document.body.removeChild(flash), 1000);
+            }, 100);
+
+            // Preparar Modal de Game Over
+            modalTitle.innerText = "CORTEM-LHE A CABEÇA!";
+            modalTitle.className = "text-5xl font-bold text-red-600 mb-4 leading-tight tracking-wide animate-pulse";
+           
+            modalContent.innerHTML = "<p class='text-center text-xl text-white'>A Rainha viu as rosas brancas!</p>";
+           
+            finalScoreContainer.classList.remove('hidden');
+            finalScoreEl.innerText = score;
+           
+            startBtn.innerText = "Tentar Novamente";
+            startBtn.classList.remove('bg-red-700');
+            startBtn.classList.add('bg-gray-800', 'hover:bg-gray-700', 'border', 'border-red-500');
+
+            setTimeout(() => {
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+                // Pequeno fade-in
+                modal.style.opacity = '0';
+                requestAnimationFrame(() => {
+                    modal.style.opacity = '1';
+                });
+            }, 500);
+        }
+
+        function startGame() {
+            // Esconder modal
+            modal.style.opacity = '0';
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }, 300);
+
+            // Resetar variáveis
+            score = 0;
+            anger = 0;
+            currentSpawnRate = 1200;
+            entityLifetime = 2500;
+            isPlaying = true;
+
+            // Resetar Interface e Grade
+            updateUI();
+            initGrid(); // Recria a grade limpa
+           
+            // Inicializar contexto de áudio se for a primeira vez
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+
+            // Iniciar o loop de nascimento após pequeno delay
+            setTimeout(() => {
+                resetSpawner();
+                // Spawna o primeiro imediatamente para não esperar
+                spawnEntity();
+            }, 500);
+        }
+
+        // Event Listeners Iniciais
+        startBtn.addEventListener('click', startGame);
+       
+        // Inicializar a grade visualmente logo ao carregar
+        initGrid();
+
+    </script>
+</body>
+</html>

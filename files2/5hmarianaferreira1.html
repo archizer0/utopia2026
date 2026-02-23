@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="pt-pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mariana no País das Maravilhas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;700&family=Outfit:wght@400;700&display=swap');
+       
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: #fdf2f8;
+            overflow-x: hidden;
+        }
+
+        h1, .magic-text {
+            font-family: 'Crimson Pro', serif;
+        }
+
+        .board-container {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            grid-template-rows: repeat(6, 1fr);
+            gap: 4px;
+            width: 95vw;
+            max-width: 550px;
+            aspect-ratio: 1/1;
+            background-color: #4a044e;
+            padding: 4px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(74, 4, 78, 0.3);
+        }
+
+        .cell {
+            background-color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            padding: 4px;
+            font-size: 0.6rem;
+            text-align: center;
+            position: relative;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .cell-header {
+            width: 100%;
+            height: 10px;
+            position: absolute;
+            top: 0;
+            left: 0;
+            border-radius: 4px 4px 0 0;
+        }
+
+        .player-token {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            border: 2px solid white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            position: absolute;
+            z-index: 10;
+            transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .log-container { max-height: 120px; overflow-y: auto; }
+        .hidden { display: none !important; }
+       
+        #game-log p:nth-child(odd) { color: #f0abfc; }
+        #game-log p:nth-child(even) { color: #e9d5ff; }
+    </style>
+</head>
+<body class="flex flex-col items-center p-4">
+
+    <!-- Ecrã Inicial (Lobby) -->
+    <div id="lobby" class="fixed inset-0 bg-fuchsia-900 z-[100] flex flex-col items-center justify-center p-6 text-white text-center">
+        <h1 class="text-4xl font-bold mb-2 tracking-wide uppercase">Mariana no País das Maravilhas</h1>
+        <p class="mb-8 opacity-90 italic">"Curiosa Mariana, para onde vais agora?"</p>
+       
+        <div id="lobby-controls" class="bg-white p-6 rounded-3xl shadow-2xl text-gray-800 w-full max-w-sm space-y-4 border-4 border-fuchsia-200">
+            <div id="initial-actions" class="space-y-3">
+                <div class="text-left mb-2">
+                    <label class="text-xs font-bold text-fuchsia-400 uppercase">Nome da Mariana ou Amigo</label>
+                    <input id="user-name" type="text" placeholder="Ex: Mariana" class="w-full border-2 border-fuchsia-100 p-3 rounded-xl text-center font-bold focus:border-fuchsia-400 outline-none">
+                </div>
+               
+                <div class="grid grid-cols-1 gap-2">
+                    <button id="solo-btn" onclick="startSoloGame()" class="w-full bg-gradient-to-r from-fuchsia-500 to-indigo-600 hover:from-fuchsia-600 hover:to-indigo-700 text-white font-bold py-4 rounded-xl transition-all shadow-lg text-lg">
+                        Jogar Sozinha ✨
+                    </button>
+                    <button id="create-btn" onclick="createNewGame()" class="w-full bg-white border-2 border-fuchsia-200 text-fuchsia-600 hover:bg-fuchsia-50 font-bold py-3 rounded-xl transition-all">
+                        Criar Multijogador ☕
+                    </button>
+                </div>
+
+                <div class="flex items-center gap-2 pt-2 border-t border-fuchsia-50">
+                    <input id="join-id" type="text" placeholder="Código" class="flex-1 border-2 border-fuchsia-100 p-3 rounded-xl text-center uppercase font-mono">
+                    <button id="join-btn" onclick="joinGame()" class="bg-indigo-500 text-white px-4 py-3 rounded-xl font-bold">Entrar</button>
+                </div>
+                <p id="auth-status" class="text-[10px] text-gray-400 italic">A abrir o portal para o País das Maravilhas...</p>
+            </div>
+
+            <div id="waiting-area" class="hidden space-y-4">
+                <div class="p-3 bg-fuchsia-50 rounded-2xl border-2 border-fuchsia-100">
+                    <p class="text-xs uppercase text-fuchsia-400 mb-1 font-bold">Código do Labirinto:</p>
+                    <p id="display-room-id" class="text-3xl font-mono font-bold tracking-widest text-fuchsia-600"></p>
+                </div>
+                <div id="players-list" class="space-y-2 py-2"></div>
+                <button id="start-game-btn" onclick="startGame()" class="hidden w-full bg-green-500 text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-green-600 transition-all">Explorar!</button>
+                <div id="waiting-msg" class="flex flex-col items-center justify-center gap-2 text-sm text-gray-500 italic">
+                    <div class="w-4 h-4 border-2 border-fuchsia-500 border-t-transparent rounded-full animate-spin"></div>
+                    <span>À espera de companhia...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- UI do Jogo -->
+    <div class="flex justify-center w-full max-w-[550px] mb-4 bg-white/80 backdrop-blur-md p-2 rounded-2xl shadow-sm gap-2 border border-fuchsia-100" id="players-hud"></div>
+    <div id="board" class="board-container mb-4"></div>
+
+    <div class="flex flex-col items-center gap-4 w-full max-w-[550px]">
+        <div id="turn-indicator" class="text-sm font-bold text-fuchsia-800 uppercase tracking-widest italic"></div>
+        <button id="roll-btn" onclick="rollDice()" disabled class="bg-fuchsia-600 disabled:bg-gray-300 text-white font-bold py-4 px-8 rounded-full shadow-xl transform active:scale-95 transition-all w-full text-lg border-b-4 border-fuchsia-800">
+            Lançar Dados Mágicos 🎲
+        </button>
+        <div class="w-full bg-indigo-950 text-indigo-100 p-4 rounded-2xl shadow-inner text-xs border-t-4 border-fuchsia-500">
+            <div id="game-log" class="log-container flex flex-col-reverse gap-1 font-medium"></div>
+        </div>
+    </div>
+
+    <!-- Modal de Compra -->
+    <div id="purchase-modal" class="fixed inset-0 bg-black/70 hidden flex items-center justify-center z-50 p-4 backdrop-blur-md">
+        <div class="bg-white rounded-[2rem] p-8 max-w-sm w-full text-center shadow-2xl border-8 border-fuchsia-100">
+            <h2 id="modal-title" class="text-3xl font-bold mb-2 text-fuchsia-900">Curioso!</h2>
+            <div id="modal-color" class="h-4 w-24 mx-auto rounded-full mb-6"></div>
+            <p class="mb-8 text-gray-600 text-lg">Queres reclamar este lugar para a Mariana por <span id="modal-price" class="font-bold text-fuchsia-600"></span>?</p>
+            <div class="flex gap-4">
+                <button onclick="handlePurchaseDecision(true)" class="flex-1 bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-bold py-4 rounded-2xl transition-all shadow-lg">Sim!</button>
+                <button onclick="handlePurchaseDecision(false)" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold py-4 rounded-2xl transition-all">Não</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'mariana-wonderland-solo';
+
+        let gameRoomId = null;
+        let user = null;
+        let gameState = null;
+        let isHost = false;
+        let unsubscribe = null;
+        const BOT_ID = "cheshire_cat_ai";
+
+        const boardData = [
+            { id: 0, name: "TOCA DO COELHO", type: "start", color: "#4d7c0f" },
+            { id: 1, name: "Mar de Lágrimas", price: 60, rent: 10, type: "property", color: "#38bdf8" },
+            { id: 2, name: "Beba-Me", type: "luck", color: "#f472b6" },
+            { id: 3, name: "Casa do Coelho", price: 80, rent: 15, type: "property", color: "#38bdf8" },
+            { id: 4, name: "Taxa de Chá", price: 200, type: "tax", color: "#a21caf" },
+            { id: 5, name: "FLORESTA", price: 100, rent: 20, type: "property", color: "#38bdf8" },
+            { id: 6, name: "Jardim de Rosas", price: 120, rent: 25, type: "property", color: "#fb7185" },
+            { id: 7, name: "Coma-Me", type: "luck", color: "#f472b6" },
+            { id: 8, name: "Labirinto", price: 140, rent: 30, type: "property", color: "#fb7185" },
+            { id: 9, name: "Castelo Branco", price: 160, rent: 35, type: "property", color: "#fb7185" },
+            { id: 10, name: "Mesa de Chá", price: 170, rent: 36, type: "property", color: "#fbbf24" },
+            { id: 11, name: "Tempo Perdido", price: 150, type: "tax", color: "#a21caf" },
+            { id: 12, name: "Toca do Rato", price: 180, rent: 38, type: "property", color: "#fbbf24" },
+            { id: 13, name: "Beba-Me", type: "luck", color: "#f472b6" },
+            { id: 14, name: "Festa de Desaniversário", price: 200, rent: 40, type: "property", color: "#fbbf24" },
+            { id: 15, name: "JULGAMENTO", type: "jail", color: "#1e293b" },
+            { id: 16, name: "Tribunal", price: 200, rent: 40, type: "property", color: "#facc15" },
+            { id: 17, name: "Coma-Me", type: "luck", color: "#f472b6" },
+            { id: 18, name: "Castelo de Copas", price: 220, rent: 45, type: "property", color: "#facc15" },
+            { id: 19, name: "TRONO DA RAINHA", price: 240, rent: 50, type: "property", color: "#facc15" }
+        ];
+
+        const visualMapping = [0, 1, 2, 3, 4, 5, 11, 17, 23, 29, 35, 34, 33, 32, 31, 30, 24, 18, 12, 6];
+        const playerColors = ["#0ea5e9", "#ef4444", "#d946ef"];
+
+        const initAuth = async () => {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                onAuthStateChanged(auth, (u) => { user = u; if (u) document.getElementById('auth-status').innerText = "Viste o Coelho Branco!"; });
+            } catch (error) { console.error(error); }
+        };
+        initAuth();
+
+        window.startSoloGame = async () => {
+            if(!user) return;
+            const name = document.getElementById('user-name').value || 'Mariana';
+            gameRoomId = "SOLO-" + Math.random().toString(36).substring(2, 7).toUpperCase();
+            isHost = true;
+           
+            const initialGameState = {
+                roomId: gameRoomId,
+                status: 'active', // Começa logo ativo
+                turn: 0,
+                startMoney: 1500,
+                players: [
+                    { uid: user.uid, name: name, money: 1500, pos: 0, color: playerColors[0], properties: [], isBot: false },
+                    { uid: BOT_ID, name: "Gato de Cheshire ✨", money: 1500, pos: 0, color: playerColors[2], properties: [], isBot: true }
+                ],
+                logs: [`Mariana começou a sua aventura sozinha com o Gato!`],
+            };
+           
+            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameRoomId), initialGameState);
+            setupGameListener();
+        };
+
+        window.createNewGame = async () => {
+            if(!user) return;
+            const name = document.getElementById('user-name').value || 'Mariana';
+            gameRoomId = Math.random().toString(36).substring(2, 7).toUpperCase();
+            isHost = true;
+            const initialGameState = {
+                roomId: gameRoomId, status: 'waiting', turn: 0, startMoney: 1500,
+                players: [{ uid: user.uid, name: name, money: 1500, pos: 0, color: playerColors[0], properties: [], isBot: false }],
+                logs: [`${name} abriu um chá multijogador.`],
+            };
+            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameRoomId), initialGameState);
+            setupGameListener();
+        };
+
+        window.joinGame = () => { gameRoomId = document.getElementById('join-id').value.toUpperCase(); setupGameListener(); };
+
+        function setupGameListener() {
+            if (unsubscribe) unsubscribe();
+            unsubscribe = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameRoomId), (snap) => {
+                if(!snap.exists()) return;
+                gameState = snap.data();
+                renderLobby();
+                if(gameState.status !== 'waiting') {
+                    document.getElementById('lobby').classList.add('hidden');
+                    renderBoard();
+                    renderUI();
+                    checkBotTurn();
+                }
+            });
+        }
+
+        async function checkBotTurn() {
+            if (!isHost || gameState.status === 'waiting') return;
+            const currentPlayer = gameState.players[gameState.turn];
+            if (currentPlayer.isBot) {
+                if (gameState.status === 'active') {
+                    setTimeout(() => processRoll(currentPlayer), 1500);
+                } else if (gameState.status === 'pending_decision') {
+                    setTimeout(() => processDecision(currentPlayer.money >= (boardData[currentPlayer.pos].price + 200)), 1500);
+                }
+            }
+        }
+
+        function renderLobby() {
+            if(!gameState || gameState.status !== 'waiting') return;
+            document.getElementById('initial-actions').classList.add('hidden');
+            document.getElementById('waiting-area').classList.remove('hidden');
+            document.getElementById('display-room-id').innerText = gameRoomId;
+            document.getElementById('players-list').innerHTML = gameState.players.map(p => `<div class="p-2 border rounded" style="color:${p.color}">${p.name}</div>`).join('');
+            if(isHost && gameState.players.length > 1) document.getElementById('start-game-btn').classList.remove('hidden');
+        }
+
+        window.startGame = async () => {
+            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameRoomId), { status: 'active' });
+        };
+
+        function renderBoard() {
+            const boardEl = document.getElementById('board');
+            if (boardEl.children.length > 0) { updateTokens(); return; }
+            for(let i=0; i<36; i++) {
+                const div = document.createElement('div');
+                div.id = `grid-${i}`;
+                boardEl.appendChild(div);
+            }
+            boardData.forEach((cell, idx) => {
+                const div = document.getElementById(`grid-${visualMapping[idx]}`);
+                div.className = 'cell bg-white';
+                div.id = `cell-${idx}`;
+                if (cell.color) {
+                    const h = document.createElement('div'); h.className = 'cell-header'; h.style.backgroundColor = cell.color; div.appendChild(h);
+                }
+                div.innerHTML += `<span class="font-bold mt-1 text-[7px] uppercase px-1">${cell.name}</span>`;
+                if(cell.price) div.innerHTML += `<span class="text-fuchsia-400 font-bold text-[7px]">${cell.price}€</span>`;
+            });
+            updateTokens();
+        }
+
+        function updateTokens() {
+            document.querySelectorAll('.player-token').forEach(t => t.remove());
+            gameState.players.forEach((p, idx) => {
+                const c = document.getElementById(`cell-${p.pos}`);
+                const t = document.createElement('div');
+                t.className = 'player-token'; t.style.backgroundColor = p.color;
+                t.style.left = [2, 18, 10][idx] + 'px'; t.style.top = [5, 5, 20][idx] + 'px';
+                c.appendChild(t);
+            });
+        }
+
+        function renderUI() {
+            document.getElementById('players-hud').innerHTML = gameState.players.map((p, idx) => `
+                <div class="flex-1 p-2 rounded-xl border-2 ${gameState.turn === idx ? 'ring-2 ring-fuchsia-200 scale-105 shadow-md' : 'opacity-50'}" style="border-color:${p.color}">
+                    <div class="text-[8px] font-bold uppercase" style="color:${p.color}">${p.name}</div>
+                    <div class="text-sm font-black">${p.money}€</div>
+                </div>
+            `).join('');
+
+            const me = gameState.players[gameState.turn];
+            const isMe = me.uid === user?.uid;
+            const btn = document.getElementById('roll-btn');
+            btn.disabled = !isMe || gameState.status === 'pending_decision';
+            btn.innerText = isMe ? "Lançar Dados 🎲" : `${me.name} está a jogar...`;
+            document.getElementById('turn-indicator').innerText = isMe ? "A TUA VEZ" : `VEZ DE ${me.name.toUpperCase()}`;
+            document.getElementById('game-log').innerHTML = gameState.logs.slice(-5).map(l => `<p>✦ ${l}</p>`).join('');
+
+            if(gameState.status === 'pending_decision' && isMe) {
+                const c = boardData[me.pos];
+                document.getElementById('modal-title').innerText = c.name;
+                document.getElementById('modal-color').style.backgroundColor = c.color;
+                document.getElementById('modal-price').innerText = `${c.price}€`;
+                document.getElementById('purchase-modal').classList.remove('hidden');
+            } else {
+                document.getElementById('purchase-modal').classList.add('hidden');
+            }
+        }
+
+        window.rollDice = () => { if(gameState.players[gameState.turn].uid === user?.uid) processRoll(gameState.players[gameState.turn]); };
+
+        async function processRoll(p) {
+            const die = Math.floor(Math.random() * 6) + 1;
+            let nPos = (p.pos + die) % boardData.length;
+            const players = [...gameState.players];
+            let msg = `${p.name} tirou ${die} e foi para ${boardData[nPos].name}.`;
+            if(nPos < p.pos) { players[gameState.turn].money += 200; msg += " Ganhou 200€ na Toca!"; }
+            players[gameState.turn].pos = nPos;
+           
+            const cell = boardData[nPos];
+            let status = 'active', next = (gameState.turn + 1) % players.length;
+
+            if(cell.type === 'property') {
+                const owner = players.findIndex(pl => pl.properties.includes(nPos));
+                if(owner !== -1 && owner !== gameState.turn) {
+                    players[gameState.turn].money -= cell.rent; players[owner].money += cell.rent;
+                    msg += ` Pagou ${cell.rent}€ a ${players[owner].name}.`;
+                } else if (owner === -1) { status = 'pending_decision'; next = gameState.turn; }
+            } else if(cell.type === 'tax') { players[gameState.turn].money -= cell.price; msg += ` Taxa: -${cell.price}€.`; }
+            else if(cell.type === 'luck') { const b = [100, -50, 150, -100][Math.floor(Math.random()*4)]; players[gameState.turn].money += b; msg += ` Surpresa: ${b}€.`; }
+
+            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameRoomId), { players, turn: next, status, logs: arrayUnion(msg) });
+        }
+
+        window.handlePurchaseDecision = (buy) => processDecision(buy);
+
+        async function processDecision(buy) {
+            const players = [...gameState.players];
+            const p = players[gameState.turn];
+            const c = boardData[p.pos];
+            let msg = `${p.name} não comprou ${c.name}.`;
+            if(buy && p.money >= c.price) { p.money -= c.price; p.properties.push(p.pos); msg = `${p.name} comprou ${c.name}!`; }
+            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameRoomId), { players, status: 'active', turn: (gameState.turn + 1) % players.length, logs: arrayUnion(msg) });
+        }
+    </script>
+</body>
+</html>
