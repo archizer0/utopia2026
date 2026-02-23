@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Alice e os Bolos de Chocolate</title>
+    <style>
+        /* Estilos do Jogo e UI */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #f8bbd0;
+            font-family: 'Comic Sans MS', 'Chalkboard SE', sans-serif;
+            touch-action: none; /* Previne scroll no telemóvel ao jogar */
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            pointer-events: none; /* Deixa os cliques passarem para o canvas */
+            z-index: 10;
+        }
+
+        #score-display {
+            font-size: 28px;
+            font-weight: bold;
+            color: #4a148c;
+            text-shadow: 2px 2px 0px #fff, -2px -2px 0px #fff, 2px -2px 0px #fff, -2px 2px 0px #fff;
+            background: rgba(255, 255, 255, 0.5);
+            padding: 5px 15px;
+            border-radius: 20px;
+            border: 2px solid #4a148c;
+        }
+
+        #game-over-screen {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.75);
+            z-index: 20;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            text-align: center;
+        }
+
+        #game-over-screen h1 {
+            font-size: 50px;
+            color: #ff4081;
+            margin-bottom: 10px;
+            text-shadow: 0 0 15px rgba(255, 64, 129, 0.8);
+        }
+
+        #game-over-screen p {
+            font-size: 24px;
+            margin-bottom: 30px;
+        }
+
+        button {
+            padding: 15px 40px;
+            font-size: 22px;
+            font-weight: bold;
+            font-family: inherit;
+            background-color: #8e24aa;
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 6px 0 #4a148c;
+            transition: all 0.1s;
+        }
+
+        button:active {
+            transform: translateY(6px);
+            box-shadow: none;
+        }
+
+        button:hover {
+            background-color: #ab47bc;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <div id="score-display">Bolos: 0</div>
+    </div>
+
+    <div id="game-over-screen">
+        <h1>És Demasiado Lenta!</h1>
+        <p>O Coelho Branco apanhou-te.</p>
+        <p id="final-score">Comeste 0 bolos de chocolate.</p>
+        <button onclick="reiniciarJogo()">Jogar Novamente</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('score-display');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const finalScoreText = document.getElementById('final-score');
+
+        // Variáveis de estado do jogo
+        let animFrameId;
+        let larguraEcra, alturaEcra;
+        let pontuacao = 0;
+        let jogoAtivo = false;
+
+        // Entidades do jogo
+        const alice = { x: 0, y: 0, tamanho: 50, velocidade: 6, emoji: '👧🏼' };
+        const coelho = { x: 0, y: 0, tamanho: 55, velocidadeBase: 2.5, velocidadeAtual: 2.5, emoji: '🐰' };
+        const bolo = { x: 0, y: 0, tamanho: 40, emoji: '🧁' }; // Usando cupcake para representar o bolo
+
+        // Controlos
+        const teclas = {
+            ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false,
+            w: false, a: false, s: false, d: false
+        };
+       
+        let ratoX = null;
+        let ratoY = null;
+        let usarRatoOuToque = false;
+
+        // Ajustar tamanho do canvas à janela
+        function redimensionarCanvas() {
+            larguraEcra = window.innerWidth;
+            alturaEcra = window.innerHeight;
+            canvas.width = larguraEcra;
+            canvas.height = alturaEcra;
+        }
+
+        window.addEventListener('resize', redimensionarCanvas);
+
+        // Controlos de Teclado
+        window.addEventListener('keydown', (e) => {
+            if (teclas.hasOwnProperty(e.key)) teclas[e.key] = true;
+            usarRatoOuToque = false;
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (teclas.hasOwnProperty(e.key)) teclas[e.key] = false;
+        });
+
+        // Controlos de Toque / Rato
+        function lidarComToqueMovimento(e) {
+            if (!jogoAtivo) return;
+            e.preventDefault();
+            usarRatoOuToque = true;
+            if (e.touches && e.touches.length > 0) {
+                ratoX = e.touches[0].clientX;
+                ratoY = e.touches[0].clientY;
+            } else {
+                ratoX = e.clientX;
+                ratoY = e.clientY;
+            }
+        }
+
+        function lidarComFimToque() {
+            usarRatoOuToque = false;
+        }
+
+        canvas.addEventListener('mousemove', lidarComToqueMovimento);
+        canvas.addEventListener('mousedown', lidarComToqueMovimento);
+        canvas.addEventListener('mouseup', lidarComFimToque);
+        canvas.addEventListener('mouseleave', lidarComFimToque);
+       
+        canvas.addEventListener('touchstart', lidarComToqueMovimento, {passive: false});
+        canvas.addEventListener('touchmove', lidarComToqueMovimento, {passive: false});
+        canvas.addEventListener('touchend', lidarComFimToque);
+
+        // Funções de Lógica do Jogo
+        function posicaoAleatoria(tamanhoEntidade) {
+            const margem = tamanhoEntidade * 2;
+            return {
+                x: margem + Math.random() * (larguraEcra - margem * 2),
+                y: margem + Math.random() * (alturaEcra - margem * 2)
+            };
+        }
+
+        function spawnBolo() {
+            const pos = posicaoAleatoria(bolo.tamanho);
+            bolo.x = pos.x;
+            bolo.y = pos.y;
+        }
+
+        function iniciarJogo() {
+            redimensionarCanvas();
+           
+            // Posição inicial da Alice (centro)
+            alice.x = larguraEcra / 2;
+            alice.y = alturaEcra / 2;
+           
+            // Posição inicial do Coelho (longe da Alice)
+            coelho.x = 50;
+            coelho.y = 50;
+            coelho.velocidadeAtual = coelho.velocidadeBase;
+
+            pontuacao = 0;
+            scoreDisplay.innerText = `Bolos: ${pontuacao}`;
+            gameOverScreen.style.display = 'none';
+            jogoAtivo = true;
+           
+            spawnBolo();
+           
+            if (animFrameId) cancelAnimationFrame(animFrameId);
+            loopJogo();
+        }
+
+        function atualizar() {
+            if (!jogoAtivo) return;
+
+            // --- Movimento da Alice ---
+            let dxAlice = 0;
+            let dyAlice = 0;
+
+            if (usarRatoOuToque && ratoX !== null && ratoY !== null) {
+                // Mover em direção ao toque
+                const dx = ratoX - alice.x;
+                const dy = ratoY - alice.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist > alice.velocidade) {
+                    dxAlice = (dx / dist) * alice.velocidade;
+                    dyAlice = (dy / dist) * alice.velocidade;
+                } else {
+                    alice.x = ratoX;
+                    alice.y = ratoY;
+                }
+            } else {
+                // Mover com teclado
+                if (teclas.ArrowUp || teclas.w) dyAlice -= alice.velocidade;
+                if (teclas.ArrowDown || teclas.s) dyAlice += alice.velocidade;
+                if (teclas.ArrowLeft || teclas.a) dxAlice -= alice.velocidade;
+                if (teclas.ArrowRight || teclas.d) dxAlice += alice.velocidade;
+               
+                // Normalizar velocidade na diagonal
+                if (dxAlice !== 0 && dyAlice !== 0) {
+                    const factor = 1 / Math.sqrt(2);
+                    dxAlice *= factor;
+                    dyAlice *= factor;
+                }
+            }
+
+            alice.x += dxAlice;
+            alice.y += dyAlice;
+
+            // Manter Alice dentro do ecrã
+            alice.x = Math.max(alice.tamanho/2, Math.min(larguraEcra - alice.tamanho/2, alice.x));
+            alice.y = Math.max(alice.tamanho/2, Math.min(alturaEcra - alice.tamanho/2, alice.y));
+
+            // --- Movimento do Coelho ---
+            // O coelho persegue a Alice
+            const dxCoelho = alice.x - coelho.x;
+            const dyCoelho = alice.y - coelho.y;
+            const distCoelhoAlice = Math.sqrt(dxCoelho * dxCoelho + dyCoelho * dyCoelho);
+           
+            if (distCoelhoAlice > 0) {
+                coelho.x += (dxCoelho / distCoelhoAlice) * coelho.velocidadeAtual;
+                coelho.y += (dyCoelho / distCoelhoAlice) * coelho.velocidadeAtual;
+            }
+
+            // --- Colisões ---
+            // Alice e o Bolo
+            const distBolo = Math.hypot(alice.x - bolo.x, alice.y - bolo.y);
+            const margemColisaoBolo = (alice.tamanho + bolo.tamanho) / 2.5;
+
+            if (distBolo < margemColisaoBolo) {
+                pontuacao++;
+                scoreDisplay.innerText = `Bolos: ${pontuacao}`;
+                spawnBolo();
+                // O coelho fica ligeiramente mais rápido a cada bolo!
+                coelho.velocidadeAtual = Math.min(alice.velocidade - 0.5, coelho.velocidadeAtual + 0.15);
+            }
+
+            // Alice e o Coelho (Fim do Jogo)
+            const margemColisaoCoelho = (alice.tamanho + coelho.tamanho) / 3; // Hitbox um pouco menor para ser justo
+            if (distCoelhoAlice < margemColisaoCoelho) {
+                terminarJogo();
+            }
+        }
+
+        function desenharChaoXadrez() {
+            const tamanhoQuadrado = 80;
+            const deslocamentoX = (Date.now() / 50) % (tamanhoQuadrado * 2); // Efeito ilusório de movimento de câmara
+            const deslocamentoY = (Date.now() / 50) % (tamanhoQuadrado * 2);
+
+            for (let x = -tamanhoQuadrado*2; x < larguraEcra; x += tamanhoQuadrado) {
+                for (let y = -tamanhoQuadrado*2; y < alturaEcra; y += tamanhoQuadrado) {
+                    // Alternar cores
+                    const ehPar = (Math.floor((x - deslocamentoX) / tamanhoQuadrado) + Math.floor((y - deslocamentoY) / tamanhoQuadrado)) % 2 === 0;
+                    ctx.fillStyle = ehPar ? 'rgba(255, 255, 255, 0.4)' : 'rgba(255, 192, 203, 0.4)';
+                    ctx.fillRect(x, y, tamanhoQuadrado, tamanhoQuadrado);
+                }
+            }
+        }
+
+        function desenharEntidade(entidade) {
+            ctx.font = `${entidade.tamanho}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+           
+            // Sombra subtil
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+            ctx.shadowBlur = 10;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 5;
+           
+            ctx.fillText(entidade.emoji, entidade.x, entidade.y);
+           
+            // Reset de sombra para não afetar outras coisas
+            ctx.shadowBlur = 0;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+        }
+
+        function desenhar() {
+            // Limpar canvas
+            ctx.clearRect(0, 0, larguraEcra, alturaEcra);
+           
+            // Fundo
+            desenharChaoXadrez();
+
+            // Entidades
+            desenharEntidade(bolo);
+            desenharEntidade(alice);
+            desenharEntidade(coelho);
+        }
+
+        function loopJogo() {
+            if (!jogoAtivo) return;
+            atualizar();
+            desenhar();
+            animFrameId = requestAnimationFrame(loopJogo);
+        }
+
+        function terminarJogo() {
+            jogoAtivo = false;
+            finalScoreText.innerText = pontuacao === 1 ? `Comeste 1 bolo de chocolate.` : `Comeste ${pontuacao} bolos de chocolate.`;
+            gameOverScreen.style.display = 'flex';
+        }
+
+        // Exposta globalmente para o botão do HTML
+        window.reiniciarJogo = iniciarJogo;
+
+        // Iniciar quando a janela carrega
+        window.onload = iniciarJogo;
+
+    </script>
+</body>
+</html>

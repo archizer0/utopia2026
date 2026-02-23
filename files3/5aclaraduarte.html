@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeonPlay Arcade</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Outfit:wght@300;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: #0f172a;
+            color: #e2e8f0;
+            overflow: hidden; /* Prevent scrolling on mobile while playing */
+            touch-action: manipulation;
+        }
+       
+        .font-retro {
+            font-family: 'Press Start 2P', cursive;
+        }
+
+        /* Neon Glow Effects */
+        .neon-text {
+            text-shadow: 0 0 5px #a855f7, 0 0 10px #a855f7, 0 0 20px #a855f7;
+        }
+        .neon-box {
+            box-shadow: 0 0 10px #3b82f6, inset 0 0 5px #3b82f6;
+        }
+        .neon-btn:hover {
+            box-shadow: 0 0 15px #ec4899, inset 0 0 10px #ec4899;
+        }
+
+        /* Card Flip Animation */
+        .card {
+            perspective: 1000px;
+            cursor: pointer;
+        }
+        .card-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            text-align: center;
+            transition: transform 0.6s;
+            transform-style: preserve-3d;
+        }
+        .card.flipped .card-inner {
+            transform: rotateY(180deg);
+        }
+        .card-front, .card-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            border-radius: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+        }
+        .card-front {
+            background-color: #1e293b;
+            border: 2px solid #3b82f6;
+        }
+        .card-back {
+            background-color: #3b82f6;
+            color: white;
+            transform: rotateY(180deg);
+            border: 2px solid #60a5fa;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+       
+        #game-canvas {
+            background: radial-gradient(circle, #1e1b4b 0%, #020617 100%);
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col">
+
+    <!-- Header / HUD -->
+    <header class="h-16 flex items-center justify-between px-6 bg-slate-900 border-b border-slate-700 z-10">
+        <div class="flex items-center gap-2">
+            <span class="text-2xl">🕹️</span>
+            <h1 class="font-retro text-yellow-400 text-xs md:text-sm tracking-widest neon-text">NEONPLAY</h1>
+        </div>
+        <div class="flex items-center gap-4 bg-slate-800 px-4 py-1 rounded-full border border-slate-600">
+            <span class="text-yellow-400 text-lg">💎</span>
+            <span id="global-score" class="font-bold font-mono text-xl text-white">0</span>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main id="main-container" class="flex-1 relative overflow-hidden flex items-center justify-center p-4">
+       
+        <!-- MENU SCREEN -->
+        <div id="menu-screen" class="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-6 p-4">
+           
+            <!-- Game Card 1 -->
+            <div onclick="App.startGame('astro')" class="group relative bg-slate-800 rounded-xl overflow-hidden border border-slate-700 cursor-pointer transition transform hover:scale-105 hover:border-purple-500 neon-btn">
+                <div class="h-32 bg-gradient-to-br from-indigo-900 to-purple-900 flex items-center justify-center text-6xl">
+                    🚀
+                </div>
+                <div class="p-6">
+                    <h2 class="text-2xl font-bold text-white mb-2">Astro Dodge</h2>
+                    <p class="text-slate-400 text-sm">Desvia-te dos meteoros e sobrevive o máximo de tempo possível!</p>
+                    <div class="mt-4 flex justify-between items-center">
+                        <span class="text-xs font-mono bg-slate-900 px-2 py-1 rounded text-purple-400">AÇÃO</span>
+                        <button class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-1 rounded font-medium text-sm transition">JOGAR</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Game Card 2 -->
+            <div onclick="App.startGame('memory')" class="group relative bg-slate-800 rounded-xl overflow-hidden border border-slate-700 cursor-pointer transition transform hover:scale-105 hover:border-green-500 neon-btn">
+                <div class="h-32 bg-gradient-to-br from-green-900 to-emerald-900 flex items-center justify-center text-6xl">
+                    🧠
+                </div>
+                <div class="p-6">
+                    <h2 class="text-2xl font-bold text-white mb-2">Emoji Memory</h2>
+                    <p class="text-slate-400 text-sm">Encontra os pares de emojis antes que o tempo acabe.</p>
+                    <div class="mt-4 flex justify-between items-center">
+                        <span class="text-xs font-mono bg-slate-900 px-2 py-1 rounded text-green-400">PUZZLE</span>
+                        <button class="bg-green-600 hover:bg-green-500 text-white px-4 py-1 rounded font-medium text-sm transition">JOGAR</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Coming Soon -->
+            <div class="bg-slate-900/50 rounded-xl border border-slate-800 p-6 flex items-center justify-center text-slate-600 col-span-1 md:col-span-2">
+                <p class="text-sm font-mono">MAIS JOGOS EM BREVE...</p>
+            </div>
+        </div>
+
+        <!-- ASTRO DODGE CONTAINER -->
+        <div id="astro-game" class="hidden w-full h-full max-w-lg relative flex flex-col">
+            <div class="absolute top-4 left-4 z-20">
+                <button onclick="App.showMenu()" class="bg-slate-800/80 text-white px-3 py-1 rounded-lg text-sm border border-slate-600 hover:bg-slate-700">← Sair</button>
+            </div>
+            <div class="absolute top-4 right-4 z-20 font-mono text-purple-400 text-xl" id="astro-score">0 pts</div>
+           
+            <canvas id="game-canvas" class="w-full h-full rounded-xl border-2 border-purple-500/50 shadow-2xl block touch-none"></canvas>
+           
+            <div id="astro-overlay" class="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-30 hidden rounded-xl">
+                <h2 class="font-retro text-red-500 text-2xl mb-4">GAME OVER</h2>
+                <p class="text-white mb-6">Pontuação: <span id="astro-final-score" class="font-bold text-yellow-400">0</span></p>
+                <button onclick="AstroGame.start()" class="bg-purple-600 text-white px-6 py-3 rounded-full font-bold hover:bg-purple-500 transition mb-4">TENTAR DE NOVO</button>
+                <button onclick="App.showMenu()" class="text-slate-400 text-sm hover:text-white">Voltar ao Menu</button>
+            </div>
+             <div id="astro-start-overlay" class="absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-30 rounded-xl">
+                <div class="text-center p-6">
+                    <div class="text-4xl mb-2">🚀</div>
+                    <h2 class="font-bold text-white text-xl mb-2">Como Jogar</h2>
+                    <p class="text-slate-300 text-sm mb-6">Arrasta o rato ou o dedo para mover.<br>Desvia-te das pedras!</p>
+                    <button onclick="AstroGame.start()" class="bg-white text-purple-900 px-8 py-3 rounded-full font-bold hover:bg-slate-200 transition">COMEÇAR</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- MEMORY GAME CONTAINER -->
+        <div id="memory-game" class="hidden w-full max-w-lg flex flex-col h-full">
+            <div class="flex justify-between items-center mb-4">
+                <button onclick="App.showMenu()" class="bg-slate-800 text-white px-3 py-1 rounded-lg text-sm border border-slate-600 hover:bg-slate-700">← Sair</button>
+                <div class="font-mono text-green-400 text-xl">Pares: <span id="memory-pairs">0</span>/8</div>
+            </div>
+
+            <div id="memory-grid" class="grid grid-cols-4 gap-3 w-full aspect-square bg-slate-800 p-4 rounded-xl border border-slate-700">
+                <!-- Cards injected here -->
+            </div>
+
+            <div id="memory-overlay" class="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-30 hidden rounded-xl backdrop-blur-sm">
+                <h2 class="font-retro text-green-500 text-2xl mb-4">VITÓRIA!</h2>
+                <p class="text-white mb-6 text-center px-4">Conseguiste apanhar todos os pares!</p>
+                <p class="text-yellow-400 mb-6 font-mono">+50 Gemas</p>
+                <button onclick="MemoryGame.init()" class="bg-green-600 text-white px-6 py-3 rounded-full font-bold hover:bg-green-500 transition mb-4">JOGAR NOVAMENTE</button>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        // --- CORE APP LOGIC ---
+        const App = {
+            totalScore: 0,
+           
+            init() {
+                // Check if user has score saved (simple simulation)
+                this.updateScoreUI();
+            },
+
+            addScore(amount) {
+                this.totalScore += amount;
+                this.updateScoreUI();
+               
+                // Animation on score
+                const scoreEl = document.getElementById('global-score');
+                scoreEl.style.transform = "scale(1.5)";
+                scoreEl.style.color = "#fbbf24";
+                setTimeout(() => {
+                    scoreEl.style.transform = "scale(1)";
+                    scoreEl.style.color = "white";
+                }, 200);
+            },
+
+            updateScoreUI() {
+                document.getElementById('global-score').innerText = this.totalScore;
+            },
+
+            showMenu() {
+                document.getElementById('menu-screen').classList.remove('hidden');
+                document.getElementById('astro-game').classList.add('hidden');
+                document.getElementById('memory-game').classList.add('hidden');
+               
+                // Stop games
+                AstroGame.stop();
+            },
+
+            startGame(gameId) {
+                document.getElementById('menu-screen').classList.add('hidden');
+               
+                if (gameId === 'astro') {
+                    document.getElementById('astro-game').classList.remove('hidden');
+                    document.getElementById('astro-start-overlay').classList.remove('hidden');
+                    document.getElementById('astro-overlay').classList.add('hidden');
+                    // Resize canvas
+                    AstroGame.resize();
+                } else if (gameId === 'memory') {
+                    document.getElementById('memory-game').classList.remove('hidden');
+                    MemoryGame.init();
+                }
+            }
+        };
+
+        // --- GAME 1: ASTRO DODGE ---
+        const AstroGame = {
+            canvas: document.getElementById('game-canvas'),
+            ctx: null,
+            animationId: null,
+            width: 0,
+            height: 0,
+            isPlaying: false,
+            score: 0,
+            player: { x: 0, y: 0, width: 30, height: 40, speed: 5 },
+            enemies: [],
+            stars: [],
+            spawnRate: 60,
+            frameCount: 0,
+
+            init() {
+                this.ctx = this.canvas.getContext('2d');
+                window.addEventListener('resize', () => this.resize());
+                this.resize();
+               
+                // Controls
+                this.canvas.addEventListener('mousemove', (e) => this.handleInput(e));
+                this.canvas.addEventListener('touchmove', (e) => this.handleInput(e), { passive: false });
+            },
+
+            resize() {
+                const parent = this.canvas.parentElement;
+                this.canvas.width = parent.clientWidth;
+                this.canvas.height = parent.clientHeight;
+                this.width = this.canvas.width;
+                this.height = this.canvas.height;
+                // Reset player position
+                this.player.y = this.height - 100;
+                this.player.x = this.width / 2;
+               
+                // Re-gen stars
+                this.stars = [];
+                for(let i=0; i<50; i++) {
+                    this.stars.push({
+                        x: Math.random() * this.width,
+                        y: Math.random() * this.height,
+                        size: Math.random() * 2,
+                        speed: Math.random() * 3 + 0.5
+                    });
+                }
+            },
+
+            handleInput(e) {
+                if (!this.isPlaying) return;
+                e.preventDefault();
+               
+                const rect = this.canvas.getBoundingClientRect();
+                let clientX = e.clientX;
+               
+                if (e.touches && e.touches.length > 0) {
+                    clientX = e.touches[0].clientX;
+                }
+
+                // Smoothly follow
+                this.player.x = clientX - rect.left;
+               
+                // Boundaries
+                if (this.player.x < 0) this.player.x = 0;
+                if (this.player.x > this.width) this.player.x = this.width;
+            },
+
+            start() {
+                document.getElementById('astro-overlay').classList.add('hidden');
+                document.getElementById('astro-start-overlay').classList.add('hidden');
+                this.isPlaying = true;
+                this.score = 0;
+                this.enemies = [];
+                this.frameCount = 0;
+                this.player.x = this.width / 2;
+               
+                if (!this.ctx) this.init();
+                this.loop();
+            },
+
+            stop() {
+                this.isPlaying = false;
+                cancelAnimationFrame(this.animationId);
+            },
+
+            gameOver() {
+                this.isPlaying = false;
+                document.getElementById('astro-final-score').innerText = Math.floor(this.score);
+                document.getElementById('astro-overlay').classList.remove('hidden');
+                App.addScore(Math.floor(this.score / 10)); // Convert points to gems
+            },
+
+            loop() {
+                if (!this.isPlaying) return;
+               
+                this.update();
+                this.draw();
+                this.animationId = requestAnimationFrame(() => this.loop());
+            },
+
+            update() {
+                this.frameCount++;
+                this.score += 0.1;
+                document.getElementById('astro-score').innerText = Math.floor(this.score) + " pts";
+
+                // Spawn enemies
+                if (this.frameCount % this.spawnRate === 0) {
+                    const size = Math.random() * 20 + 20;
+                    this.enemies.push({
+                        x: Math.random() * (this.width - size),
+                        y: -50,
+                        width: size,
+                        height: size,
+                        speed: Math.random() * 4 + 3 + (this.score / 500), // Gets faster
+                        color: `hsl(${Math.random() * 60 + 200}, 70%, 50%)`
+                    });
+                   
+                    // Difficulty Increase
+                    if (this.spawnRate > 20) this.spawnRate -= 0.1;
+                }
+
+                // Update Stars
+                this.stars.forEach(star => {
+                    star.y += star.speed;
+                    if (star.y > this.height) {
+                        star.y = 0;
+                        star.x = Math.random() * this.width;
+                    }
+                });
+
+                // Update Enemies
+                for (let i = 0; i < this.enemies.length; i++) {
+                    let e = this.enemies[i];
+                    e.y += e.speed;
+
+                    // Collision Check
+                    if (
+                        this.player.x < e.x + e.width &&
+                        this.player.x + this.player.width > e.x &&
+                        this.player.y < e.y + e.height &&
+                        this.player.y + this.player.height > e.y
+                    ) {
+                        this.gameOver();
+                    }
+
+                    // Remove off screen
+                    if (e.y > this.height) {
+                        this.enemies.splice(i, 1);
+                        i--;
+                    }
+                }
+            },
+
+            draw() {
+                // Clear
+                this.ctx.fillStyle = '#020617';
+                this.ctx.fillRect(0, 0, this.width, this.height);
+
+                // Stars
+                this.ctx.fillStyle = '#ffffff';
+                this.stars.forEach(star => {
+                    this.ctx.beginPath();
+                    this.ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+                    this.ctx.fill();
+                });
+
+                // Player (Rocket)
+                this.ctx.save();
+                this.ctx.translate(this.player.x, this.player.y);
+               
+                // Fire trail
+                this.ctx.fillStyle = '#fbbf24';
+                this.ctx.beginPath();
+                this.ctx.moveTo(-5, 20);
+                this.ctx.lineTo(0, 30 + Math.random() * 10);
+                this.ctx.lineTo(5, 20);
+                this.ctx.fill();
+
+                // Ship body
+                this.ctx.fillStyle = '#e2e8f0';
+                this.ctx.beginPath();
+                this.ctx.ellipse(0, 0, 10, 20, 0, 0, Math.PI * 2);
+                this.ctx.fill();
+               
+                // Wings
+                this.ctx.fillStyle = '#ef4444';
+                this.ctx.beginPath();
+                this.ctx.moveTo(-10, 0);
+                this.ctx.lineTo(-20, 15);
+                this.ctx.lineTo(-10, 15);
+                this.ctx.fill();
+                this.ctx.beginPath();
+                this.ctx.moveTo(10, 0);
+                this.ctx.lineTo(20, 15);
+                this.ctx.lineTo(10, 15);
+                this.ctx.fill();
+
+                this.ctx.restore();
+
+                // Enemies (Meteors)
+                this.enemies.forEach(e => {
+                    this.ctx.fillStyle = '#475569';
+                    this.ctx.beginPath();
+                    this.ctx.arc(e.x + e.width/2, e.y + e.height/2, e.width/2, 0, Math.PI * 2);
+                    this.ctx.fill();
+                   
+                    // Crater detail
+                    this.ctx.fillStyle = '#334155';
+                    this.ctx.beginPath();
+                    this.ctx.arc(e.x + e.width/3, e.y + e.height/3, e.width/6, 0, Math.PI*2);
+                    this.ctx.fill();
+                });
+            }
+        };
+
+        // --- GAME 2: MEMORY ---
+        const MemoryGame = {
+            grid: document.getElementById('memory-grid'),
+            pairsFound: 0,
+            flippedCards: [],
+            isLocked: false,
+            emojis: ['👻', '👽', '🤖', '👾', '🦕', '🍕', '🌮', '🍩'], // 8 pairs
+           
+            init() {
+                this.grid.innerHTML = '';
+                document.getElementById('memory-overlay').classList.add('hidden');
+                this.pairsFound = 0;
+                this.updateUI();
+               
+                // Create pairs and shuffle
+                const deck = [...this.emojis, ...this.emojis];
+                deck.sort(() => Math.random() - 0.5);
+
+                deck.forEach(emoji => {
+                    const card = document.createElement('div');
+                    card.className = 'card h-full w-full';
+                    card.innerHTML = `
+                        <div class="card-inner">
+                            <div class="card-front">
+                                <span class="text-2xl opacity-50">?</span>
+                            </div>
+                            <div class="card-back">
+                                ${emoji}
+                            </div>
+                        </div>
+                    `;
+                    card.addEventListener('click', () => this.flipCard(card, emoji));
+                    this.grid.appendChild(card);
+                });
+            },
+
+            flipCard(card, emoji) {
+                if (this.isLocked) return;
+                if (card === this.flippedCards[0]?.el) return; // Prevent double click same card
+                if (card.classList.contains('flipped')) return; // Already matched
+
+                card.classList.add('flipped');
+                this.flippedCards.push({ el: card, val: emoji });
+
+                if (this.flippedCards.length === 2) {
+                    this.checkMatch();
+                }
+            },
+
+            checkMatch() {
+                this.isLocked = true;
+                const [card1, card2] = this.flippedCards;
+
+                if (card1.val === card2.val) {
+                    // Match found
+                    this.pairsFound++;
+                    this.updateUI();
+                    this.flippedCards = [];
+                    this.isLocked = false;
+                   
+                    if (this.pairsFound === this.emojis.length) {
+                        setTimeout(() => this.victory(), 500);
+                    }
+                } else {
+                    // No Match
+                    setTimeout(() => {
+                        card1.el.classList.remove('flipped');
+                        card2.el.classList.remove('flipped');
+                        this.flippedCards = [];
+                        this.isLocked = false;
+                    }, 1000);
+                }
+            },
+
+            updateUI() {
+                document.getElementById('memory-pairs').innerText = this.pairsFound;
+            },
+
+            victory() {
+                document.getElementById('memory-overlay').classList.remove('hidden');
+                App.addScore(50);
+            }
+        };
+
+        // Start App
+        App.init();
+
+    </script>
+</body>
+</html>

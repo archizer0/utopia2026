@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="pt-pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vestir a Rainha de Copas Realista</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700&display=swap');
+
+        body {
+            background-color: #0a0a0a;
+            color: #fff;
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Cinzel', serif;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+        }
+
+        .panel {
+            pointer-events: auto;
+            background: rgba(15, 5, 5, 0.9);
+            border: 1px solid #d4af37;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .wardrobe {
+            position: absolute;
+            right: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 260px;
+            max-height: 85vh;
+            overflow-y: auto;
+        }
+
+        .category-title {
+            font-size: 0.75rem;
+            color: #d4af37;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+            border-bottom: 1px solid #333;
+            padding-bottom: 4px;
+        }
+
+        .items-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+
+        .item-box {
+            background: #151515;
+            border: 1px solid #2a2a2a;
+            padding: 8px;
+            text-align: center;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            transition: 0.2s;
+        }
+
+        .item-box:hover { border-color: #8b0000; background: #1a0a0a; }
+        .item-box.active { border-color: #d4af37; background: #251a05; }
+
+        .instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            font-size: 0.7rem;
+            color: #666;
+            letter-spacing: 1px;
+        }
+
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <header class="text-center">
+            <h1 class="text-3xl text-red-700 drop-shadow-md tracking-widest">A Boneca de Copas</h1>
+            <p class="text-xs text-yellow-600 opacity-80">Edição de Colecionador</p>
+        </header>
+
+        <div class="wardrobe panel">
+            <h2 class="text-lg mb-6 text-center text-yellow-500 border-b border-yellow-900 pb-2">Atelier Real</h2>
+           
+            <p class="category-title">Cabelo & Maquilhagem</p>
+            <div class="items-grid">
+                <div class="item-box" onclick="changeHair('raven')">Negro</div>
+                <div class="item-box" onclick="changeHair('crimson')">Carmesim</div>
+                <div class="item-box" onclick="changeHair('platinum')">Platina</div>
+            </div>
+
+            <p class="category-title">Vestuário de Gala</p>
+            <div class="items-grid">
+                <div class="item-box" onclick="changeDress('velvet')">Veludo</div>
+                <div class="item-box" onclick="changeDress('midnight')">Noite</div>
+                <div class="item-box" onclick="changeDress('royal')">Imperial</div>
+            </div>
+
+            <p class="category-title">Adereços</p>
+            <div class="items-grid">
+                <div class="item-box" onclick="changeCrown('classic')">Coroa</div>
+                <div class="item-box" onclick="changeCrown('diadem')">Diadema</div>
+            </div>
+
+            <button onclick="resetView()" class="w-full bg-stone-900 border border-stone-700 text-xs py-2 rounded mt-4 hover:bg-stone-800 transition">Centralizar Boneca</button>
+        </div>
+
+        <div class="instructions panel">
+            BOTÃO ESQUERDO: RODAR • SCROLL: ZOOM • BOTÃO DIREITO: MOVER
+        </div>
+    </div>
+
+    <script>
+        let scene, camera, renderer, queen, clock;
+        let parts = { dress: null, hair: null, crown: null };
+       
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x050505);
+            clock = new THREE.Clock();
+
+            camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 1.3, 2.5);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            document.body.appendChild(renderer.domElement);
+
+            // Iluminação
+            const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.7);
+            scene.add(hemiLight);
+
+            const spotLight = new THREE.SpotLight(0xffffff, 1.2);
+            spotLight.position.set(2, 5, 3);
+            spotLight.castShadow = true;
+            scene.add(spotLight);
+
+            const fillLight = new THREE.PointLight(0xffcccc, 0.4);
+            fillLight.position.set(-2, 2, 2);
+            scene.add(fillLight);
+
+            // Base de exposição
+            const platformGeo = new THREE.CylinderGeometry(0.8, 1, 0.1, 64);
+            const platformMat = new THREE.MeshPhongMaterial({ color: 0x111111, shininess: 100 });
+            const platform = new THREE.Mesh(platformGeo, platformMat);
+            platform.receiveShadow = true;
+            scene.add(platform);
+
+            createQueen();
+            animate();
+        }
+
+        function createQueen() {
+            queen = new THREE.Group();
+            queen.scale.set(0.6, 0.6, 0.6);
+
+            const skinMat = new THREE.MeshPhongMaterial({ color: 0xffefd5, shininess: 15 });
+
+            // Tronco
+            const torsoGeo = new THREE.CylinderGeometry(0.15, 0.25, 0.8, 32);
+            const torso = new THREE.Mesh(torsoGeo, skinMat);
+            torso.position.y = 1.6;
+            queen.add(torso);
+
+            // Cabeça
+            const headGeo = new THREE.SphereGeometry(0.22, 32, 32);
+            headGeo.scale(1, 1.25, 1);
+            const head = new THREE.Mesh(headGeo, skinMat);
+            head.position.y = 2.25;
+            queen.add(head);
+
+            // --- TRAÇOS FACIAIS ---
+            const faceGroup = new THREE.Group();
+            faceGroup.position.set(0, 2.25, 0.2); // À frente da cabeça
+
+            // Olhos
+            const eyeGeo = new THREE.SphereGeometry(0.025, 16, 16);
+            const eyeMat = new THREE.MeshPhongMaterial({ color: 0x222222 });
+           
+            const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+            leftEye.position.set(-0.07, 0.05, 0.01);
+            leftEye.scale.set(1, 0.6, 0.2); // Formato mais amendoado
+            faceGroup.add(leftEye);
+
+            const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+            rightEye.position.set(0.07, 0.05, 0.01);
+            rightEye.scale.set(1, 0.6, 0.2);
+            faceGroup.add(rightEye);
+
+            // Pestanas/Sombra (detalhe subtil)
+            const lashGeo = new THREE.PlaneGeometry(0.06, 0.01);
+            const lashMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.8 });
+            const leftLash = new THREE.Mesh(lashGeo, lashMat);
+            leftLash.position.set(-0.07, 0.07, 0.015);
+            faceGroup.add(leftLash);
+            const rightLash = new THREE.Mesh(lashGeo, lashMat);
+            rightLash.position.set(0.07, 0.07, 0.015);
+            faceGroup.add(rightLash);
+
+            // Lábios em formato de Coração (Marca registada da Rainha)
+            const lipGroup = new THREE.Group();
+            const lipMat = new THREE.MeshPhongMaterial({ color: 0xcc0000, shininess: 50 });
+            const heartHalfGeo = new THREE.SphereGeometry(0.018, 16, 16);
+           
+            const lipLeft = new THREE.Mesh(heartHalfGeo, lipMat);
+            lipLeft.position.set(-0.012, 0, 0);
+            lipGroup.add(lipLeft);
+
+            const lipRight = new THREE.Mesh(heartHalfGeo, lipMat);
+            lipRight.position.set(0.012, 0, 0);
+            lipGroup.add(lipRight);
+
+            lipGroup.position.set(0, -0.1, 0.02);
+            lipGroup.scale.set(1, 0.8, 0.5);
+            faceGroup.add(lipGroup);
+
+            // Blush/Bochechas
+            const blushGeo = new THREE.CircleGeometry(0.04, 32);
+            const blushMat = new THREE.MeshBasicMaterial({ color: 0xffaaaa, transparent: true, opacity: 0.3 });
+            const lBlush = new THREE.Mesh(blushGeo, blushMat);
+            lBlush.position.set(-0.12, -0.02, 0.01);
+            faceGroup.add(lBlush);
+            const rBlush = new THREE.Mesh(blushGeo, blushMat);
+            rBlush.position.set(0.12, -0.02, 0.01);
+            faceGroup.add(rBlush);
+
+            queen.add(faceGroup);
+
+            // Braços
+            const armGeo = new THREE.CylinderGeometry(0.04, 0.03, 0.7, 16);
+            const leftArm = new THREE.Mesh(armGeo, skinMat);
+            leftArm.position.set(-0.25, 1.7, 0);
+            leftArm.rotation.z = 0.2;
+            queen.add(leftArm);
+
+            const rightArm = new THREE.Mesh(armGeo, skinMat);
+            rightArm.position.set(0.25, 1.7, 0);
+            rightArm.rotation.z = -0.2;
+            queen.add(rightArm);
+
+            scene.add(queen);
+
+            changeDress('velvet');
+            changeHair('raven');
+            changeCrown('classic');
+        }
+
+        function changeDress(type) {
+            if(parts.dress) queen.remove(parts.dress);
+            const dressGroup = new THREE.Group();
+            let mainColor = 0x8b0000;
+            if(type === 'midnight') mainColor = 0x0a0a1a;
+            if(type === 'royal') mainColor = 0xfffafa;
+
+            const skirtGeo = new THREE.CylinderGeometry(0.25, 1.2, 1.8, 64, 1, true);
+            const skirtMat = new THREE.MeshPhongMaterial({ color: mainColor, side: THREE.DoubleSide, shininess: 40 });
+            const skirt = new THREE.Mesh(skirtGeo, skirtMat);
+            skirt.position.y = 0.8;
+            dressGroup.add(skirt);
+
+            const bodiceGeo = new THREE.CylinderGeometry(0.16, 0.26, 0.6, 32);
+            const bodice = new THREE.Mesh(bodiceGeo, skirtMat);
+            bodice.position.y = 1.6;
+            dressGroup.add(bodice);
+
+            if(type === 'velvet' || type === 'royal') {
+                const laceGeo = new THREE.TorusGeometry(0.26, 0.02, 16, 100);
+                const laceMat = new THREE.MeshPhongMaterial({ color: 0xd4af37 });
+                const lace = new THREE.Mesh(laceGeo, laceMat);
+                lace.rotation.x = Math.PI/2;
+                lace.position.y = 1.85;
+                dressGroup.add(lace);
+            }
+
+            parts.dress = dressGroup;
+            queen.add(dressGroup);
+        }
+
+        function changeHair(type) {
+            if(parts.hair) queen.remove(parts.hair);
+            let color = 0x050505;
+            if(type === 'crimson') color = 0x660000;
+            if(type === 'platinum') color = 0xe5e5e5;
+
+            const hairGroup = new THREE.Group();
+            const hairMat = new THREE.MeshPhongMaterial({ color: color, shininess: 5 });
+           
+            const bunGeo = new THREE.SphereGeometry(0.25, 32, 32);
+            const bun = new THREE.Mesh(bunGeo, hairMat);
+            bun.position.y = 2.35;
+            hairGroup.add(bun);
+
+            const rollGeo = new THREE.TorusGeometry(0.15, 0.1, 16, 32);
+            const lRoll = new THREE.Mesh(rollGeo, hairMat);
+            lRoll.position.set(-0.15, 2.2, 0);
+            lRoll.rotation.y = Math.PI/2;
+            hairGroup.add(lRoll);
+
+            const rRoll = new THREE.Mesh(rollGeo, hairMat);
+            rRoll.position.set(0.15, 2.2, 0);
+            rRoll.rotation.y = Math.PI/2;
+            hairGroup.add(rRoll);
+
+            parts.hair = hairGroup;
+            queen.add(hairGroup);
+        }
+
+        function changeCrown(type) {
+            if(parts.crown) queen.remove(parts.crown);
+            const crownGroup = new THREE.Group();
+            const goldMat = new THREE.MeshPhongMaterial({ color: 0xd4af37, shininess: 100 });
+           
+            if(type === 'classic') {
+                const ringGeo = new THREE.TorusGeometry(0.12, 0.02, 16, 64);
+                const ring = new THREE.Mesh(ringGeo, goldMat);
+                ring.rotation.x = Math.PI/2;
+                crownGroup.add(ring);
+               
+                const heartGeo = new THREE.SphereGeometry(0.04, 16, 16);
+                for(let i=0; i<4; i++) {
+                    const h = new THREE.Mesh(heartGeo, new THREE.MeshPhongMaterial({color: 0xff0000}));
+                    const angle = (i/4) * Math.PI * 2;
+                    h.position.set(Math.cos(angle)*0.12, 0.08, Math.sin(angle)*0.12);
+                    crownGroup.add(h);
+                }
+            } else {
+                const tiaraGeo = new THREE.TorusGeometry(0.15, 0.015, 16, 100, Math.PI);
+                const tiara = new THREE.Mesh(tiaraGeo, goldMat);
+                tiara.rotation.x = -Math.PI/4;
+                crownGroup.add(tiara);
+            }
+
+            crownGroup.position.y = 2.55;
+            parts.crown = crownGroup;
+            queen.add(crownGroup);
+        }
+
+        // Interatividade
+        let isDragging = false;
+        let isPanning = false;
+        let prevMousePos = { x: 0, y: 0 };
+
+        window.addEventListener('mousedown', e => {
+            if(e.button === 0) isDragging = true;
+            if(e.button === 2) isPanning = true;
+        });
+
+        window.addEventListener('mouseup', () => { isDragging = false; isPanning = false; });
+        window.addEventListener('contextmenu', e => e.preventDefault());
+
+        window.addEventListener('mousemove', e => {
+            const delta = { x: e.offsetX - prevMousePos.x, y: e.offsetY - prevMousePos.y };
+            if(isDragging) queen.rotation.y += delta.x * 0.01;
+            if(isPanning) {
+                camera.position.y += delta.y * 0.005;
+                camera.position.x -= delta.x * 0.005;
+            }
+            prevMousePos = { x: e.offsetX, y: e.offsetY };
+        });
+
+        window.addEventListener('wheel', e => {
+            camera.position.z += e.deltaY * 0.005;
+            camera.position.z = Math.max(1.2, Math.min(5, camera.position.z));
+        });
+
+        function resetView() {
+            queen.rotation.set(0, 0, 0);
+            camera.position.set(0, 1.3, 2.5);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const t = clock.getElapsedTime();
+            queen.position.y = Math.sin(t * 0.5) * 0.03 + 0.1;
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        window.onload = init;
+    </script>
+</body>
+</html>

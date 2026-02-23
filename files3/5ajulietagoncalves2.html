@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>O Som do País das Maravilhas</title>
+   
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+   
+    <!-- MediaPipe Holistic (Deteta Rosto, Mãos e Corpo em simultâneo) -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700&family=Playfair+Display:ital@0;1&display=swap');
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #0b001a;
+            font-family: 'Playfair Display', serif;
+            color: #fff;
+        }
+
+        /* Animação do Vórtice / Toca do Coelho no fundo */
+        .vortex-bg {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 200vw;
+            height: 200vw;
+            transform: translate(-50%, -50%);
+            background: radial-gradient(circle, transparent 10%, #1a0033 40%, #0b001a 70%);
+            animation: spin 30s linear infinite;
+            z-index: -1;
+            pointer-events: none;
+            opacity: 0.8;
+        }
+
+        @keyframes spin {
+            0% { transform: translate(-50%, -50%) rotate(0deg); }
+            100% { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+
+        h1, h2, h3 {
+            font-family: 'Cinzel Decorative', cursive;
+        }
+
+        .glass-panel {
+            background: rgba(20, 0, 40, 0.6);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 100, 255, 0.3);
+            box-shadow: 0 0 20px rgba(255, 0, 255, 0.2);
+        }
+
+        /* O vídeo real fica escondido, usamos apenas o canvas para desenhar por cima */
+        video {
+            display: none;
+        }
+
+        /* Espelhar o canvas para funcionar como um espelho normal */
+        canvas {
+            transform: scaleX(-1);
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            filter: sepia(0.3) hue-rotate(280deg) saturate(1.5) brightness(0.9);
+        }
+
+        #start-screen {
+            transition: opacity 1s ease-in-out;
+        }
+
+        .magical-button {
+            background: linear-gradient(45deg, #8a2be2, #ff00ff);
+            background-size: 200% 200%;
+            animation: gradientMove 3s ease infinite;
+            transition: all 0.3s ease;
+        }
+       
+        .magical-button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 25px rgba(255, 0, 255, 0.6);
+        }
+
+        @keyframes gradientMove {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        #loading-text {
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 1; }
+        }
+    </style>
+</head>
+<body class="relative w-screen h-screen flex items-center justify-center">
+
+    <div class="vortex-bg"></div>
+
+    <!-- Canvas onde tudo é desenhado (Vídeo + Realidade Aumentada) -->
+    <video id="input_video" autoplay playsinline></video>
+    <canvas id="output_canvas" class="absolute top-0 left-0 w-full h-full -z-10"></canvas>
+
+    <!-- Interface (Instruções) -->
+    <div id="ui-layer" class="absolute top-4 left-4 p-4 glass-panel rounded-xl hidden flex-col gap-2 max-w-sm pointer-events-none">
+        <h2 class="text-2xl text-fuchsia-300 mb-2">Guia Mágico</h2>
+        <p class="text-sm"><span class="text-pink-400 font-bold">Mão Direita (♥):</span> Levanta e baixa para tocar a melodia (Agudos).</p>
+        <p class="text-sm"><span class="text-purple-400 font-bold">Mão Esquerda (♠):</span> Levanta e baixa para tocar os acordes (Graves).</p>
+        <p class="text-sm"><span class="text-cyan-400 font-bold">Rosto do Cheshire:</span> Abre a boca para invocar a "Loucura do Chapeleiro" (Efeito sonoro).</p>
+    </div>
+
+    <!-- Tela Inicial de Permissões e Carregamento -->
+    <div id="start-screen" class="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-50">
+        <div class="glass-panel p-10 rounded-3xl text-center max-w-lg mx-4">
+            <h1 class="text-4xl md:text-5xl text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-500 mb-6">
+                O Som do País das Maravilhas
+            </h1>
+            <p class="text-lg text-gray-300 mb-8">
+                Um instrumento musical controlado pelos seus movimentos. <br>
+                Prepare-se para descer pela toca do coelho.
+            </p>
+           
+            <button id="start-btn" class="magical-button text-white font-bold py-4 px-8 rounded-full text-xl w-full">
+                Entrar na Toca do Coelho
+            </button>
+           
+            <p id="loading-text" class="text-pink-400 mt-6 hidden">A invocar a magia (A carregar modelos MediaPipe)...</p>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. CONFIGURAÇÃO DE ÁUDIO MAGICO (Web Audio API) ---
+        let audioCtx;
+        let masterGain;
+        let delayNode;
+        let feedbackGain;
+
+        // Escala de Tons Inteiros (C4 a C6) para um som "onírico" e flutuante
+        const scaleLead = [261.63, 293.66, 329.63, 369.99, 415.30, 466.16, 523.25, 587.33, 659.25, 739.99, 830.61, 932.33, 1046.50];
+        // Escala para os graves (C2 a C4)
+        const scaleBass = [65.41, 73.42, 82.41, 92.50, 103.83, 116.54, 130.81, 146.83, 164.81, 185.00, 207.65, 233.08, 261.63];
+
+        class HandSynth {
+            constructor(type = 'sine', scale) {
+                this.scale = scale;
+                this.osc = audioCtx.createOscillator();
+                this.gain = audioCtx.createGain();
+               
+                // LFO para o efeito "Mad Hatter" (Vibrato Caótico)
+                this.lfo = audioCtx.createOscillator();
+                this.lfoGain = audioCtx.createGain();
+               
+                this.osc.type = type;
+                this.lfo.type = 'sawtooth';
+                this.lfo.frequency.value = 8; // Velocidade do vibrato
+
+                // Roteamento
+                this.lfo.connect(this.lfoGain);
+                this.lfoGain.connect(this.osc.frequency);
+               
+                this.osc.connect(this.gain);
+                this.gain.connect(delayNode); // Liga ao efeito de eco
+                this.gain.connect(masterGain);
+               
+                this.gain.gain.value = 0; // Começa silencioso
+                this.lfoGain.gain.value = 0; // Sem loucura ao início
+
+                this.osc.start();
+                this.lfo.start();
+                this.isPlaying = false;
+            }
+
+            update(yPos, madnessLevel) {
+                // Inverter Y (para que cima seja mais agudo) e garantir limites [0, 1]
+                const normalizedY = Math.max(0, Math.min(1, 1 - yPos));
+               
+                // Mapear para a escala musical
+                const noteIndex = Math.floor(normalizedY * (this.scale.length - 1));
+                const targetFreq = this.scale[noteIndex];
+
+                // Deslizar suavemente para a nova nota (Portamento)
+                this.osc.frequency.setTargetAtTime(targetFreq, audioCtx.currentTime, 0.1);
+
+                // Aplicar a "Loucura" (Mão do Gato de Cheshire abre a boca)
+                // Se a boca estiver aberta, adiciona vibrato pesado
+                this.lfoGain.gain.setTargetAtTime(madnessLevel * 100, audioCtx.currentTime, 0.1);
+
+                if (!this.isPlaying) {
+                    this.gain.gain.setTargetAtTime(0.3, audioCtx.currentTime, 0.05);
+                    this.isPlaying = true;
+                }
+            }
+
+            stop() {
+                if (this.isPlaying) {
+                    this.gain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
+                    this.isPlaying = false;
+                }
+            }
+        }
+
+        let rightHandSynth;
+        let leftHandSynth;
+
+        function initAudio() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+           
+            masterGain = audioCtx.createGain();
+            masterGain.gain.value = 0.5;
+            masterGain.connect(audioCtx.destination);
+
+            // Efeito de Eco Mágico (Delay)
+            delayNode = audioCtx.createDelay();
+            delayNode.delayTime.value = 0.4;
+           
+            feedbackGain = audioCtx.createGain();
+            feedbackGain.gain.value = 0.4; // Quantidade de eco
+           
+            delayNode.connect(feedbackGain);
+            feedbackGain.connect(delayNode);
+            delayNode.connect(masterGain);
+
+            // Criar Sintetizadores
+            rightHandSynth = new HandSynth('triangle', scaleLead);
+            leftHandSynth = new HandSynth('sine', scaleBass);
+        }
+
+        // --- 2. CONFIGURAÇÃO DE REALIDADE AUMENTADA (MediaPipe) ---
+        const videoElement = document.getElementById('input_video');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const startBtn = document.getElementById('start-btn');
+        const loadingText = document.getElementById('loading-text');
+
+        // Índices de pontos faciais para o sorriso do Gato de Cheshire (Lábio inferior e superior expandido)
+        const CHESHIRE_SMILE_POINTS = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291];
+
+        function onResults(results) {
+            // Ajustar tamanho do canvas
+            canvasElement.width = window.innerWidth;
+            canvasElement.height = window.innerHeight;
+
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+            // Desenhar o vídeo de fundo (Espelhado no CSS, por isso desenhamos normal aqui)
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+            let madnessLevel = 0;
+
+            // --- PROCESSAR ROSTO (BOCA PARA O EFEITO DE LOUCURA) ---
+            if (results.faceLandmarks) {
+                const face = results.faceLandmarks;
+                // Calcular distância entre o lábio superior (13) e inferior (14)
+                const upperLip = face[13];
+                const lowerLip = face[14];
+               
+                const mouthOpenness = Math.hypot(upperLip.x - lowerLip.x, upperLip.y - lowerLip.y);
+               
+                // Se a boca abrir mais do que um certo limiar, começa o efeito
+                if (mouthOpenness > 0.03) {
+                    madnessLevel = Math.min(1, (mouthOpenness - 0.03) * 20);
+                }
+
+                // EFEITO VISUAL: Desenhar o Sorriso Gigante do Gato de Cheshire
+                canvasCtx.beginPath();
+                canvasCtx.lineWidth = 10 + (madnessLevel * 10);
+                canvasCtx.strokeStyle = 'rgba(255, 0, 255, 0.8)';
+                canvasCtx.shadowColor = '#ff00ff';
+                canvasCtx.shadowBlur = 20;
+
+                CHESHIRE_SMILE_POINTS.forEach((index, i) => {
+                    const pt = face[index];
+                    const x = pt.x * canvasElement.width;
+                    const y = pt.y * canvasElement.height;
+                    if (i === 0) canvasCtx.moveTo(x, y);
+                    else canvasCtx.lineTo(x, y);
+                });
+                canvasCtx.stroke();
+                canvasCtx.shadowBlur = 0; // Reset
+            }
+
+            // A lógica de espelho inverte a esquerda/direita fisicamente na imagem.
+            // Para o utilizador, a SUA mão direita aparece no lado direito do ecrã espelhado.
+            // O MediaPipe devolve rightHandLandmarks e leftHandLandmarks com base na mão física da pessoa.
+
+            // --- PROCESSAR MÃO DIREITA (Física da pessoa) -> Melodia ---
+            if (results.rightHandLandmarks && rightHandSynth) {
+                const hand = results.rightHandLandmarks;
+                const indexFingerTip = hand[8]; // Ponto da ponta do dedo indicador
+               
+                // Atualizar o áudio
+                rightHandSynth.update(indexFingerTip.y, madnessLevel);
+
+                // EFEITO VISUAL: Desenhar um Coração ♥ flutuante
+                drawFloatingSuit(indexFingerTip.x * canvasElement.width, indexFingerTip.y * canvasElement.height, '♥', '#ff3366');
+            } else if (rightHandSynth) {
+                rightHandSynth.stop();
+            }
+
+            // --- PROCESSAR MÃO ESQUERDA (Física da pessoa) -> Baixo ---
+            if (results.leftHandLandmarks && leftHandSynth) {
+                const hand = results.leftHandLandmarks;
+                const indexFingerTip = hand[8];
+               
+                // Atualizar o áudio
+                leftHandSynth.update(indexFingerTip.y, madnessLevel);
+
+                // EFEITO VISUAL: Desenhar uma Espada ♠ flutuante
+                drawFloatingSuit(indexFingerTip.x * canvasElement.width, indexFingerTip.y * canvasElement.height, '♠', '#33ccff');
+            } else if (leftHandSynth) {
+                leftHandSynth.stop();
+            }
+
+            canvasCtx.restore();
+        }
+
+        // Função auxiliar para desenhar naipes de cartas nas pontas dos dedos
+        function drawFloatingSuit(x, y, text, color) {
+            canvasCtx.font = "40px 'Cinzel Decorative'";
+            canvasCtx.fillStyle = color;
+            canvasCtx.shadowColor = color;
+            canvasCtx.shadowBlur = 15;
+            canvasCtx.textAlign = "center";
+            canvasCtx.textBaseline = "middle";
+            canvasCtx.fillText(text, x, y - 30);
+           
+            // Desenhar um pequeno rasto luminoso
+            canvasCtx.beginPath();
+            canvasCtx.arc(x, y, 8, 0, 2 * Math.PI);
+            canvasCtx.fillStyle = 'white';
+            canvasCtx.fill();
+        }
+
+        // --- 3. INICIALIZAÇÃO ---
+        const holistic = new Holistic({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`;
+        }});
+
+        holistic.setOptions({
+            modelComplexity: 1,
+            smoothLandmarks: true,
+            minDetectionConfidence: 0.6,
+            minTrackingConfidence: 0.6
+        });
+        holistic.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await holistic.send({image: videoElement});
+            },
+            width: 1280,
+            height: 720
+        });
+
+        // Lidar com o clique no botão inicial
+        startBtn.addEventListener('click', async () => {
+            startBtn.classList.add('hidden');
+            loadingText.classList.remove('hidden');
+
+            try {
+                // Iniciar Áudio (Requer interação do utilizador)
+                initAudio();
+                if(audioCtx.state === 'suspended') {
+                    await audioCtx.resume();
+                }
+
+                // Iniciar Câmara e Modelos
+                await camera.start();
+
+                // Esconder tela inicial e mostrar UI
+                document.getElementById('start-screen').style.opacity = '0';
+                setTimeout(() => {
+                    document.getElementById('start-screen').style.display = 'none';
+                    document.getElementById('ui-layer').classList.remove('hidden');
+                    document.getElementById('ui-layer').classList.add('flex');
+                }, 1000);
+
+            } catch (error) {
+                console.error(error);
+                loadingText.innerText = "Erro ao aceder à câmara. Por favor, permita o acesso e recarregue a página.";
+                loadingText.classList.replace('text-pink-400', 'text-red-500');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Alice: Fuga dos Planetas</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Quicksand:wght@500&display=swap');
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #1a0b2e;
+            font-family: 'Quicksand', sans-serif;
+            touch-action: none; /* Impede zoom no telemóvel */
+        }
+
+        #gameCanvas {
+            display: block;
+            width: 100%;
+            height: 100vh;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .hud {
+            padding: 20px;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            font-family: 'Cinzel', serif;
+            font-size: 24px;
+            text-shadow: 0 0 10px #bd00ff;
+        }
+
+        #startScreen, #gameOverScreen, #highScoreScreen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.85);
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            color: white;
+            border: 2px solid #bd00ff;
+            pointer-events: auto;
+            box-shadow: 0 0 30px rgba(189, 0, 255, 0.5);
+            min-width: 280px;
+            z-index: 10;
+        }
+
+        h1 {
+            font-family: 'Cinzel', serif;
+            color: #ff7af6;
+            margin-bottom: 10px;
+            font-size: 32px;
+        }
+
+        p {
+            margin-bottom: 20px;
+            font-size: 18px;
+            line-height: 1.5;
+        }
+
+        button {
+            background: linear-gradient(45deg, #bd00ff, #ff007b);
+            border: none;
+            padding: 15px 40px;
+            color: white;
+            font-size: 20px;
+            font-family: 'Cinzel', serif;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: transform 0.2s;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            margin: 10px 0;
+            width: 100%;
+            max-width: 300px;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+        }
+
+        /* Novos estilos para os botões do Game Over */
+        .btn-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            align-items: center;
+            width: 100%;
+        }
+
+        .btn-secondary {
+            background: linear-gradient(45deg, #3498db, #8e44ad) !important; /* Azul/Roxo */
+            font-size: 18px;
+            padding: 12px 30px;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .keys {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+       
+        .key {
+            background: #fff;
+            color: #000;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        /* Lista de Pontuações */
+        #highScoresList {
+            list-style: none;
+            padding: 0;
+            margin: 20px 0;
+            font-family: 'Cinzel', serif;
+            font-size: 22px;
+            text-align: left;
+            width: 100%;
+        }
+
+        #highScoresList li {
+            padding: 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        #highScoresList li:first-child {
+            color: #f1c40f; /* Ouro para o primeiro */
+            font-weight: bold;
+        }
+
+        /* Efeitos visuais para powerups */
+        .effect-text {
+            position: absolute;
+            color: #fff;
+            font-weight: bold;
+            font-size: 20px;
+            pointer-events: none;
+            animation: floatUp 1s ease-out forwards;
+            text-shadow: 0 0 5px #000;
+        }
+
+        @keyframes floatUp {
+            0% { transform: translateY(0); opacity: 1; }
+            100% { transform: translateY(-50px); opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <div class="hud">
+            <span id="scoreDisplay">Pontos: 0</span>
+            <span id="statusDisplay"></span>
+        </div>
+    </div>
+
+    <div id="startScreen">
+        <h1>Alice: Fuga dos Planetas</h1>
+        <p>A Alice caiu na toca do coelho e foi parar ao Espaço das Maravilhas!</p>
+        <p>Desvia dos Planetas e apanha itens.</p>
+        <div class="keys">
+            <span class="key">←</span>
+            <span class="key">→</span>
+            <span>ou Toque</span>
+        </div>
+        <div class="btn-group">
+            <button onclick="startGame()">Começar Aventura</button>
+            <button onclick="showHighScores()" class="btn-secondary">🏆 Melhores Pontuações</button>
+        </div>
+    </div>
+
+    <div id="highScoreScreen" class="hidden">
+        <h1>Top 5 Viajantes</h1>
+        <ul id="highScoresList">
+            <!-- Lista preenchida via JS -->
+        </ul>
+        <button onclick="closeHighScores()" class="btn-secondary">Voltar</button>
+    </div>
+
+    <div id="gameOverScreen" class="hidden">
+        <h1>Fim da Viagem</h1>
+        <p>Oh não! Bateste num planeta.</p>
+        <p id="finalScore">Pontuação Final: 0</p>
+        <div class="btn-group">
+            <button onclick="resetGame()">Tentar Novamente</button>
+            <button onclick="goToStartScreen()" class="btn-secondary">Voltar ao Início</button>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+       
+        // Elementos da UI
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const statusDisplay = document.getElementById('statusDisplay');
+        const startScreen = document.getElementById('startScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const highScoreScreen = document.getElementById('highScoreScreen');
+        const finalScoreDisplay = document.getElementById('finalScore');
+        const highScoresList = document.getElementById('highScoresList');
+
+        // Estado do Jogo
+        let gameActive = false;
+        let score = 0;
+        let frames = 0;
+        let speedMultiplier = 1; // Para aumentar dificuldade
+        let gameSpeed = 3; // Velocidade base
+       
+        // Estado Discoteca
+        let isDisco = false;
+        let discoTimer = 0;
+
+        // Controlos
+        let keys = { ArrowLeft: false, ArrowRight: false };
+        let touchX = null;
+
+        // Alice
+        const alice = {
+            x: 0,
+            y: 0,
+            radius: 20,
+            originalRadius: 20,
+            color: '#3498db',
+            speed: 7,
+            isShrunk: false,
+            shrinkTimer: 0,
+            isGiant: false, // Novo estado
+            giantTimer: 0   // Temporizador para o tamanho gigante
+        };
+
+        // Entidades
+        let planets = [];
+        let items = [];
+        let particles = [];
+        let stars = [];
+
+        // --- Firebase Cloud Storage (Nuvem) ---
+        let db = null;
+        let auth = null;
+        let currentUser = null;
+        let appId = 'default-app-id';
+        let globalHighScores = [];
+
+        try {
+            if (typeof __firebase_config !== 'undefined') {
+                const firebaseConfig = JSON.parse(__firebase_config);
+                const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+                appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+                const initAuth = async () => {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                };
+                initAuth();
+
+                onAuthStateChanged(auth, (user) => {
+                    currentUser = user;
+                    if (user) {
+                        listenToHighScores();
+                    }
+                });
+            }
+        } catch (error) {
+            console.error("Erro a inicializar a base de dados:", error);
+        }
+
+        function listenToHighScores() {
+            if (!currentUser || !db) return;
+            const scoresRef = collection(db, 'artifacts', appId, 'public', 'data', 'highscores');
+            onSnapshot(scoresRef, (snapshot) => {
+                let scores = [];
+                snapshot.forEach(doc => {
+                    scores.push(doc.data().score);
+                });
+                // Ordenar em memória (Regra 2 - sem usar orderBy no Firebase)
+                scores.sort((a, b) => b - a);
+                globalHighScores = scores.slice(0, 5); // Ficar só com os Top 5
+               
+                // Atualizar UI se o ecrã estiver aberto
+                if (!highScoreScreen.classList.contains('hidden')) {
+                    renderHighScores();
+                }
+            }, (error) => {
+                console.error("Erro a obter pontuações:", error);
+            });
+        }
+
+        // Configuração Inicial
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            alice.y = canvas.height - 100;
+            alice.x = canvas.width / 2;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Geração de Estrelas de Fundo
+        function createStars() {
+            stars = [];
+            for(let i=0; i<100; i++) {
+                stars.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    size: Math.random() * 2,
+                    speed: Math.random() * 0.5 + 0.1
+                });
+            }
+        }
+
+        // --- Classes/Objetos ---
+
+        class Planet {
+            constructor() {
+                this.radius = Math.random() * 40 + 30; // 30 a 70
+                this.x = Math.random() * (canvas.width - this.radius * 2) + this.radius;
+                this.y = -100;
+                this.speed = (Math.random() * 2 + 2) * speedMultiplier;
+               
+                // Tipos de Planeta (Cores)
+                const types = [
+                    { c1: '#e74c3c', c2: '#c0392b' }, // Vermelho (Rainha)
+                    { c1: '#8e44ad', c2: '#2c3e50' }, // Roxo (Gato)
+                    { c1: '#27ae60', c2: '#16a085' }  // Verde (Lagarta)
+                ];
+                this.type = types[Math.floor(Math.random() * types.length)];
+                this.angle = Math.random() * Math.PI * 2;
+            }
+
+            update() {
+                this.y += this.speed;
+                this.angle += 0.01;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+               
+                // Desenhar Planeta
+                const grad = ctx.createRadialGradient(-10, -10, this.radius * 0.2, 0, 0, this.radius);
+                grad.addColorStop(0, this.type.c1);
+                grad.addColorStop(1, this.type.c2);
+               
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = grad;
+                ctx.fill();
+
+                // Crateras
+                ctx.fillStyle = 'rgba(0,0,0,0.2)';
+                ctx.beginPath();
+                ctx.arc(this.radius * 0.3, this.radius * 0.3, this.radius * 0.25, 0, Math.PI * 2);
+                ctx.fill();
+               
+                // Anéis (às vezes)
+                if (this.radius > 50) {
+                    ctx.beginPath();
+                    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                    ctx.lineWidth = 3;
+                    ctx.ellipse(0, 0, this.radius * 1.4, this.radius * 0.4, -0.5, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+
+                ctx.restore();
+            }
+        }
+
+        class Item {
+            constructor() {
+                this.radius = 15;
+                this.x = Math.random() * (canvas.width - 50) + 25;
+                this.y = -50;
+                this.speed = 3;
+                this.wobble = Math.random() * Math.PI * 2;
+               
+                // Sistema de raridade (Alterado para DISCOTECA)
+                const rand = Math.random();
+
+                if (isDisco) {
+                    // No modo discoteca, chovem corações!
+                    if (rand < 0.45) {
+                        this.type = 'red_heart'; // 45% chance
+                    } else if (rand < 0.90) {
+                        this.type = 'green_heart'; // 45% chance (CUIDADO!)
+                    } else {
+                        this.type = 'tea'; // 10%
+                    }
+                } else {
+                    // Modo Normal
+                    if (rand < 0.03) {
+                        this.type = 'red_heart'; // 3% de chance (Muito Raro)
+                    } else if (rand < 0.15) {
+                        this.type = 'green_heart'; // 12% de chance (Armadilha)
+                    } else if (rand < 0.35) {
+                        this.type = 'potion'; // 20%
+                    } else if (rand < 0.50) {
+                        this.type = 'watch'; // 15%
+                    } else {
+                        this.type = 'tea'; // Resto (Comum)
+                    }
+                }
+            }
+
+            update() {
+                this.y += this.speed;
+                this.wobble += 0.05;
+                this.x += Math.sin(this.wobble) * 0.5;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+               
+                // Brilho
+                ctx.shadowColor = '#fff';
+                ctx.shadowBlur = 10;
+
+                if (this.type === 'potion') {
+                    // Garrafa
+                    ctx.fillStyle = '#3498db';
+                    ctx.fillRect(-5, -5, 10, 15);
+                    ctx.beginPath();
+                    ctx.arc(0, 10, 8, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#fff';
+                    ctx.fillRect(-3, -8, 6, 3);
+                    ctx.font = "12px Arial";
+                    ctx.fillText("🧪", -8, 5);
+                } else if (this.type === 'watch') {
+                    // Relógio
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 12, 0, Math.PI*2);
+                    ctx.fillStyle = '#f1c40f';
+                    ctx.fill();
+                    ctx.strokeStyle = '#d35400';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(0,0);
+                    ctx.lineTo(0, -8);
+                    ctx.moveTo(0,0);
+                    ctx.lineTo(5, 5);
+                    ctx.stroke();
+                } else if (this.type === 'tea') {
+                    // Chávena
+                    ctx.font = "24px Arial";
+                    ctx.fillText("☕", -12, 8);
+                } else if (this.type === 'red_heart' || this.type === 'green_heart') {
+                    // Coração
+                    ctx.fillStyle = this.type === 'red_heart' ? '#ff0000' : '#00ff00';
+                    ctx.beginPath();
+                    // Desenho do coração
+                    ctx.moveTo(0, 5);
+                    ctx.bezierCurveTo(0, 2, -5, -5, -10, -5);
+                    ctx.bezierCurveTo(-20, -5, -20, 10, 0, 20);
+                    ctx.bezierCurveTo(20, 10, 20, -5, 10, -5);
+                    ctx.bezierCurveTo(5, -5, 0, 2, 0, 5);
+                    ctx.fill();
+                    // Brilho extra para o vermelho
+                    if(this.type === 'red_heart') {
+                        ctx.strokeStyle = '#fff';
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    }
+                }
+
+                ctx.restore();
+            }
+        }
+
+        // --- Funções do Jogo ---
+
+        function spawnEntities() {
+            // Dificuldade aumenta com o tempo
+            const spawnRate = Math.max(30, 100 - Math.floor(score / 50));
+           
+            if (frames % spawnRate === 0) {
+                planets.push(new Planet());
+            }
+
+            // No modo discoteca, aparecem itens MUITO mais depressa (a cada 20 frames)
+            let itemRate = isDisco ? 20 : 250;
+           
+            if (frames % itemRate === 0) {
+                items.push(new Item());
+            }
+        }
+
+        function createFloatingText(text, x, y, color) {
+            const div = document.createElement('div');
+            div.className = 'effect-text';
+            div.innerText = text;
+            div.style.left = x + 'px';
+            div.style.top = y + 'px';
+            div.style.color = color || 'white';
+            document.body.appendChild(div);
+            setTimeout(() => div.remove(), 1000);
+        }
+
+        function applyPowerUp(type, x, y) {
+            if (type === 'potion') {
+                alice.isGiant = false; // Cancela gigante se beber poção
+                alice.isShrunk = true;
+                alice.radius = 10;
+                alice.shrinkTimer = 300;
+                createFloatingText("Mini Alice!", x, y, "#3498db");
+                statusDisplay.innerText = "Efeito: Pequena!";
+            } else if (type === 'watch') {
+                speedMultiplier = 0.5;
+                setTimeout(() => { speedMultiplier = 1; }, 3000);
+                createFloatingText("Tempo Lento...", x, y, "#f1c40f");
+            } else if (type === 'tea') {
+                score += 100;
+                createFloatingText("Delicioso! +100", x, y, "#2ecc71");
+            } else if (type === 'green_heart') {
+                // Efeito Gigante (Aumentado!)
+                alice.isShrunk = false; // Cancela encolhimento
+                alice.isGiant = true;
+                alice.radius = 60; // AGORA É ENORME (era 35)
+                alice.giantTimer = 300; // 5 segundos
+                createFloatingText("SUPER GIGANTE!", x, y, "#00ff00");
+                statusDisplay.innerText = "Cuidado: ENORME!";
+            } else if (type === 'red_heart') {
+                // Efeito Mil Pontos (Bom)
+                score += 1000;
+                createFloatingText("JACKPOT! +1000", x, y, "#ff0000");
+            }
+        }
+
+        function startDisco() {
+            isDisco = true;
+            discoTimer = 600; // 10 segundos de festa
+            createFloatingText("MODO DISCOTECA!!!", canvas.width/2 - 100, canvas.height/2, "#ff00ff");
+        }
+
+        function endDisco() {
+            isDisco = false;
+            createFloatingText("Fim da Festa...", canvas.width/2 - 50, canvas.height/2, "#fff");
+        }
+
+        function update() {
+            if (!gameActive) return;
+
+            frames++;
+            score++;
+            scoreDisplay.innerText = `Pontos: ${score}`;
+
+            // Lógica para ativar o modo Discoteca aleatoriamente
+            // Chance rara (aprox 1 vez a cada 40-50 segundos) e só depois de 500 pontos
+            if (!isDisco && score > 500 && Math.random() < 0.0005) {
+                startDisco();
+            }
+
+            if (isDisco) {
+                discoTimer--;
+                if (discoTimer <= 0) {
+                    endDisco();
+                }
+            }
+
+            // Movimento da Alice
+            if (keys.ArrowLeft) alice.x -= alice.speed;
+            if (keys.ArrowRight) alice.x += alice.speed;
+
+            // Touch
+            if (touchX !== null) {
+                if (touchX < canvas.width / 2) alice.x -= alice.speed;
+                else alice.x += alice.speed;
+            }
+
+            // Limites da Alice
+            if (alice.x < alice.radius) alice.x = alice.radius;
+            if (alice.x > canvas.width - alice.radius) alice.x = canvas.width - alice.radius;
+
+            // Lógica do encolhimento e crescimento
+            if (alice.isShrunk) {
+                alice.shrinkTimer--;
+                if (alice.shrinkTimer <= 0) {
+                    alice.isShrunk = false;
+                    alice.radius = alice.originalRadius;
+                    statusDisplay.innerText = "";
+                    createFloatingText("Tamanho Normal!", alice.x, alice.y);
+                }
+            } else if (alice.isGiant) {
+                alice.giantTimer--;
+                if (alice.giantTimer <= 0) {
+                    alice.isGiant = false;
+                    alice.radius = alice.originalRadius;
+                    statusDisplay.innerText = "";
+                    createFloatingText("Ufa! Normal.", alice.x, alice.y);
+                }
+            }
+
+            spawnEntities();
+
+            // Atualizar Estrelas
+            stars.forEach(star => {
+                star.y += star.speed * (speedMultiplier === 0.5 ? 0.2 : 1); // Estrelas abrandam menos
+                if (star.y > canvas.height) {
+                    star.y = 0;
+                    star.x = Math.random() * canvas.width;
+                }
+            });
+
+            // Atualizar Planetas
+            for (let i = planets.length - 1; i >= 0; i--) {
+                let p = planets[i];
+                p.update();
+
+                // Colisão Alice vs Planeta
+                const dx = alice.x - p.x;
+                const dy = alice.y - p.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < alice.radius + p.radius - 5) { // -5 para dar uma chance ao jogador
+                    gameOver();
+                }
+
+                if (p.y > canvas.height + 100) {
+                    planets.splice(i, 1);
+                }
+            }
+
+            // Atualizar Itens
+            for (let i = items.length - 1; i >= 0; i--) {
+                let item = items[i];
+                item.update();
+
+                // Colisão Alice vs Item
+                const dx = alice.x - item.x;
+                const dy = alice.y - item.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < alice.radius + item.radius) {
+                    applyPowerUp(item.type, item.x, item.y);
+                    items.splice(i, 1);
+                } else if (item.y > canvas.height + 50) {
+                    items.splice(i, 1);
+                }
+            }
+        }
+
+        function draw() {
+            // Limpar e desenhar fundo COLORIDO E DINÂMICO
+            let hue;
+           
+            if (isDisco) {
+                // No modo discoteca, as cores mudam muito depressa!
+                hue = (frames * 15) % 360;
+            } else {
+                // Modo normal, calmo
+                hue = (frames * 0.2) % 360;
+            }
+
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            gradient.addColorStop(0, `hsl(${hue}, 70%, 15%)`);       // Topo
+            gradient.addColorStop(1, `hsl(${hue + 60}, 70%, 25%)`);  // Fundo
+
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Se estiver em modo discoteca, adiciona luzes estroboscópicas aleatórias
+            if (isDisco && frames % 5 === 0) {
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+
+            // Desenhar Estrelas
+            ctx.fillStyle = '#ffffff';
+            stars.forEach(star => {
+                ctx.globalAlpha = Math.random() * 0.5 + 0.3;
+                ctx.beginPath();
+                ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.globalAlpha = 1.0;
+
+            // Desenhar Planetas
+            planets.forEach(p => p.draw());
+
+            // Desenhar Itens
+            items.forEach(i => i.draw());
+
+            // Desenhar Alice
+            drawAlice();
+
+            if (gameActive) {
+                requestAnimationFrame(() => {
+                    update();
+                    draw();
+                });
+            }
+        }
+
+        function drawAlice() {
+            const x = alice.x;
+            const y = alice.y;
+            const r = alice.radius;
+
+            ctx.save();
+            ctx.translate(x, y);
+
+            // Sombra/Aura
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = alice.isShrunk ? '#3498db' : 'rgba(255,255,255,0.5)';
+
+            // Vestido (Corpo)
+            ctx.fillStyle = '#3498db';
+            ctx.beginPath();
+            ctx.moveTo(0, -r);
+            ctx.lineTo(r, r);
+            ctx.lineTo(-r, r);
+            ctx.fill();
+
+            // Avental Branco
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.moveTo(0, -r/2);
+            ctx.lineTo(r/2, r);
+            ctx.lineTo(-r/2, r);
+            ctx.fill();
+
+            // Cabeça
+            ctx.fillStyle = '#f1c27d'; // Pele
+            ctx.beginPath();
+            ctx.arc(0, -r, r * 0.7, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Cabelo
+            ctx.fillStyle = '#f1c40f'; // Loiro
+            ctx.beginPath();
+            ctx.arc(0, -r - 2, r * 0.75, Math.PI, Math.PI * 2.2); // Topo
+            ctx.fill();
+            // Lado esquerdo cabelo
+            ctx.beginPath();
+            ctx.ellipse(-r*0.6, -r, r*0.3, r*0.6, 0.2, 0, Math.PI*2);
+            ctx.fill();
+            // Lado direito cabelo
+            ctx.beginPath();
+            ctx.ellipse(r*0.6, -r, r*0.3, r*0.6, -0.2, 0, Math.PI*2);
+            ctx.fill();
+
+            // Laço
+            ctx.fillStyle = '#000';
+            ctx.beginPath();
+            ctx.arc(0, -r * 1.6, r * 0.2, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        // --- Gestão de High Scores ---
+        async function saveScore(newScore) {
+            // Guardar localmente como fallback rápido
+            let scores = JSON.parse(localStorage.getItem('alice_scores')) || [];
+            scores.push(newScore);
+            scores.sort((a, b) => b - a); // Ordenar decrescente
+            scores = scores.slice(0, 5); // Manter apenas o top 5
+            localStorage.setItem('alice_scores', JSON.stringify(scores));
+
+            // Guardar na Nuvem (Firebase) para sempre
+            if (currentUser && db && newScore > 0) {
+                try {
+                    const scoresRef = collection(db, 'artifacts', appId, 'public', 'data', 'highscores');
+                    await addDoc(scoresRef, {
+                        score: newScore,
+                        timestamp: new Date().toISOString(),
+                        userId: currentUser.uid
+                    });
+                } catch (e) {
+                    console.error("Erro a guardar na nuvem:", e);
+                }
+            }
+        }
+
+        function renderHighScores() {
+            highScoresList.innerHTML = '';
+           
+            // Mostrar os da Nuvem se existirem, senão usar os locais
+            let displayScores = globalHighScores.length > 0 ? globalHighScores : (JSON.parse(localStorage.getItem('alice_scores')) || []);
+
+            if (displayScores.length === 0) {
+                highScoresList.innerHTML = '<li style="justify-content:center">Ainda sem registos!</li>';
+            } else {
+                displayScores.forEach((s, index) => {
+                    let medal = '';
+                    if (index === 0) medal = '🥇';
+                    else if (index === 1) medal = '🥈';
+                    else if (index === 2) medal = '🥉';
+                   
+                    highScoresList.innerHTML += `<li><span>${medal} ${index + 1}.</span> <span>${s} Pontos</span></li>`;
+                });
+            }
+        }
+
+        function showHighScores() {
+            startScreen.classList.add('hidden');
+            highScoreScreen.classList.remove('hidden');
+            renderHighScores();
+        }
+
+        function closeHighScores() {
+            highScoreScreen.classList.add('hidden');
+            startScreen.classList.remove('hidden');
+        }
+
+        function startGame() {
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+            gameActive = true;
+            score = 0;
+            frames = 0;
+            speedMultiplier = 1;
+           
+            // Reiniciar estados
+            isDisco = false;
+            discoTimer = 0;
+
+            planets = [];
+            items = [];
+            alice.x = canvas.width / 2;
+            alice.isShrunk = false;
+            alice.shrinkTimer = 0;
+            alice.isGiant = false; // Reset gigante
+            alice.radius = alice.originalRadius;
+           
+            createStars();
+            draw();
+        }
+
+        function gameOver() {
+            gameActive = false;
+            finalScoreDisplay.innerText = "Pontuação Final: " + score;
+            saveScore(score); // Salvar pontuação
+            gameOverScreen.classList.remove('hidden');
+        }
+
+        function resetGame() {
+            startGame();
+        }
+
+        function goToStartScreen() {
+            gameOverScreen.classList.add('hidden');
+            startScreen.classList.remove('hidden');
+           
+            // Limpar o ecrã para o menu principal ficar bonito
+            planets = [];
+            items = [];
+            alice.x = canvas.width / 2;
+            isDisco = false;
+            frames = 0;
+           
+            createStars();
+            draw(); // Desenha um frame estático
+        }
+
+        // Event Listeners
+        window.addEventListener('keydown', e => {
+            if (keys.hasOwnProperty(e.code)) keys[e.code] = true;
+        });
+
+        window.addEventListener('keyup', e => {
+            if (keys.hasOwnProperty(e.code)) keys[e.code] = false;
+        });
+
+        // Touch Controlls
+        window.addEventListener('touchstart', e => {
+            touchX = e.touches[0].clientX;
+        });
+        window.addEventListener('touchmove', e => {
+            touchX = e.touches[0].clientX;
+            e.preventDefault(); // Evita scroll
+        }, { passive: false });
+        window.addEventListener('touchend', () => {
+            touchX = null;
+        });
+
+        // Expor funções globalmente para o HTML (devido ao uso do script type="module")
+        window.startGame = startGame;
+        window.showHighScores = showHighScores;
+        window.closeHighScores = closeHighScores;
+        window.resetGame = resetGame;
+        window.goToStartScreen = goToStartScreen;
+
+        // Iniciar fundo estático
+        createStars();
+        draw();
+
+    </script>
+</body>
+</html>

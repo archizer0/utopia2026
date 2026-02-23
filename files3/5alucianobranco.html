@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice Parkour: Corrida Infinita</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background-color: #0f0c29;
+            color: white;
+            font-family: 'Segoe UI', sans-serif;
+            overflow: hidden;
+        }
+        #game-container {
+            position: relative;
+            box-shadow: 0 0 30px rgba(233, 69, 96, 0.4);
+            border: 4px solid #fff;
+            background: #24243e;
+        }
+        canvas {
+            display: block;
+            background: linear-gradient(to bottom, #1a2a6c, #b21f1f, #fdbb2d);
+        }
+        .ui {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            background: rgba(0,0,0,0.6);
+            padding: 10px;
+            border-radius: 8px;
+            pointer-events: none;
+            min-width: 150px;
+        }
+        .screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(15, 12, 41, 0.9);
+            text-align: center;
+            z-index: 10;
+        }
+        h2 { color: #e94560; font-size: 2.5rem; margin-bottom: 10px; }
+        button {
+            padding: 12px 30px;
+            font-size: 1.2rem;
+            background: #e94560;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        button:hover { background: #ff5e78; transform: scale(1.1); }
+        .score-val { color: #fdbb2d; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <canvas id="parkourCanvas"></canvas>
+       
+        <div class="ui">
+            <div id="dist-display">Distância: <span class="score-val" id="score-val">0</span>m</div>
+            <div id="powerup-display">Modo: Normal</div>
+        </div>
+
+        <div id="start-screen" class="screen">
+            <h2>ALICE: CORRIDA INFINITA</h2>
+            <p>Corre para a direita, evita os guardas e sobrevive!</p>
+            <button onclick="startGame()">Começar Corrida</button>
+            <p style="font-size: 0.8rem; margin-top: 15px;">SETAS/WASD para mover e saltar (Salto Duplo disponível)</p>
+        </div>
+
+        <div id="end-screen" class="screen" style="display: none;">
+            <h2 id="end-title">Fim da Linha</h2>
+            <p id="end-message"></p>
+            <p>Distância final: <span class="score-val" id="final-score">0</span>m</p>
+            <button onclick="startGame()">Tentar Novamente</button>
+        </div>
+    </div>
+
+<script>
+    const canvas = document.getElementById('parkourCanvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 800;
+    canvas.height = 500;
+
+    // Constantes Físicas
+    const GRAVITY = 0.6;
+    const JUMP_FORCE = -12;
+    const SPEED = 6;
+    const CHUNK_SIZE = 500;
+
+    let gameState = 'START';
+    let cameraX = 0;
+    let lastChunkX = 0;
+    let score = 0;
+
+    let player = {
+        x: 100, y: 300, w: 30, h: 50,
+        vx: 0, vy: 0,
+        grounded: false,
+        jumpCount: 0,
+        size: 'normal',
+        sizeTimer: 0
+    };
+
+    let platforms = [];
+    let enemies = [];
+    let items = [];
+
+    function generateChunk(xOffset) {
+        // Garantir que as plataformas não fiquem muito juntas
+        const numPlatforms = 2 + Math.floor(Math.random() * 2);
+        let lastX = xOffset;
+
+        for(let i = 0; i < numPlatforms; i++) {
+            let pW = 100 + (Math.random() * 80);
+            let pX = lastX + 80 + (Math.random() * 120); // Distância mínima horizontal
+            let pY = 180 + (Math.random() * 200);
+           
+            // 40% de chance de ser uma plataforma móvel
+            let isMoving = Math.random() > 0.6;
+           
+            platforms.push({
+                x: pX,
+                y: pY,
+                w: pW,
+                h: 20,
+                isMoving: isMoving,
+                startY: pY,
+                moveRange: 60 + Math.random() * 60,
+                moveSpeed: 0.02 + Math.random() * 0.03,
+                time: Math.random() * Math.PI * 2
+            });
+
+            lastX = pX + pW;
+
+            // Inimigos em plataformas fixas
+            if (!isMoving && Math.random() > 0.5) {
+                enemies.push({
+                    x: pX,
+                    y: pY - 30,
+                    w: 30, h: 30,
+                    startX: pX,
+                    range: pW - 30,
+                    vx: 2 + (score / 1500),
+                    offset: 0
+                });
+            }
+        }
+
+        // Itens
+        if (Math.random() > 0.6) {
+            items.push({
+                x: xOffset + 250,
+                y: 150 + Math.random() * 150,
+                type: Math.random() > 0.5 ? 'grow' : 'shrink'
+            });
+        }
+    }
+
+    function initGame() {
+        player.x = 100;
+        player.y = 300;
+        player.vx = 0;
+        player.vy = 0;
+        player.size = 'normal';
+        player.sizeTimer = 0;
+        cameraX = 0;
+        lastChunkX = 0;
+        score = 0;
+       
+        platforms = [{ x: 0, y: 400, w: 450, h: 40, isMoving: false }];
+        enemies = [];
+        items = [];
+
+        for(let i = 0; i < 3; i++) {
+            generateChunk((i + 1) * CHUNK_SIZE);
+            lastChunkX = (i + 1) * CHUNK_SIZE;
+        }
+    }
+
+    const keys = {};
+    window.addEventListener('keydown', e => keys[e.code] = true);
+    window.addEventListener('keyup', e => keys[e.code] = false);
+
+    function startGame() {
+        gameState = 'PLAYING';
+        document.getElementById('start-screen').style.display = 'none';
+        document.getElementById('end-screen').style.display = 'none';
+        document.getElementById('powerup-display').innerText = "Modo: Normal";
+        initGame();
+        requestAnimationFrame(gameLoop);
+    }
+
+    function update(timestamp) {
+        if (gameState !== 'PLAYING') return;
+
+        // Input
+        if (keys['ArrowLeft'] || keys['KeyA']) player.vx = -SPEED;
+        else if (keys['ArrowRight'] || keys['KeyD']) player.vx = SPEED;
+        else player.vx *= 0.8;
+
+        if ((keys['ArrowUp'] || keys['KeyW'] || keys['Space']) && !keys.jumpPressed) {
+            if (player.grounded || player.jumpCount < 2) {
+                player.vy = JUMP_FORCE * (player.size === 'shrink' ? 1.2 : 1);
+                player.grounded = false;
+                player.jumpCount++;
+            }
+            keys.jumpPressed = true;
+        }
+        if (!(keys['ArrowUp'] || keys['KeyW'] || keys['Space'])) keys.jumpPressed = false;
+
+        player.vy += GRAVITY;
+        player.x += player.vx;
+        player.y += player.vy;
+
+        if (player.x < cameraX) player.x = cameraX;
+
+        if (player.x > cameraX + 300) {
+            cameraX = player.x - 300;
+        }
+
+        if (cameraX + canvas.width > lastChunkX) {
+            lastChunkX += CHUNK_SIZE;
+            generateChunk(lastChunkX);
+           
+            platforms = platforms.filter(p => p.x + p.w > cameraX - CHUNK_SIZE);
+            enemies = enemies.filter(e => e.x + e.w > cameraX - CHUNK_SIZE);
+            items = items.filter(i => i.x + 20 > cameraX - CHUNK_SIZE);
+        }
+
+        // Atualizar plataformas móveis e Colisões
+        player.grounded = false;
+        platforms.forEach(p => {
+            if (p.isMoving) {
+                p.time += p.moveSpeed;
+                p.y = p.startY + Math.sin(p.time) * p.moveRange;
+            }
+
+            // Colisão Alice-Plataforma
+            if (player.x < p.x + p.w && player.x + player.w > p.x &&
+                player.y + player.h > p.y && player.y + player.h < p.y + p.h + 10 && player.vy >= 0) {
+                player.y = p.y - player.h;
+                player.vy = 0;
+                player.grounded = true;
+                player.jumpCount = 0;
+               
+                // Se a plataforma se move, Alice move-se com ela (verticalmente)
+                if (p.isMoving) {
+                    player.y = p.y - player.h;
+                }
+            }
+        });
+
+        if (player.sizeTimer > 0) {
+            player.sizeTimer--;
+            if (player.sizeTimer <= 0) {
+                player.size = 'normal';
+                document.getElementById('powerup-display').innerText = "Modo: Normal";
+            }
+        }
+
+        enemies.forEach(en => {
+            en.offset += en.vx;
+            en.x = en.startX + (Math.sin(en.offset / 50) * (en.range/2) + en.range/2);
+
+            if (player.x < en.x + en.w && player.x + player.w > en.x &&
+                player.y < en.y + en.h && player.y + player.h > en.y) {
+                if (player.size !== 'grow') {
+                    endGame("Foste apanhada pelos guardas!");
+                }
+            }
+        });
+
+        items = items.filter(it => {
+            if (player.x < it.x + 30 && player.x + player.w > it.x &&
+                player.y < it.y + 30 && player.y + player.h > it.y) {
+                player.size = it.type;
+                player.sizeTimer = 400;
+                document.getElementById('powerup-display').innerText = "Modo: " + (it.type === 'grow' ? "Gigante" : "Pequena");
+                return false;
+            }
+            return true;
+        });
+
+        let currentDist = Math.floor(player.x / 10) - 10;
+        if (currentDist > score) {
+            score = currentDist;
+            document.getElementById('score-val').innerText = score;
+        }
+
+        if (player.y > canvas.height + 150) endGame("Caíste no abismo!");
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        ctx.save();
+        ctx.translate(-cameraX, 0);
+
+        // Desenhar Plataformas
+        platforms.forEach(p => {
+            ctx.fillStyle = p.isMoving ? "#ffeb3b" : "#fff"; // Amarelo para móveis
+            ctx.fillRect(p.x, p.y, p.w, p.h);
+            ctx.strokeStyle = "#e94560";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(p.x, p.y, p.w, p.h);
+           
+            ctx.fillStyle = "#e94560";
+            ctx.font = "12px Arial";
+            ctx.fillText(p.isMoving ? "♦" : "♥", p.x + 5, p.y + 15);
+        });
+
+        items.forEach(it => {
+            ctx.font = "24px Arial";
+            ctx.fillText(it.type === 'grow' ? "🍪" : "🧪", it.x, it.y + 20);
+        });
+
+        enemies.forEach(en => {
+            ctx.font = "30px Arial";
+            ctx.fillText("🃏", en.x, en.y + 25);
+        });
+
+        ctx.save();
+        let displaySize = player.size === 'grow' ? 1.5 : (player.size === 'shrink' ? 0.6 : 1);
+        ctx.translate(player.x + player.w/2, player.y + player.h/2);
+        ctx.scale(displaySize, displaySize);
+        ctx.font = "35px Arial";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("👧", 0, 0);
+        ctx.restore();
+
+        ctx.restore();
+    }
+
+    function endGame(msg) {
+        gameState = 'END';
+        document.getElementById('end-screen').style.display = 'flex';
+        document.getElementById('end-message').innerText = msg;
+        document.getElementById('final-score').innerText = score;
+    }
+
+    function gameLoop(timestamp) {
+        update(timestamp);
+        draw();
+        if (gameState === 'PLAYING') requestAnimationFrame(gameLoop);
+    }
+</script>
+</body>
+</html>

@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice: O Salto do Coelho</title>
+   
+    <!-- Bibliotecas MediaPipe para Visão Computacional -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+   
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: linear-gradient(to bottom, #87CEEB, #E0F7FA); /* Céu azul claro */
+            font-family: 'Comic Sans MS', 'Chalkboard SE', 'Marker Felt', sans-serif; /* Fonte mais cartoon */
+            color: white;
+            user-select: none;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+       
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            pointer-events: none;
+            z-index: 10;
+        }
+       
+        h1 { margin: 0 0 10px 0; font-size: 32px; color: #FFD700; text-stroke: 2px #FF4500; -webkit-text-stroke: 1px #FF4500; }
+        .stats { font-size: 22px; margin: 5px 0; font-weight: bold; color: #FFF; }
+       
+        /* Miniatura da Câmara */
+        #video-container {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 160px;
+            height: 120px;
+            border: 4px solid #FF69B4;
+            border-radius: 15px;
+            overflow: hidden;
+            transform: scaleX(-1); /* Efeito espelho */
+            background: #000;
+            z-index: 10;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+       
+        /* Ecrãs de Menu e Carregamento */
+        .painel {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.95);
+            color: #333;
+            padding: 40px;
+            border-radius: 25px;
+            border: 5px solid #FF69B4;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            z-index: 20;
+            max-width: 80%;
+        }
+       
+        .painel h2 { color: #FF1493; margin-top: 0; font-size: 28px; }
+        .painel p { font-size: 18px; line-height: 1.6; margin-bottom: 25px; }
+       
+        button {
+            background: #FF1493;
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 20px;
+            font-family: inherit;
+            font-weight: bold;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); /* Efeito elástico */
+            box-shadow: 0 6px 0 #C71585, 0 10px 10px rgba(0,0,0,0.3);
+        }
+        button:hover {
+            background: #FF69B4;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 0 #C71585, 0 12px 15px rgba(0,0,0,0.3);
+        }
+        button:active {
+            transform: translateY(4px);
+            box-shadow: 0 2px 0 #C71585, 0 4px 5px rgba(0,0,0,0.3);
+        }
+       
+        #loading { display: none; }
+        #game-over { display: none; }
+
+        /* Nuvens decorativas no fundo */
+        .nuvem {
+            position: absolute;
+            background: white;
+            border-radius: 50px;
+            opacity: 0.8;
+            z-index: 1;
+        }
+        .nuvem::before, .nuvem::after {
+            content: '';
+            position: absolute;
+            background: white;
+            border-radius: 50px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Interface do Jogo -->
+    <div id="ui">
+        <h1>🐇 País das Maravilhas</h1>
+        <div class="stats">Pontos: <span id="score" style="color: #FFD700;">0</span></div>
+        <div class="stats">Boca: <span id="mouth-status" style="color: #FF69B4;">A aguardar...</span></div>
+    </div>
+
+    <!-- Menus -->
+    <div id="menu-inicial" class="painel">
+        <h2>O Salto do Coelho Branco</h2>
+        <p>A Rainha de Copas está furiosa e tu estás atrasado!<br>Corre e salta pelos jardins do País das Maravilhas.</p>
+        <p><strong>Como Jogar:</strong><br>1. Permite o acesso à câmara.<br>2. <strong>Abre bem a boca</strong> (ou prime a Barra de Espaços) para saltar.</p>
+        <button onclick="iniciarConfiguracao()">COMEÇAR A CORRER</button>
+    </div>
+
+    <div id="loading" class="painel">
+        <h2>A preparar a Magia... 🎩✨</h2>
+        <p>A carregar a inteligência artificial e a ligar a câmara.<br>Sorri, por favor...</p>
+    </div>
+
+    <div id="game-over" class="painel">
+        <h2>Cortem-lhe a cabeça! 👑</h2>
+        <p>Tropeçaste num obstáculo. O tempo esgotou-se!</p>
+        <p>Pontuação final: <strong id="pontuacao-final" style="font-size: 36px; color: #FF1493;">0</strong></p>
+        <button onclick="reiniciarJogo()">TENTAR NOVAMENTE</button>
+    </div>
+
+    <!-- Câmara -->
+    <div id="video-container">
+        <video id="input_video" playsinline></video>
+    </div>
+   
+    <!-- Tela de Jogo -->
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        // --- Elementos do DOM ---
+        const videoElement = document.getElementById('input_video');
+        const canvasElement = document.getElementById('gameCanvas');
+        const ctx = canvasElement.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const mouthStatusEl = document.getElementById('mouth-status');
+        const menuInicial = document.getElementById('menu-inicial');
+        const loadingPainel = document.getElementById('loading');
+        const gameOverPainel = document.getElementById('game-over');
+       
+        // --- Variáveis do Jogo ---
+        let width, height;
+        let chao;
+        let score = 0;
+        let gameActive = false;
+        let frameCount = 0;
+       
+        // Entidades
+        let coelho = { x: 150, y: 0, w: 60, h: 80, dy: 0, jumping: false }; // Aumentei um pouco a hitbox
+        let obstaculos = [];
+        let particulas = [];
+        let relvaFundo = []; // Para a animação da relva
+        let nuvens = []; // Nuvens no céu
+       
+        // Física
+        const gravidade = 0.6;
+        const forcaPulo = -15;
+        let velocidadeJogo = 6;
+
+        // --- Ajustar Tamanho da Tela ---
+        function redimensionar() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvasElement.width = width;
+            canvasElement.height = height;
+            chao = height - 150; // Chão mais alto para mais relva
+            if(!gameActive && coelho.y === 0) coelho.y = chao - coelho.h;
+           
+            // Inicializar folhas de relva
+            relvaFundo = [];
+            for(let i = 0; i < 60; i++) { // Mais relva
+                relvaFundo.push({ x: Math.random() * width, y: Math.random() * 40 + 5 });
+            }
+
+            // Inicializar nuvens
+            nuvens = [];
+            for(let i=0; i < 5; i++) {
+                nuvens.push({
+                    x: Math.random() * width,
+                    y: Math.random() * (height/3),
+                    escala: 0.5 + Math.random() * 0.8,
+                    velocidade: 0.5 + Math.random() * 1
+                });
+            }
+        }
+        window.addEventListener('resize', redimensionar);
+        redimensionar();
+
+        // --- Lógica de IA e Câmara ---
+        let camera;
+        let faceMeshConfigurado = false;
+
+        const faceMesh = new FaceMesh({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+        }});
+
+        faceMesh.setOptions({
+            maxNumFaces: 1,
+            refineLandmarks: true,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        faceMesh.onResults(onResults);
+
+        function onResults(results) {
+            // Esconder painel de carregamento se o jogo ainda não começou e a IA já respondeu
+            if (!gameActive && loadingPainel.style.display === 'block') {
+                loadingPainel.style.display = 'none';
+                iniciarJogo();
+            }
+
+            if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
+                mouthStatusEl.innerText = "Rosto não detetado 🙈";
+                mouthStatusEl.style.color = "#FF0000";
+                return;
+            }
+
+            const landmarks = results.multiFaceLandmarks[0];
+           
+            // Pontos da boca: 13 (Lábio superior interno), 14 (Lábio inferior interno)
+            const labioSuperior = landmarks[13];
+            const labioInferior = landmarks[14];
+           
+            // Calcula a distância vertical (normalizada de 0 a 1)
+            const distBoca = Math.abs(labioSuperior.y - labioInferior.y);
+           
+            // Limiar para considerar a boca aberta
+            const LIMIAR_BOCA = 0.045;
+
+            if (distBoca > LIMIAR_BOCA) {
+                mouthStatusEl.innerText = "ABERTA! 🟢";
+                mouthStatusEl.style.color = "#32CD32"; // LimeGreen
+                if (gameActive) pular();
+            } else {
+                mouthStatusEl.innerText = "Fechada 🔴";
+                mouthStatusEl.style.color = "#FF69B4"; // HotPink
+            }
+        }
+
+        async function iniciarConfiguracao() {
+            menuInicial.style.display = 'none';
+            loadingPainel.style.display = 'block';
+
+            if (!faceMeshConfigurado) {
+                try {
+                    camera = new Camera(videoElement, {
+                        onFrame: async () => {
+                            await faceMesh.send({image: videoElement});
+                        },
+                        width: 320,
+                        height: 240
+                    });
+                    await camera.start();
+                    faceMeshConfigurado = true;
+                } catch (error) {
+                    alert("Erro ao aceder à câmara! Verifica as permissões do teu navegador ou tenta jogar com a Barra de Espaços.");
+                    loadingPainel.style.display = 'none';
+                    menuInicial.style.display = 'block';
+                    // Permite jogar com teclado mesmo se a câmara falhar
+                    faceMeshConfigurado = true;
+                }
+            } else {
+                loadingPainel.style.display = 'none';
+                iniciarJogo();
+            }
+        }
+
+        // --- Funções do Jogo ---
+        function pular() {
+            if (!coelho.jumping) {
+                coelho.dy = forcaPulo;
+                coelho.jumping = true;
+                criarParticulas(coelho.x + coelho.w/2, coelho.y + coelho.h, "#FFF"); // Partículas brancas do salto
+            }
+        }
+
+        function criarObstaculo() {
+            // Dificuldade progressiva mais suave
+            const probabilidade = Math.min(0.01 + (score * 0.0005), 0.035);
+           
+            // Impede que os obstáculos fiquem impossíveis de saltar
+            if (Math.random() < probabilidade && frameCount > 80) {
+                // Sorteia o tipo de obstáculo
+                const tipos = ['carta', 'relogio', 'cartola'];
+                const tipoAleatorio = tipos[Math.floor(Math.random() * tipos.length)];
+               
+                let w, h;
+                // Tamanhos ajustados para o novo coelho
+                if (tipoAleatorio === 'carta') { w = 50; h = 75; }
+                else if (tipoAleatorio === 'relogio') { w = 60; h = 60; }
+                else if (tipoAleatorio === 'cartola') { w = 70; h = 80; }
+
+                obstaculos.push({
+                    x: width + 50, // Nasce fora do ecrã
+                    y: chao - h + 5, // Afundar ligeiramente na relva
+                    w: w,
+                    h: h,
+                    tipo: tipoAleatorio,
+                    passou: false,
+                    rotacao: (Math.random() * 0.2 - 0.1) // Rotação ligeira natural
+                });
+                frameCount = 0;
+            }
+            frameCount++;
+        }
+
+        function criarParticulas(x, y, corFixa = null) {
+            for(let i=0; i<8; i++) {
+                particulas.push({
+                    x: x + (Math.random() * 20 - 10),
+                    y: y - Math.random() * 10,
+                    vx: (Math.random() - 0.5) * 5,
+                    vy: Math.random() * -4,
+                    vida: 1,
+                    // Cor: Relva ou cor fixada (ex: branco do salto)
+                    cor: corFixa || (Math.random() > 0.5 ? "#7CB342" : "#AED581"),
+                    tamanho: Math.random() * 4 + 2
+                });
+            }
+        }
+
+        // --- Desenho (Gráficos Desenho Animado) ---
+        function desenharCeu() {
+            // Fundo já é definido pelo CSS do body, desenhamos só as nuvens
+            ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
+            for (let n of nuvens) {
+                n.x -= n.velocidade * (velocidadeJogo / 6); // Movem-se com o jogo, mas mais lento (parallax)
+               
+                ctx.save();
+                ctx.translate(n.x, n.y);
+                ctx.scale(n.escala, n.escala);
+               
+                // Forma da nuvem cartoon
+                ctx.beginPath();
+                ctx.arc(0, 0, 30, 0, Math.PI * 2);
+                ctx.arc(30, -10, 40, 0, Math.PI * 2);
+                ctx.arc(70, 0, 30, 0, Math.PI * 2);
+                ctx.arc(35, 10, 40, 0, Math.PI * 2);
+                ctx.fill();
+               
+                ctx.restore();
+
+                // Reciclar nuvem
+                if (n.x < -150) {
+                    n.x = width + 100;
+                    n.y = Math.random() * (height/3);
+                }
+            }
+        }
+
+        function desenharChao() {
+            // 1. Terra (Subsolo com Gradiente Cartoon)
+            const gradTerra = ctx.createLinearGradient(0, chao, 0, height);
+            gradTerra.addColorStop(0, "#8D6E63"); // Castanho claro
+            gradTerra.addColorStop(1, "#5D4037"); // Castanho escuro
+            ctx.fillStyle = gradTerra;
+            ctx.fillRect(0, chao, width, height - chao);
+
+            // Detalhes da terra (pedrinhas)
+            ctx.fillStyle = "#4E342E";
+            for(let i=0; i<10; i++) {
+                 // Pedrinhas falsas baseadas no tempo
+                 let px = ((Date.now() / 15 * velocidadeJogo) + i * 200) % width;
+                 ctx.beginPath();
+                 ctx.arc(width - px, chao + 40 + (i*15)%60, 4 + (i%3), 0, Math.PI*2);
+                 ctx.fill();
+            }
+
+            // 2. Base da Relva (Superfície)
+            const gradRelva = ctx.createLinearGradient(0, chao - 15, 0, chao + 25);
+            gradRelva.addColorStop(0, "#9CCC65"); // Verde claro cartoon
+            gradRelva.addColorStop(1, "#558B2F"); // Verde escuro
+            ctx.fillStyle = gradRelva;
+           
+            // Desenhar topo ondulado da relva suave
+            ctx.beginPath();
+            ctx.moveTo(0, chao + 25);
+            ctx.lineTo(0, chao);
+           
+            const deslocamento = (Date.now() * velocidadeJogo / 25) % 60;
+            for(let i = -60; i < width + 60; i += 30) {
+                ctx.quadraticCurveTo(i - deslocamento + 15, chao - 8, i - deslocamento + 30, chao);
+            }
+            ctx.lineTo(width, chao + 25);
+            ctx.fill();
+
+            // Linha de contorno na relva para dar estilo cartoon
+            ctx.strokeStyle = "#33691E";
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            // 3. Folhas de Relva em movimento (Detalhes no chão)
+            ctx.fillStyle = "#7CB342";
+            for(let i = 0; i < relvaFundo.length; i++) {
+                let r = relvaFundo[i];
+                r.x -= velocidadeJogo;
+               
+                ctx.beginPath();
+                ctx.moveTo(r.x, chao + r.y);
+                ctx.quadraticCurveTo(r.x + 8, chao + r.y - 18, r.x + 12, chao + r.y);
+                ctx.fill();
+               
+                // Reciclar relva que sai do ecrã
+                if (r.x < -30) {
+                    r.x = width + Math.random() * 50;
+                    r.y = Math.random() * 40 + 5;
+                }
+            }
+        }
+
+        function desenharCoelho() {
+            ctx.save();
+            // Ponto de âncora na base para "Squash & Stretch"
+            ctx.translate(coelho.x + coelho.w/2, coelho.y + coelho.h);
+           
+            // Animação de correr (saltitar ligeiramente quando no chão)
+            let saltoCorrer = 0;
+            if (!coelho.jumping) {
+                saltoCorrer = Math.abs(Math.sin(Date.now() / 80)) * 4;
+                ctx.translate(0, -saltoCorrer);
+               
+                // Cria pó no chão enquanto corre
+                if (Math.random() < 0.2) criarParticulas(coelho.x + 10, coelho.y + coelho.h, "#DDD");
+            }
+
+            // Efeito Cartoon de encolher/esticar
+            if (coelho.dy < 0) ctx.scale(0.85, 1.15); // Estica a subir
+            else if (coelho.dy > 0) ctx.scale(1.1, 0.9); // Encolhe a cair
+            else if (!coelho.jumping) {
+                // Efeito de "apertar" enquanto corre
+                const correScale = 1 + Math.sin(Date.now()/80)*0.05;
+                ctx.scale(correScale, 1/correScale);
+            }
+
+            // Sombra do coelho projetada no chão (Não é afetada pelo scale Y)
+            ctx.fillStyle = "rgba(0,0,0,0.2)";
+            ctx.beginPath(); ctx.ellipse(0, saltoCorrer + 5, 25, 6, 0, 0, Math.PI*2); ctx.fill();
+
+            // Contorno preto estilo desenho animado
+            ctx.strokeStyle = "#000";
+            ctx.lineWidth = 2.5;
+
+            // Orelha Esquerda (Trás)
+            ctx.fillStyle = "#e6e6e6";
+            ctx.beginPath(); ctx.ellipse(-14, -85, 10, 26, -0.3, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = "#FFB6C1"; // Interior rosa
+            ctx.beginPath(); ctx.ellipse(-14, -85, 5, 18, -0.3, 0, Math.PI * 2); ctx.fill();
+
+            // Orelha Direita (Frente - A abanar com o vento)
+            const abano = Math.sin(Date.now() / 120) * 0.4;
+            ctx.fillStyle = "#ffffff";
+            ctx.beginPath(); ctx.ellipse(14, -85, 10, 26, 0.3 + abano, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = "#FFB6C1";
+            ctx.beginPath(); ctx.ellipse(14, -85, 5, 18, 0.3 + abano, 0, Math.PI * 2); ctx.fill();
+
+            // Corpo (Bola de pelo)
+            ctx.fillStyle = "#ffffff";
+            ctx.beginPath(); ctx.ellipse(0, -35, 28, 32, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+            // Colete Azul do Coelho Branco
+            ctx.fillStyle = "#1E90FF"; // DodgerBlue
+            ctx.beginPath();
+            ctx.arc(0, -35, 28, 0, Math.PI); // Fundo do colete
+            ctx.lineTo(-28, -35); ctx.lineTo(-18, -60); ctx.lineTo(18, -60); ctx.closePath();
+            ctx.fill(); ctx.stroke();
+           
+            // Botões do colete dourados
+            ctx.fillStyle = "#FFD700";
+            ctx.beginPath(); ctx.arc(0, -30, 4, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+            ctx.beginPath(); ctx.arc(0, -18, 4, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+
+            // Braço a segurar o relógio (Simples)
+            ctx.fillStyle = "#ffffff";
+            ctx.beginPath(); ctx.ellipse(22, -25, 6, 12, -0.5, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+
+            // Cabeça
+            ctx.fillStyle = "#ffffff";
+            ctx.beginPath(); ctx.ellipse(0, -65, 26, 24, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+            // Bochechas gordinhas
+            ctx.fillStyle = "rgba(255, 182, 193, 0.6)"; // Rosa suave
+            ctx.beginPath(); ctx.arc(-15, -58, 7, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(15, -58, 7, 0, Math.PI*2); ctx.fill();
+           
+            // Focinho e Nariz rosa
+            ctx.fillStyle = "#FF69B4";
+            ctx.beginPath(); ctx.arc(0, -60, 5, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+
+            // Olhos Cartoon (Grandes e Brilhantes)
+            ctx.fillStyle = "#000000";
+            ctx.beginPath(); ctx.ellipse(-10, -68, 4, 8, 0, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(10, -68, 4, 8, 0, 0, Math.PI*2); ctx.fill();
+           
+            // Brilho dos olhos
+            ctx.fillStyle = "#ffffff";
+            ctx.beginPath(); ctx.arc(-11, -71, 2, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(9, -71, 2, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(-9, -67, 1, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(11, -67, 1, 0, Math.PI*2); ctx.fill();
+
+            // Dentes salientes
+            ctx.fillStyle = "#fff";
+            ctx.fillRect(-4, -55, 8, 6); ctx.strokeRect(-4, -55, 8, 6);
+            ctx.beginPath(); ctx.moveTo(0, -55); ctx.lineTo(0, -49); ctx.stroke(); // Risco no meio
+
+            // Cauda felpuda
+            ctx.fillStyle = "#ffffff";
+            ctx.beginPath(); ctx.arc(-26, -18, 10, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+
+            ctx.restore();
+        }
+
+        function desenharObstaculos() {
+            ctx.strokeStyle = "#000"; // Contorno cartoon para todos
+            ctx.lineWidth = 2;
+
+            for (let obs of obstaculos) {
+                ctx.save();
+                ctx.translate(obs.x + obs.w/2, obs.y + obs.h/2);
+                ctx.rotate(obs.rotacao);
+               
+                // Sombra projetada no chão
+                ctx.fillStyle = "rgba(0,0,0,0.2)";
+                ctx.beginPath(); ctx.ellipse(0, obs.h/2 + 2, obs.w/2, 6, 0, 0, Math.PI*2); ctx.fill();
+
+                if (obs.tipo === 'carta') {
+                    // Carta de Baralho (Ás de Copas Animado)
+                    ctx.fillStyle = "#ffffff";
+                    ctx.beginPath();
+                    if(ctx.roundRect) { ctx.roundRect(-obs.w/2, -obs.h/2, obs.w, obs.h, 8); }
+                    else { ctx.rect(-obs.w/2, -obs.h/2, obs.w, obs.h); }
+                    ctx.fill(); ctx.stroke();
+                   
+                    // Design da carta
+                    ctx.fillStyle = "#DC143C"; // Crimson
+                    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+                    ctx.font = "bold 18px 'Comic Sans MS'";
+                    ctx.fillText("A", -obs.w/2 + 12, -obs.h/2 + 15);
+                    ctx.font = "34px Arial"; // Copas fica melhor em Arial
+                   
+                    // O coração pulsa com o tempo
+                    const pulso = 1 + Math.sin(Date.now()/200) * 0.1;
+                    ctx.scale(pulso, pulso);
+                    ctx.fillText("♥", 0, 5);
+                }
+                else if (obs.tipo === 'relogio') {
+                    // Relógio de Bolso Dourado Cartoon
+                    ctx.fillStyle = "#FFD700"; // Ouro vivo
+                    ctx.beginPath(); ctx.arc(0, 0, obs.w/2, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+                   
+                    // Brilho no ouro
+                    ctx.fillStyle = "rgba(255,255,255,0.4)";
+                    ctx.beginPath(); ctx.arc(-obs.w/4, -obs.w/4, obs.w/5, 0, Math.PI*2); ctx.fill();
+
+                    ctx.fillStyle = "#ffffff"; // Fundo branco do relógio
+                    ctx.beginPath(); ctx.arc(0, 0, obs.w/2 - 8, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+                   
+                    // Pino superior
+                    ctx.fillStyle = "#FFD700";
+                    ctx.fillRect(-6, -obs.h/2 - 5, 12, 8); ctx.strokeRect(-6, -obs.h/2 - 5, 12, 8);
+                    ctx.beginPath(); ctx.arc(0, -obs.h/2 - 8, 6, 0, Math.PI*2); ctx.stroke();
+
+                    // Ponteiros (Giram rapidamente como se estivesse atrasado!)
+                    const anguloRapido = Date.now() / 200;
+                    const anguloLento = Date.now() / 2000;
+                   
+                    ctx.fillStyle = "#000000";
+                    ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI*2); ctx.fill(); // Centro
+                   
+                    // Ponteiro Minutos
+                    ctx.save(); ctx.rotate(anguloRapido);
+                    ctx.fillRect(-2, -obs.w/2 + 12, 4, obs.w/2 - 12);
+                    ctx.restore();
+
+                    // Ponteiro Horas
+                    ctx.save(); ctx.rotate(anguloLento);
+                    ctx.fillRect(-2.5, -obs.w/3 + 5, 5, obs.w/3 - 5);
+                    ctx.restore();
+                }
+                else if (obs.tipo === 'cartola') {
+                    // Cartola do Chapeleiro Louco Cartoon
+                    ctx.fillStyle = "#2F4F4F"; // DarkSlateGray
+                   
+                    // Aba da cartola (Larga)
+                    ctx.beginPath(); ctx.ellipse(0, obs.h/2 - 8, obs.w/2 + 10, 10, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+                   
+                    // Cilindro (Mais exagerado no topo)
+                    ctx.beginPath();
+                    ctx.moveTo(-obs.w/2 + 12, obs.h/2 - 8);
+                    ctx.lineTo(-obs.w/2 - 4, -obs.h/2 + 5);
+                    // Curva no topo
+                    ctx.quadraticCurveTo(0, -obs.h/2 - 5, obs.w/2 + 4, -obs.h/2 + 5);
+                    ctx.lineTo(obs.w/2 - 12, obs.h/2 - 8);
+                    ctx.fill(); ctx.stroke();
+                   
+                    // Fita Magenta
+                    ctx.fillStyle = "#FF00FF";
+                    ctx.beginPath();
+                    ctx.moveTo(-obs.w/2 + 9, obs.h/2 - 28);
+                    ctx.lineTo(obs.w/2 - 9, obs.h/2 - 28);
+                    ctx.lineTo(obs.w/2 - 12, obs.h/2 - 8);
+                    ctx.lineTo(-obs.w/2 + 12, obs.h/2 - 8);
+                    ctx.fill(); ctx.stroke();
+
+                    // Etiqueta 10/6
+                    ctx.fillStyle = "#FFF8DC"; // Cornsilk
+                    ctx.save();
+                    ctx.translate(-15, -10);
+                    ctx.rotate(-0.4);
+                    ctx.fillRect(-12, -10, 24, 18); ctx.strokeRect(-12, -10, 24, 18);
+                    ctx.fillStyle = "#000";
+                    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+                    ctx.font = "bold 11px 'Comic Sans MS'";
+                    ctx.fillText("10/6", 0, 0);
+                    ctx.restore();
+                }
+
+                ctx.restore();
+            }
+        }
+
+        function desenharParticulas() {
+            for (let i = particulas.length - 1; i >= 0; i--) {
+                let p = particulas[i];
+                ctx.fillStyle = p.cor;
+                ctx.globalAlpha = p.vida;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.tamanho, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+               
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vida -= 0.04; // Desaparecem ligeiramente mais devagar
+                if (p.vida <= 0) particulas.splice(i, 1);
+            }
+        }
+
+        // --- Loop Principal ---
+        function gameLoop() {
+            if (!gameActive) return;
+           
+            // Limpar Ecrã
+            ctx.clearRect(0, 0, width, height);
+
+            desenharCeu();
+            desenharChao();
+            desenharParticulas();
+
+            // Física do Coelho
+            coelho.dy += gravidade;
+            coelho.y += coelho.dy;
+
+            // Bater no chão
+            if (coelho.y > chao - coelho.h) {
+                if (coelho.jumping) {
+                    criarParticulas(coelho.x + coelho.w/2, chao, "#8bc34a"); // Pó de relva ao aterrar
+                }
+                coelho.y = chao - coelho.h;
+                coelho.dy = 0;
+                coelho.jumping = false;
+            }
+
+            // Atualizar e Desenhar Obstáculos (Antes do coelho para ele passar à frente do que colide)
+            for (let i = obstaculos.length - 1; i >= 0; i--) {
+                let obs = obstaculos[i];
+                obs.x -= velocidadeJogo; // Mover para a esquerda
+
+                // Deteção de Colisão (Hitbox ajustada para ser justa)
+                // Usamos uma margem de erro (padding) para não ser frustrante
+                const pX = 15; // Padding Horizontal
+                const pY = 15; // Padding Vertical
+               
+                if (coelho.x + pX < obs.x + obs.w &&
+                    coelho.x + coelho.w - pX > obs.x &&
+                    coelho.y + pY < obs.y + obs.h &&
+                    coelho.y + coelho.h - 5 > obs.y) { // Chão do coelho é mais crítico
+                    gameOver();
+                }
+
+                // Pontuação (Passou o obstáculo)
+                if (!obs.passou && obs.x + obs.w < coelho.x) {
+                    obs.passou = true;
+                    score += 10;
+                    scoreEl.innerText = score;
+                    // Aumentar velocidade ligeiramente, com limite máximo
+                    if(velocidadeJogo < 14) velocidadeJogo += 0.15;
+                }
+
+                // Remover obstáculos que saíram do ecrã
+                if (obs.x + obs.w < -100) {
+                    obstaculos.splice(i, 1);
+                }
+            }
+
+            desenharObstaculos();
+            desenharCoelho(); // Coelho desenhado por cima dos obstáculos
+
+            criarObstaculo();
+           
+            requestAnimationFrame(gameLoop);
+        }
+
+        function iniciarJogo() {
+            score = 0;
+            velocidadeJogo = 6.5; // Começa um pouquinho mais rápido
+            frameCount = 0;
+            scoreEl.innerText = score;
+            obstaculos = [];
+            particulas = [];
+            coelho.y = chao - coelho.h;
+            coelho.dy = 0;
+           
+            gameActive = true;
+            gameLoop();
+        }
+
+        function gameOver() {
+            gameActive = false;
+            document.getElementById('pontuacao-final').innerText = score;
+            gameOverPainel.style.display = 'block';
+        }
+
+        function reiniciarJogo() {
+            gameOverPainel.style.display = 'none';
+            iniciarJogo();
+        }
+
+        // Permitir jogar com a barra de espaços (Acessibilidade/Teste)
+        window.addEventListener('keydown', (e) => {
+            if ((e.code === 'Space' || e.code === 'ArrowUp') && gameActive) {
+                pular();
+                e.preventDefault(); // Evita que a página faça scroll
+            }
+        });
+
+    </script>
+</body>
+</html>

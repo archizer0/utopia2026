@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice no País das Maravilhas - Head Tracker</title>
+    <!-- Tailwind CSS para Estilos Rápidos -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Mountains+of+Christmas:wght@700&display=swap" rel="stylesheet">
+   
+    <!-- MediaPipe para Detenção Facial -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            font-family: 'Cinzel', serif;
+            background: radial-gradient(circle at center, #1a0b2e 0%, #000000 100%);
+            color: white;
+            overflow: hidden;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+        .wonderland-title {
+            font-family: 'Mountains of Christmas', cursive;
+            text-shadow: 0 0 10px #ff69b4, 0 0 20px #ff1493;
+        }
+        /* Inverter a câmara horizontalmente para funcionar como um espelho */
+        #webcam {
+            transform: scaleX(-1);
+            filter: sepia(0.4) hue-rotate(280deg) brightness(0.7); /* Filtro mágico */
+        }
+        .btn-magic {
+            background: linear-gradient(45deg, #ff1493, #9400d3);
+            transition: all 0.3s ease;
+        }
+        .btn-magic:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 15px #ff69b4;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Container Principal do Jogo -->
+    <div id="game-container" class="relative w-full max-w-4xl aspect-video bg-gray-900 rounded-2xl border-4 border-purple-500 overflow-hidden shadow-[0_0_30px_rgba(148,0,211,0.5)]">
+       
+        <!-- Feed da Câmara -->
+        <video id="webcam" class="absolute inset-0 w-full h-full object-cover" autoplay playsinline></video>
+       
+        <!-- Canvas do Jogo -->
+        <canvas id="game-canvas" class="absolute inset-0 w-full h-full z-10" width="800" height="600"></canvas>
+       
+        <!-- Camada de Interface (UI) -->
+        <div id="ui-layer" class="absolute inset-0 z-20 flex flex-col items-center justify-center p-4">
+           
+            <!-- HUD (Cabeçalho do jogo) -->
+            <div id="hud" class="absolute top-0 left-0 w-full p-4 flex justify-between items-start hidden">
+                <div class="bg-black/50 backdrop-blur px-4 py-2 rounded-lg border border-pink-500 text-2xl font-bold">
+                    Pontos: <span id="score-display" class="text-pink-400">0</span>
+                </div>
+                <div class="bg-black/50 backdrop-blur px-4 py-2 rounded-lg border border-red-500 text-2xl font-bold">
+                    Vidas: <span id="lives-display" class="text-red-400">❤️❤️❤️</span>
+                </div>
+            </div>
+
+            <!-- Menu Inicial -->
+            <div id="start-menu" class="flex flex-col items-center text-center bg-black/70 backdrop-blur-md p-8 rounded-2xl border border-purple-500 max-w-lg w-full">
+                <h1 class="wonderland-title text-5xl md:text-6xl text-white mb-2">País das Maravilhas</h1>
+                <p class="text-xl text-purple-200 mb-6 font-semibold">Jogo de Câmara</p>
+               
+                <div id="loading-state" class="flex flex-col items-center mb-6">
+                    <div class="w-10 h-10 border-4 border-t-pink-500 border-purple-500 rounded-full animate-spin mb-3"></div>
+                    <p class="text-pink-300">A invocar a magia da câmara...</p>
+                    <p class="text-sm text-gray-400 mt-2">Permite o acesso à tua câmara para jogar.</p>
+                </div>
+
+                <div id="ready-state" class="hidden flex-col items-center w-full">
+                    <p class="mb-6 text-gray-200 text-lg">
+                        Mova a sua <strong>cabeça</strong> para a esquerda e direita para controlar a Alice.<br><br>
+                        ✅ Apanha: ☕ (10) 🧁 (20) ⏱️ (15)<br>
+                        ❌ Evita: 🃏 (Perde Vida)
+                    </p>
+                    <button id="start-btn" class="btn-magic px-8 py-3 rounded-full text-xl font-bold tracking-wider w-full text-white cursor-pointer shadow-lg">
+                        CAIR NA TOCA DO COELHO
+                    </button>
+                </div>
+
+                <div id="error-state" class="hidden text-red-400 mt-4 font-bold bg-red-900/40 p-3 rounded w-full">
+                    Não foi possível aceder à câmara. Verifica as permissões!
+                </div>
+            </div>
+
+            <!-- Menu de Fim de Jogo -->
+            <div id="game-over-menu" class="hidden flex-col items-center text-center bg-black/80 backdrop-blur-md p-8 rounded-2xl border border-red-500 max-w-lg w-full">
+                <h2 class="wonderland-title text-6xl text-red-500 mb-2">Cortem-lhe a Cabeça!</h2>
+                <p class="text-2xl text-white mb-6">Fim de Jogo</p>
+               
+                <div class="text-3xl mb-8">
+                    Pontuação Final: <span id="final-score" class="text-pink-400 font-bold">0</span>
+                </div>
+
+                <button id="restart-btn" class="btn-magic px-8 py-3 rounded-full text-xl font-bold tracking-wider w-full text-white cursor-pointer shadow-lg">
+                    TENTAR NOVAMENTE
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // Elementos do DOM
+        const videoElement = document.getElementById('webcam');
+        const canvasElement = document.getElementById('game-canvas');
+        const ctx = canvasElement.getContext('2d');
+        const uiLayer = document.getElementById('ui-layer');
+        const startMenu = document.getElementById('start-menu');
+        const gameOverMenu = document.getElementById('game-over-menu');
+        const hud = document.getElementById('hud');
+        const loadingState = document.getElementById('loading-state');
+        const readyState = document.getElementById('ready-state');
+        const errorState = document.getElementById('error-state');
+        const scoreDisplay = document.getElementById('score-display');
+        const livesDisplay = document.getElementById('lives-display');
+        const finalScoreDisplay = document.getElementById('final-score');
+        const startBtn = document.getElementById('start-btn');
+        const restartBtn = document.getElementById('restart-btn');
+
+        // Variáveis do Jogo
+        let isPlaying = false;
+        let score = 0;
+        let lives = 3;
+        let frames = 0;
+        let items = [];
+        let particles = [];
+       
+        // Posição da Alice (Baseado na cabeça)
+        let targetFaceX = 0.5; // Alvo recebido pela câmara (0 a 1)
+        let aliceX = 0.5;      // Posição atual suavizada (0 a 1)
+        const aliceY = 500;    // Posição Y fixa (perto do fundo)
+        const aliceSize = 60;
+
+        // Tipos de itens que caem
+        const itemTypes = [
+            { emoji: '☕', points: 10, bad: false, size: 40, speed: 3 },
+            { emoji: '🧁', points: 20, bad: false, size: 40, speed: 4 },
+            { emoji: '⏱️', points: 15, bad: false, size: 40, speed: 5 },
+            { emoji: '🃏', points: 0, bad: true, size: 50, speed: 4.5 },
+            { emoji: '🃏', points: 0, bad: true, size: 50, speed: 6 } // Mais cartas para dificultar
+        ];
+
+        // --- INICIALIZAÇÃO MEDIAPIPE ---
+        const faceDetection = new FaceDetection({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`;
+        }});
+
+        faceDetection.setOptions({
+            model: 'short',
+            minDetectionConfidence: 0.5
+        });
+
+        faceDetection.onResults((results) => {
+            if (results.detections.length > 0) {
+                const bbox = results.detections[0].boundingBox;
+                // Obter o centro X. Como o vídeo está invertido em CSS (scaleX(-1)),
+                // O movimento físico para a direita faz o rosto mover-se para a direita no ecrã invertido.
+                // Ajustamos a direção mapeando 1 - xCenter para que a Alice acompanhe a cabeça intuitivamente.
+                let rawX = bbox.xCenter !== undefined ? bbox.xCenter : (bbox.x + bbox.width / 2);
+                targetFaceX = 1 - rawX;
+            }
+        });
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                try {
+                    await faceDetection.send({image: videoElement});
+                } catch (err) {
+                    console.error("Erro ao enviar frame para o MediaPipe:", err);
+                }
+            },
+            width: 640,
+            height: 480
+        });
+
+        camera.start()
+            .then(() => {
+                loadingState.classList.add('hidden');
+                readyState.classList.remove('hidden');
+            })
+            .catch((err) => {
+                console.error("Erro na câmara:", err);
+                loadingState.classList.add('hidden');
+                errorState.classList.remove('hidden');
+                errorState.innerText = "Erro na câmara: " + err.message;
+            });
+
+        // --- LÓGICA DO JOGO ---
+
+        function initGame() {
+            score = 0;
+            lives = 3;
+            items = [];
+            particles = [];
+            frames = 0;
+            aliceX = 0.5;
+            updateHUD();
+            startMenu.classList.add('hidden');
+            gameOverMenu.classList.add('hidden');
+            hud.classList.remove('hidden');
+            uiLayer.style.pointerEvents = 'none'; // Permitir cliques passarem para baixo se necessário
+            isPlaying = true;
+            gameLoop();
+        }
+
+        function gameOver() {
+            isPlaying = false;
+            hud.classList.add('hidden');
+            gameOverMenu.classList.remove('hidden');
+            finalScoreDisplay.innerText = score;
+            uiLayer.style.pointerEvents = 'auto'; // Reativar cliques nos botões
+        }
+
+        function updateHUD() {
+            scoreDisplay.innerText = score;
+            let hearts = '';
+            for(let i=0; i<lives; i++) hearts += '❤️';
+            livesDisplay.innerText = hearts;
+        }
+
+        function createParticle(x, y, emoji) {
+            particles.push({
+                x: x,
+                y: y,
+                emoji: emoji,
+                vy: -Math.random() * 5 - 2,
+                vx: (Math.random() - 0.5) * 4,
+                alpha: 1,
+                size: 20 + Math.random() * 10
+            });
+        }
+
+        function drawTextCenter(text, x, y, size) {
+            ctx.font = `${size}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, x, y);
+        }
+
+        function gameLoop() {
+            if (!isPlaying) return;
+
+            // Limpar Canvas
+            ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+            frames++;
+
+            // Suavizar movimento da Alice
+            aliceX += (targetFaceX - aliceX) * 0.15; // Interpolação linear para não tremer
+            // Limites do ecrã
+            if (aliceX < 0.05) aliceX = 0.05;
+            if (aliceX > 0.95) aliceX = 0.95;
+
+            const alicePixelX = aliceX * canvasElement.width;
+
+            // Adicionar novos itens aleatoriamente
+            if (frames % 40 === 0) {
+                // Aumenta a dificuldade com o tempo
+                let spawnChance = Math.min(0.9, 0.4 + (frames / 5000));
+                if (Math.random() < spawnChance) {
+                    const template = itemTypes[Math.floor(Math.random() * itemTypes.length)];
+                    items.push({
+                        x: Math.random() * (canvasElement.width - 60) + 30,
+                        y: -50,
+                        ...template,
+                        // Adicionar uma ligeira variação de velocidade
+                        speed: template.speed + Math.random() * 2 + (frames/2000)
+                    });
+                }
+            }
+
+            // Atualizar e Desenhar Itens
+            for (let i = items.length - 1; i >= 0; i--) {
+                let item = items[i];
+                item.y += item.speed;
+
+                // Desenhar Item
+                drawTextCenter(item.emoji, item.x, item.y, item.size);
+
+                // Colisão (Círculos básicos)
+                let dx = alicePixelX - item.x;
+                let dy = aliceY - item.y;
+                let distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < (aliceSize / 2 + item.size / 2 - 10)) {
+                    // Bateu!
+                    if (item.bad) {
+                        lives--;
+                        createParticle(item.x, item.y, '💥');
+                        updateHUD();
+                        // Efeito visual de dano no ecrã (Pestanejar)
+                        document.getElementById('game-container').classList.add('border-red-600');
+                        setTimeout(() => document.getElementById('game-container').classList.remove('border-red-600'), 200);
+                       
+                        if (lives <= 0) {
+                            gameOver();
+                        }
+                    } else {
+                        score += item.points;
+                        createParticle(item.x, item.y, `+${item.points}`);
+                        updateHUD();
+                    }
+                    items.splice(i, 1);
+                    continue;
+                }
+
+                // Remover se sair do ecrã
+                if (item.y > canvasElement.height + 50) {
+                    items.splice(i, 1);
+                }
+            }
+
+            // Desenhar Partículas (Feedback visual)
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.alpha -= 0.02;
+
+                ctx.globalAlpha = Math.max(0, p.alpha);
+                if (p.emoji.startsWith('+')) {
+                    ctx.font = `bold ${p.size}px 'Cinzel'`;
+                    ctx.fillStyle = '#ff69b4';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(p.emoji, p.x, p.y);
+                } else {
+                    drawTextCenter(p.emoji, p.x, p.y, p.size);
+                }
+                ctx.globalAlpha = 1.0;
+
+                if (p.alpha <= 0) particles.splice(i, 1);
+            }
+
+            // Desenhar Alice (Emoji com sombra)
+            ctx.shadowColor = "rgba(255, 105, 180, 0.6)";
+            ctx.shadowBlur = 15;
+            drawTextCenter('👧🏼', alicePixelX, aliceY, aliceSize);
+            ctx.shadowBlur = 0; // reset sombra
+
+            if (isPlaying) {
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        // Eventos dos Botões
+        startBtn.addEventListener('click', () => {
+            initGame();
+        });
+
+        restartBtn.addEventListener('click', () => {
+            initGame();
+        });
+
+        // Ajustar redimensionamento
+        window.addEventListener('resize', () => {
+            // O canvas usa um aspect-ratio fixo no CSS, então o tamanho interno de 800x600
+            // continuará a escalar perfeitamente nos ecrãs sem precisar de atualizar os coords.
+        });
+
+    </script>
+</body>
+</html>

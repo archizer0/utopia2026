@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mistério no País das Maravilhas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Nunito:wght@400;700&display=swap');
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #111;
+            font-family: 'Nunito', sans-serif;
+            touch-action: none;
+            user-select: none;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            background-color: #0a192f;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+            pointer-events: none;
+        }
+
+        .interactive {
+            pointer-events: auto;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #6b21a8, #db2777);
+            color: white;
+            padding: 16px 40px;
+            border-radius: 9999px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            font-family: 'Cinzel', serif;
+            box-shadow: 0 4px 15px rgba(219, 39, 119, 0.4);
+            border: 2px solid #fbcfe8;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+        }
+
+        .btn:active {
+            transform: scale(0.95);
+        }
+
+        .title-font {
+            font-family: 'Cinzel', serif;
+        }
+
+        /* Controles Mobile */
+        #mobile-controls {
+            position: absolute;
+            bottom: 20px;
+            left: 0;
+            width: 100%;
+            height: 150px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            padding: 0 30px;
+            pointer-events: none;
+            z-index: 15;
+            box-sizing: border-box;
+        }
+
+        .control-pad {
+            width: 120px;
+            height: 120px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            position: relative;
+            pointer-events: auto;
+        }
+
+        .joystick {
+            width: 50px;
+            height: 50px;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        #action-btn {
+            width: 90px;
+            height: 90px;
+            background: rgba(219, 39, 119, 0.3);
+            border: 2px solid rgba(219, 39, 119, 0.6);
+            border-radius: 50%;
+            color: white;
+            font-weight: bold;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            pointer-events: auto;
+            font-size: 2rem;
+            cursor: pointer;
+            transition: background 0.1s;
+        }
+
+        #action-btn:active {
+            background: rgba(219, 39, 119, 0.6);
+        }
+
+        #hud {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 10px 30px;
+            border-radius: 999px;
+            color: white;
+            font-size: 1.5rem;
+            font-weight: bold;
+            z-index: 10;
+            display: flex;
+            gap: 20px;
+        }
+       
+        #role-reveal {
+            background: rgba(0, 0, 0, 0.9);
+            animation: fadeInOut 4s forwards;
+        }
+
+        @keyframes fadeInOut {
+            0% { opacity: 0; }
+            20% { opacity: 1; }
+            80% { opacity: 1; }
+            100% { opacity: 0; visibility: hidden; }
+        }
+
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+   
+    <!-- HUD: Timer and info -->
+    <div id="hud" class="hidden">
+        <span id="timerText">01:30</span>
+        <span id="roleText" class="text-gray-400"></span>
+    </div>
+
+    <!-- Mobile Controls -->
+    <div id="mobile-controls" class="hidden">
+        <div class="control-pad" id="joystick-area">
+            <div class="joystick" id="joystick-knob"></div>
+        </div>
+        <div id="action-btn" class="hidden">⚔️</div>
+    </div>
+
+    <!-- Main Menu -->
+    <div id="startScreen" class="ui-layer interactive bg-black/80 backdrop-blur-sm">
+        <div class="bg-indigo-950/90 p-8 rounded-3xl border-4 border-pink-600 shadow-2xl text-center max-w-lg mx-4">
+            <h1 class="text-4xl md:text-5xl text-pink-400 mb-2 title-font text-shadow">Mistério no País das Maravilhas</h1>
+            <p class="text-gray-300 mb-6 font-bold tracking-widest uppercase text-sm">Baseado em Murder Mystery 2</p>
+           
+            <div class="grid grid-cols-1 gap-4 text-left bg-black/40 p-5 rounded-xl mb-8 border border-white/10">
+                <div class="flex items-center gap-3">
+                    <span class="text-3xl">👱‍♀️</span>
+                    <div>
+                        <strong class="text-blue-400">A Alice (Xerife)</strong>
+                        <p class="text-xs text-gray-400">Tem a espada. Deve descobrir e derrotar a Rainha.</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="text-3xl">👸</span>
+                    <div>
+                        <strong class="text-red-500">A Rainha (Assassino)</strong>
+                        <p class="text-xs text-gray-400">Cortem-lhe as cabeças! Elimina todos secretamente.</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="text-3xl">🐇</span>
+                    <div>
+                        <strong class="text-green-400">Inocentes</strong>
+                        <p class="text-xs text-gray-400">Foge pelo labirinto e sobrevive até o tempo acabar.</p>
+                    </div>
+                </div>
+            </div>
+           
+            <p class="text-sm text-gray-400 mb-6">Usa as Setas/WASD ou o Joystick no ecrã para andar.</p>
+            <button id="startBtn" class="btn w-full">Jogar Agora</button>
+        </div>
+    </div>
+
+    <!-- Role Reveal Animation -->
+    <div id="roleRevealScreen" class="ui-layer hidden">
+        <div id="role-reveal" class="w-full h-full flex flex-col items-center justify-center text-center p-8">
+            <h2 class="text-3xl text-gray-300 uppercase tracking-widest mb-4">A tua função é...</h2>
+            <div id="revealEmoji" class="text-8xl mb-6 drop-shadow-[0_0_30px_rgba(255,255,255,0.5)]">❓</div>
+            <h1 id="revealTitle" class="text-6xl font-black title-font mb-4"></h1>
+            <p id="revealDesc" class="text-2xl text-gray-300"></p>
+        </div>
+    </div>
+
+    <!-- End Game Screen -->
+    <div id="endScreen" class="ui-layer interactive hidden bg-black/90 backdrop-blur-md">
+        <div class="text-center p-8 max-w-2xl mx-auto">
+            <h1 id="endTitle" class="text-6xl title-font mb-4"></h1>
+            <p id="endDesc" class="text-2xl text-gray-300 mb-8"></p>
+           
+            <div id="storyContainer" class="mb-8 p-6 bg-purple-900/30 border border-purple-500/50 rounded-xl hidden text-lg text-pink-200 italic shadow-inner"></div>
+           
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                <button id="generateStoryBtn" class="btn text-sm px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 border-indigo-300">✨ Gerar Crónica Mágica ✨</button>
+                <button id="restartBtn" class="btn">Jogar Novamente</button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+   
+    // UI Elements
+    const startScreen = document.getElementById('startScreen');
+    const endScreen = document.getElementById('endScreen');
+    const roleRevealScreen = document.getElementById('roleRevealScreen');
+    const hud = document.getElementById('hud');
+    const timerText = document.getElementById('timerText');
+    const roleText = document.getElementById('roleText');
+    const mobileControls = document.getElementById('mobile-controls');
+    const actionBtn = document.getElementById('action-btn');
+    const endTitle = document.getElementById('endTitle');
+    const endDesc = document.getElementById('endDesc');
+    const generateStoryBtn = document.getElementById('generateStoryBtn');
+    const storyContainer = document.getElementById('storyContainer');
+
+    // Configurações do Jogo
+    const TILE_SIZE = 60;
+    const VISIBILITY_RADIUS = 250;
+    let isPlaying = false;
+    let gameLoopId;
+    let gameTimer = 90; // 1 minuto e meio
+    let lastTime = 0;
+    let timerInterval;
+    let gameLog = [];
+
+    // --- Configuração da API do Gemini ---
+    const apiKey = "";
+   
+    async function fetchWithRetry(url, options, retries = 5) {
+        const delays = [1000, 2000, 4000, 8000, 16000];
+        for (let i = 0; i < retries; i++) {
+            try {
+                const response = await fetch(url, options);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                return await response.json();
+            } catch (error) {
+                if (i === retries - 1) throw error;
+                await new Promise(res => setTimeout(res, delays[i]));
+            }
+        }
+    }
+
+    async function generateMagicStory(promptText) {
+        if (!apiKey) return "A magia falhou: Chave da API do Gemini não encontrada no ambiente de execução.";
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+        const payload = {
+            contents: [{ parts: [{ text: promptText }] }],
+            systemInstruction: { parts: [{ text: "És um narrador sombrio, lunático e poético no estilo da obra 'Alice no País das Maravilhas' de Lewis Carroll. Descreve os eventos da partida de forma metafórica, dramática e misteriosa." }] }
+        };
+        try {
+            const result = await fetchWithRetry(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            return result.candidates?.[0]?.content?.parts?.[0]?.text || "O Coelho Branco levou o pergaminho e a história perdeu-se no tempo...";
+        } catch (e) {
+            return "A magia quebrou-se. A Rainha de Copas cortou a ligação ao Oráculo.";
+        }
+    }
+
+    // Controlos
+    const keys = { w: false, a: false, s: false, d: false, space: false };
+    let joystickVector = { x: 0, y: 0 };
+
+    // Mapa (1 = Arbusto/Parede do labirinto, 0 = Caminho livre)
+    // Labirinto simples de 20x15
+    const mapGrid = [
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+        [1,0,0,0,1,0,0,0,0,0,1,0,0,0,1,0,0,0,0,1],
+        [1,0,1,0,1,0,1,1,1,0,1,0,1,0,1,0,1,1,0,1],
+        [1,0,1,0,0,0,1,0,0,0,0,0,1,0,0,0,0,1,0,1],
+        [1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,1,0,1,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1],
+        [1,1,1,0,1,1,1,0,1,1,0,1,1,1,1,0,1,1,1,1],
+        [1,0,0,0,1,0,0,0,1,0,0,0,0,0,1,0,0,0,0,1],
+        [1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,1,0,1],
+        [1,0,1,0,0,0,0,0,1,0,1,0,0,0,0,0,0,1,0,1],
+        [1,0,1,0,1,1,1,0,1,0,1,0,1,1,1,1,0,1,0,1],
+        [1,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,1],
+        [1,0,1,1,1,0,1,1,1,1,1,0,1,0,1,1,1,1,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+    ];
+    const MAP_WIDTH = mapGrid[0].length * TILE_SIZE;
+    const MAP_HEIGHT = mapGrid.length * TILE_SIZE;
+
+    // Classes de Entidades
+    class Entity {
+        constructor(x, y, role, emoji, isPlayer = false) {
+            this.x = x;
+            this.y = y;
+            this.size = 36;
+            this.speed = 3;
+            this.role = role; // 'inocente', 'xerife', 'assassino'
+            this.emoji = emoji;
+            this.isPlayer = isPlayer;
+            this.alive = true;
+            this.cooldown = 0; // Para ataques
+            this.targetDirection = { x: 0, y: 0 }; // Para Bots
+            this.changeDirTimer = 0;
+            this.isRevealed = false; // Se o assassino sacou da arma
+        }
+
+        update() {
+            if (!this.alive) return;
+
+            let vx = 0;
+            let vy = 0;
+
+            if (this.isPlayer) {
+                // Input do Jogador
+                if (keys.w) vy -= 1;
+                if (keys.s) vy += 1;
+                if (keys.a) vx -= 1;
+                if (keys.d) vx += 1;
+
+                if (joystickVector.x !== 0 || joystickVector.y !== 0) {
+                    vx = joystickVector.x;
+                    vy = joystickVector.y;
+                }
+            } else {
+                // Inteligência Artificial Simples para Bots
+                this.updateAI();
+                vx = this.targetDirection.x;
+                vy = this.targetDirection.y;
+            }
+
+            // Normalizar velocidade diagonal
+            if (vx !== 0 && vy !== 0 && !this.isPlayer) {
+                let length = Math.sqrt(vx*vx + vy*vy);
+                vx /= length;
+                vy /= length;
+            }
+
+            let moveX = vx * this.speed;
+            let moveY = vy * this.speed;
+
+            // Colisões com o mapa (Deslizamento nas paredes)
+            if (!this.checkWallCollision(this.x + moveX, this.y)) {
+                this.x += moveX;
+            } else if (!this.isPlayer) {
+                this.changeDirTimer = 0; // Forçar o bot a mudar de direção se bater
+            }
+
+            if (!this.checkWallCollision(this.x, this.y + moveY)) {
+                this.y += moveY;
+            } else if (!this.isPlayer) {
+                this.changeDirTimer = 0;
+            }
+
+            // Cooldown de ataque
+            if (this.cooldown > 0) this.cooldown--;
+        }
+
+        updateAI() {
+            this.changeDirTimer--;
+
+            // A Rainha (Assassino Bot) persegue os mais próximos se estiverem perto
+            if (this.role === 'assassino') {
+                let closest = getClosestAliveEntity(this);
+                if (closest && getDistance(this, closest) < 200) {
+                    this.targetDirection.x = closest.x - this.x;
+                    this.targetDirection.y = closest.y - this.y;
+                    this.isRevealed = true; // Saca da arma!
+                   
+                    // Se estiver muito perto, ataca
+                    if (getDistance(this, closest) < 60 && this.cooldown === 0) {
+                        this.attack();
+                    }
+                    return;
+                }
+            }
+
+            // A Alice (Xerife Bot) persegue o assassino se ele estiver revelado
+            if (this.role === 'xerife') {
+                let killer = entities.find(e => e.role === 'assassino' && e.isRevealed && e.alive);
+                if (killer && getDistance(this, killer) < 300) {
+                    this.targetDirection.x = killer.x - this.x;
+                    this.targetDirection.y = killer.y - this.y;
+                   
+                    // Se estiver muito perto, ataca
+                    if (getDistance(this, killer) < 60 && this.cooldown === 0) {
+                        this.attack();
+                    }
+                    return;
+                }
+            }
+
+            // Inocentes fogem do Assassino revelado
+            if (this.role === 'inocente') {
+                let killer = entities.find(e => e.role === 'assassino' && e.isRevealed && e.alive);
+                if (killer && getDistance(this, killer) < 250) {
+                    this.targetDirection.x = this.x - killer.x; // Run away
+                    this.targetDirection.y = this.y - killer.y;
+                    return;
+                }
+            }
+
+            // Movimento aleatório
+            if (this.changeDirTimer <= 0) {
+                const dirs = [
+                    {x: 0, y: -1}, {x: 0, y: 1}, {x: -1, y: 0}, {x: 1, y: 0},
+                    {x: 0, y: 0} // Pode parar um bocado
+                ];
+                this.targetDirection = dirs[Math.floor(Math.random() * dirs.length)];
+                this.changeDirTimer = Math.random() * 60 + 30; // Mudar direção a cada 0.5 - 1.5 segs
+            }
+        }
+
+        checkWallCollision(nextX, nextY) {
+            // Verifica os 4 cantos da hitbox (um pouco menor que o tamanho visual)
+            const padding = 10;
+            const corners = [
+                { x: nextX - this.size/2 + padding, y: nextY - this.size/2 + padding },
+                { x: nextX + this.size/2 - padding, y: nextY - this.size/2 + padding },
+                { x: nextX - this.size/2 + padding, y: nextY + this.size/2 - padding },
+                { x: nextX + this.size/2 - padding, y: nextY + this.size/2 - padding }
+            ];
+
+            for (let point of corners) {
+                let gridX = Math.floor(point.x / TILE_SIZE);
+                let gridY = Math.floor(point.y / TILE_SIZE);
+               
+                if (gridY < 0 || gridY >= mapGrid.length || gridX < 0 || gridX >= mapGrid[0].length) {
+                    return true; // Fora do mapa é parede
+                }
+                if (mapGrid[gridY][gridX] === 1) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        attack() {
+            if (!this.alive || this.cooldown > 0) return;
+            if (this.role === 'inocente') return;
+
+            this.cooldown = 60; // 1 segundo de cooldown (a 60fps)
+            this.isRevealed = true;
+
+            // Efeito visual (som/partículas hipotéticas)
+           
+            // Verificar colisão de ataque (Alcance curto em frente)
+            entities.forEach(target => {
+                if (target !== this && target.alive) {
+                    let dist = getDistance(this, target);
+                    if (dist < 70) { // Hitbox de ataque
+                        if (this.role === 'assassino') {
+                            // Assassino mata qualquer um
+                            gameLog.push(`A Rainha cortou a cabeça a um ${target.role} (${target.emoji})`);
+                            target.die();
+                        } else if (this.role === 'xerife') {
+                            if (target.role === 'assassino') {
+                                // Xerife matou o assassino (VITÓRIA INOCENTES)
+                                gameLog.push(`A Alice (${this.emoji}) decapitou a Rainha de Copas com a sua Espada Vorpal!`);
+                                target.die();
+                                endGame('inocentes_ganham');
+                            } else {
+                                // Xerife matou um inocente por engano (Punição)
+                                gameLog.push(`Numa confusão terrível, a Alice (${this.emoji}) atacou o inocente (${target.emoji}). A culpa fê-la desmaiar!`);
+                                this.die();
+                            }
+                        }
+                    }
+                }
+            });
+
+            checkWinConditions();
+        }
+
+        die() {
+            this.alive = false;
+            this.emoji = '👻'; // Fica um fantasma
+        }
+
+        draw(ctx) {
+            ctx.save();
+            ctx.translate(this.x, this.y);
+           
+            // Se for fantasma
+            if (!this.alive) {
+                ctx.globalAlpha = 0.4;
+            }
+
+            ctx.font = `${this.size}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(this.emoji, 0, 0);
+
+            // Desenhar arma se revelado/atacando
+            if (this.alive && (this.isRevealed || this.isPlayer) && (this.role !== 'inocente')) {
+                let weapon = this.role === 'assassino' ? '🪓' : '🗡️';
+               
+                // Animação de ataque simples
+                let attackOffset = this.cooldown > 40 ? 15 : 0;
+               
+                ctx.font = `20px Arial`;
+                ctx.fillText(weapon, 15 + attackOffset, -15 - attackOffset);
+            }
+
+            ctx.restore();
+        }
+    }
+
+    let entities = [];
+    let player;
+    let camera = { x: 0, y: 0 };
+
+    // --- Utilitários ---
+    function getDistance(ent1, ent2) {
+        return Math.sqrt(Math.pow(ent2.x - ent1.x, 2) + Math.pow(ent2.y - ent1.y, 2));
+    }
+
+    function getClosestAliveEntity(source) {
+        let closest = null;
+        let minDistance = Infinity;
+        for (let e of entities) {
+            if (e !== source && e.alive) {
+                let dist = getDistance(source, e);
+                if (dist < minDistance) {
+                    minDistance = dist;
+                    closest = e;
+                }
+            }
+        }
+        return closest;
+    }
+
+    // --- Setup do Jogo ---
+    function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    function getRandomFloorPosition() {
+        let x, y;
+        do {
+            let gridX = Math.floor(Math.random() * mapGrid[0].length);
+            let gridY = Math.floor(Math.random() * mapGrid.length);
+            if (mapGrid[gridY][gridX] === 0) {
+                x = gridX * TILE_SIZE + TILE_SIZE/2;
+                y = gridY * TILE_SIZE + TILE_SIZE/2;
+                return { x, y };
+            }
+        } while (true);
+    }
+
+    function initGame() {
+        entities = [];
+        gameLog = [];
+        storyContainer.classList.add('hidden');
+        generateStoryBtn.classList.remove('hidden');
+        generateStoryBtn.innerText = "✨ Gerar Crónica Mágica ✨";
+        generateStoryBtn.disabled = false;
+       
+        // Configuração dos papéis (Total de 8 personagens)
+        const rolesList = ['assassino', 'xerife', 'inocente', 'inocente', 'inocente', 'inocente', 'inocente', 'inocente'];
+        // Baralhar
+        rolesList.sort(() => Math.random() - 0.5);
+
+        const charEmojis = {
+            'assassino': '👸', // Rainha
+            'xerife': '👱‍♀️', // Alice
+            'inocente': ['🐇', '🐱', '🎩', '☕', '🦩', '🃏'] // Vários convidados
+        };
+
+        // Criar Jogador Humano
+        let playerRole = rolesList.pop();
+        let pPos = getRandomFloorPosition();
+        let pEmoji = playerRole === 'inocente' ? charEmojis.inocente[Math.floor(Math.random()*charEmojis.inocente.length)] : charEmojis[playerRole];
+        player = new Entity(pPos.x, pPos.y, playerRole, pEmoji, true);
+        entities.push(player);
+
+        // Criar Bots
+        for (let i = 0; i < rolesList.length; i++) {
+            let role = rolesList[i];
+            let pos = getRandomFloorPosition();
+            let emoji = role === 'inocente' ? charEmojis.inocente[i % charEmojis.inocente.length] : charEmojis[role];
+            entities.push(new Entity(pos.x, pos.y, role, emoji, false));
+        }
+
+        // Preparar UI e Controlos
+        gameTimer = 90;
+        updateTimerDisplay();
+       
+        // Animação de Revelação de Papel
+        showRoleReveal(playerRole);
+    }
+
+    function showRoleReveal(role) {
+        startScreen.classList.add('hidden');
+        endScreen.classList.add('hidden');
+        roleRevealScreen.classList.remove('hidden');
+       
+        // Reiniciar a animação
+        const revealContent = document.getElementById('role-reveal');
+        revealContent.style.animation = 'none';
+        void revealContent.offsetWidth; // trigger reflow
+        revealContent.style.animation = 'fadeInOut 4s forwards';
+
+        let rTitle = document.getElementById('revealTitle');
+        let rDesc = document.getElementById('revealDesc');
+        let rEmoji = document.getElementById('revealEmoji');
+
+        if (role === 'assassino') {
+            rTitle.innerText = "ASSASSINO";
+            rTitle.className = "text-6xl font-black title-font mb-4 text-red-500";
+            rDesc.innerText = "A Rainha. Corta a cabeça a todos secretamente.";
+            rEmoji.innerText = "👸";
+            roleText.innerText = "Função: Assassino 🔪";
+            roleText.style.color = "#ef4444";
+            actionBtn.classList.remove('hidden');
+        } else if (role === 'xerife') {
+            rTitle.innerText = "XERIFE";
+            rTitle.className = "text-6xl font-black title-font mb-4 text-blue-400";
+            rDesc.innerText = "A Alice. Encontra e elimina a Rainha Assassina.";
+            rEmoji.innerText = "👱‍♀️";
+            roleText.innerText = "Função: Xerife 🛡️";
+            roleText.style.color = "#60a5fa";
+            actionBtn.classList.remove('hidden');
+        } else {
+            rTitle.innerText = "INOCENTE";
+            rTitle.className = "text-6xl font-black title-font mb-4 text-green-400";
+            rDesc.innerText = "Esconde-te. Sobrevive até o tempo acabar.";
+            rEmoji.innerText = "🐇";
+            roleText.innerText = "Função: Inocente 🏃";
+            roleText.style.color = "#4ade80";
+            actionBtn.classList.add('hidden'); // Inocentes não atacam
+        }
+
+        // Começar jogo após animação (aprox 3.5 segs)
+        setTimeout(() => {
+            roleRevealScreen.classList.add('hidden');
+            hud.classList.remove('hidden');
+            if (window.innerWidth <= 768) mobileControls.classList.remove('hidden');
+           
+            isPlaying = true;
+            lastTime = performance.now();
+           
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                if(isPlaying) {
+                    gameTimer--;
+                    updateTimerDisplay();
+                    if(gameTimer <= 0) {
+                        endGame('tempo_esgotado');
+                    }
+                }
+            }, 1000);
+
+            requestAnimationFrame(gameLoop);
+        }, 3500);
+    }
+
+    function updateTimerDisplay() {
+        let m = Math.floor(gameTimer / 60);
+        let s = gameTimer % 60;
+        timerText.innerText = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    }
+
+    function checkWinConditions() {
+        let assassin = entities.find(e => e.role === 'assassino');
+        let innocentsAlive = entities.filter(e => e.role !== 'assassino' && e.alive);
+
+        if (!assassin.alive) {
+            endGame('inocentes_ganham'); // Xerife matou o assassino
+        } else if (innocentsAlive.length === 0) {
+            endGame('assassino_ganha'); // Assassino matou todos
+        }
+    }
+
+    function endGame(reason) {
+        isPlaying = false;
+        clearInterval(timerInterval);
+       
+        hud.classList.add('hidden');
+        mobileControls.classList.add('hidden');
+        endScreen.classList.remove('hidden');
+
+        if (reason === 'tempo_esgotado' || reason === 'inocentes_ganham') {
+            endTitle.innerText = "OS INOCENTES VENCERAM!";
+            endTitle.className = "text-6xl title-font mb-4 text-blue-400";
+            if (reason === 'tempo_esgotado') {
+                endDesc.innerText = "O tempo acabou. A Rainha não conseguiu cortar todas as cabeças.";
+            } else {
+                endDesc.innerText = "A Alice (Xerife) derrotou a Rainha de Copas!";
+            }
+        } else if (reason === 'assassino_ganha') {
+            endTitle.innerText = "O ASSASSINO VENCEU!";
+            endTitle.className = "text-6xl title-font mb-4 text-red-500";
+            endDesc.innerText = "A Rainha cortou as cabeças a todos no País das Maravilhas.";
+        }
+    }
+
+    // --- Inputs (Teclado) ---
+    window.addEventListener('keydown', (e) => {
+        let k = e.key.toLowerCase();
+        if (keys.hasOwnProperty(k)) keys[k] = true;
+        if (k === 'arrowup') keys.w = true;
+        if (k === 'arrowdown') keys.s = true;
+        if (k === 'arrowleft') keys.a = true;
+        if (k === 'arrowright') keys.d = true;
+        if (e.code === 'Space') {
+            e.preventDefault();
+            if(isPlaying) player.attack();
+        }
+    });
+
+    window.addEventListener('keyup', (e) => {
+        let k = e.key.toLowerCase();
+        if (keys.hasOwnProperty(k)) keys[k] = false;
+        if (k === 'arrowup') keys.w = false;
+        if (k === 'arrowdown') keys.s = false;
+        if (k === 'arrowleft') keys.a = false;
+        if (k === 'arrowright') keys.d = false;
+    });
+
+    // --- Inputs (Touch/Joystick Mobile) ---
+    const joystickArea = document.getElementById('joystick-area');
+    const joystickKnob = document.getElementById('joystick-knob');
+    let jCenter = {x: 0, y: 0};
+    let isDragging = false;
+
+    joystickArea.addEventListener('touchstart', (e) => {
+        const rect = joystickArea.getBoundingClientRect();
+        jCenter = { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
+        isDragging = true;
+        handleJoystickMove(e.touches[0]);
+    }, {passive: false});
+
+    joystickArea.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        if (isDragging) handleJoystickMove(e.touches[0]);
+    }, {passive: false});
+
+    joystickArea.addEventListener('touchend', () => {
+        isDragging = false;
+        joystickKnob.style.transform = `translate(-50%, -50%)`;
+        joystickVector = {x: 0, y: 0};
+    });
+
+    function handleJoystickMove(touch) {
+        let dx = touch.clientX - jCenter.x;
+        let dy = touch.clientY - jCenter.y;
+        let distance = Math.sqrt(dx*dx + dy*dy);
+        let maxDist = 40; // Max radius for knob
+
+        if (distance > maxDist) {
+            dx = (dx / distance) * maxDist;
+            dy = (dy / distance) * maxDist;
+        }
+
+        joystickKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+
+        // Normalize vector for movement
+        joystickVector.x = dx / maxDist;
+        joystickVector.y = dy / maxDist;
+    }
+
+    actionBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        if(isPlaying) player.attack();
+    });
+
+    // Botoes Menus
+    document.getElementById('startBtn').addEventListener('click', initGame);
+    document.getElementById('restartBtn').addEventListener('click', initGame);
+
+    generateStoryBtn.addEventListener('click', async () => {
+        generateStoryBtn.innerText = "A consultar o Gato de Cheshire...";
+        generateStoryBtn.disabled = true;
+
+        const prompt = `Escreve um parágrafo muito curto (máximo de 3 a 4 frases) em português, relatando o fim deste trágico e louco jogo de esconde-esconde no País das Maravilhas.
+       
+        Resultado final: ${endTitle.innerText}
+        Detalhe: ${endDesc.innerText}
+        O que aconteceu de facto durante a partida: ${gameLog.length > 0 ? gameLog.join(', ') : 'Ninguém foi ferido, apenas correram em pânico pelo labirinto'}.
+       
+        Sê teatral, sombrio, lunático e usa 2 ou 3 emojis temáticos no meio do texto. Foca-te em contar como a partida decorreu com base nestes eventos.`;
+
+        const story = await generateMagicStory(prompt);
+       
+        storyContainer.innerText = story;
+        storyContainer.classList.remove('hidden');
+        generateStoryBtn.classList.add('hidden');
+    });
+
+    // --- Renderização (Draw) ---
+    function drawMap(ctx) {
+        for (let y = 0; y < mapGrid.length; y++) {
+            for (let x = 0; x < mapGrid[y].length; x++) {
+                if (mapGrid[y][x] === 1) {
+                    // Arbusto/Parede (Labirinto da Rainha)
+                    ctx.fillStyle = '#064e3b'; // Verde muito escuro
+                    ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                   
+                    // Detalhes da parede para parecer sebes (hedges)
+                    ctx.fillStyle = '#047857';
+                    ctx.fillRect(x * TILE_SIZE + 5, y * TILE_SIZE + 5, TILE_SIZE - 10, TILE_SIZE - 10);
+                } else {
+                    // Chão em xadrez clássico da Alice
+                    if ((x + y) % 2 === 0) {
+                        ctx.fillStyle = '#1e293b'; // Cinza escuro
+                    } else {
+                        ctx.fillStyle = '#0f172a'; // Quase preto
+                    }
+                    ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                }
+            }
+        }
+    }
+
+    function gameLoop(timestamp) {
+        if (!isPlaying) return;
+
+        // Atualizar Entidades
+        entities.forEach(e => e.update());
+
+        // Atualizar Camera para focar no jogador
+        camera.x = player.x - canvas.width / 2;
+        camera.y = player.y - canvas.height / 2;
+
+        // Limites da Camera (não mostrar fora do mapa)
+        camera.x = Math.max(0, Math.min(camera.x, MAP_WIDTH - canvas.width));
+        camera.y = Math.max(0, Math.min(camera.y, MAP_HEIGHT - canvas.height));
+
+        // Desenhar tudo
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        ctx.save();
+        ctx.translate(-camera.x, -camera.y);
+
+        drawMap(ctx);
+
+        // Sort entities para os que estão mais abaixo aparecerem por cima (efeito 2.5D simples)
+        entities.sort((a, b) => a.y - b.y);
+        entities.forEach(e => e.draw(ctx));
+
+        ctx.restore();
+
+        // Efeito de "Névoa de Guerra" (Darkness) - Faz o mapa escuro exceto à volta do jogador
+        // Isto aumenta muito o suspense do "Murder Mystery"
+        if (player.alive) {
+            let playerScreenX = player.x - camera.x;
+            let playerScreenY = player.y - camera.y;
+           
+            ctx.globalCompositeOperation = 'destination-in';
+            let radialGradient = ctx.createRadialGradient(
+                playerScreenX, playerScreenY, 50,
+                playerScreenX, playerScreenY, VISIBILITY_RADIUS
+            );
+            radialGradient.addColorStop(0, 'rgba(0,0,0,1)');
+            radialGradient.addColorStop(0.7, 'rgba(0,0,0,0.5)');
+            radialGradient.addColorStop(1, 'rgba(0,0,0,0)');
+           
+            ctx.fillStyle = radialGradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.globalCompositeOperation = 'source-over';
+
+            // Fundo escuro atrás da névoa
+            ctx.globalCompositeOperation = 'destination-over';
+            ctx.fillStyle = '#020617';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.globalCompositeOperation = 'source-over';
+        } else {
+            // Se o jogador morrer, vê o mapa todo escurecido vermelho/cinzento
+            ctx.fillStyle = 'rgba(50, 0, 0, 0.5)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        requestAnimationFrame(gameLoop);
+    }
+</script>
+</body>
+</html>

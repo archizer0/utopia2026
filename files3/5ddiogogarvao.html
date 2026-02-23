@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Wonderland Mystery (Estilo MM2)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #0f172a;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: none;
+        }
+        canvas {
+            display: block;
+            background-color: #22c55e;
+            background-image: radial-gradient(#16a34a 10%, transparent 11%), radial-gradient(#16a34a 10%, transparent 11%);
+            background-size: 40px 40px;
+            background-position: 0 0, 20px 20px;
+        }
+        .text-shadow {
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex items-center justify-center relative">
+
+    <!-- UI Overlay -->
+    <div id="ui-layer" class="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 z-10">
+        <div class="flex justify-between items-start">
+            <div class="bg-slate-900/80 backdrop-blur px-5 py-3 rounded-2xl shadow-xl font-bold text-xl text-white border-2 border-slate-700 pointer-events-auto">
+                Inocentes Vivos: <span id="alive-count" class="text-green-400">0</span>
+            </div>
+            <div id="status-msg" class="bg-slate-900/80 backdrop-blur px-5 py-3 rounded-2xl shadow-xl font-bold text-xl text-yellow-400 border-2 border-yellow-600/50 opacity-0 transition-opacity duration-300">
+                A Rainha atacou!
+            </div>
+        </div>
+       
+        <!-- Botão de Dash para Mobile -->
+        <div class="flex justify-end w-full mt-auto mb-4 pr-4 pointer-events-none sm:hidden">
+            <button id="btn-dash" class="w-16 h-16 bg-blue-500/80 backdrop-blur text-white rounded-full shadow-lg border-2 border-blue-300 pointer-events-auto active:scale-90 flex items-center justify-center text-3xl font-bold transition-transform">
+                💨
+            </button>
+        </div>
+    </div>
+
+    <!-- Ecrã de Início / Regras -->
+    <div id="start-screen" class="absolute inset-0 bg-slate-900/90 backdrop-blur-md flex items-center justify-center z-20 transition-opacity duration-300">
+        <div class="bg-white p-8 rounded-3xl shadow-2xl max-w-lg text-center border-4 border-blue-500 relative">
+            <h1 class="text-4xl font-black mb-2 text-slate-800">WONDERLAND <span class="text-red-600">MYSTERY</span></h1>
+            <p class="text-sm text-slate-500 font-bold tracking-widest mb-6">INSPIRADO EM MURDER MYSTERY 2</p>
+           
+            <div class="bg-blue-50 p-4 rounded-2xl mb-6 text-left border border-blue-100">
+                <p class="text-lg font-bold text-blue-800 mb-2">A TUA FUNÇÃO: O XERIFE 👧🏼🗡️</p>
+                <ul class="list-disc pl-5 text-slate-700 space-y-1">
+                    <li>A <strong>Rainha de Copas</strong> está disfarçada de carta 🃏.</li>
+                    <li>Ela vai revelar-se por breves segundos para eliminar inocentes.</li>
+                    <li><strong>Descobre quem ela é</strong> e ataca-a com a tua espada!</li>
+                    <li><span class="text-red-600 font-bold">Cuidado:</span> Se atacares uma carta inocente, tu perdes!</li>
+                </ul>
+            </div>
+
+            <div class="bg-slate-100 p-4 rounded-xl mb-6 text-sm text-slate-600 text-left">
+                <strong>Como Jogar:</strong><br>
+                Mover: Setas ou WASD<br>
+                Atacar: Clica no rato ou toca no ecrã na direção que queres cortar.<br>
+                <strong>Dash:</strong> Barra de Espaço ou botão 💨.
+            </div>
+
+            <button id="btn-start" class="bg-blue-600 hover:bg-blue-700 text-white text-2xl font-bold py-4 px-8 rounded-full shadow-[0_5px_0_rgb(30,58,138)] hover:shadow-[0_2px_0_rgb(30,58,138)] hover:translate-y-[3px] transition-all w-full">
+                Começar Investigação
+            </button>
+        </div>
+    </div>
+
+    <!-- Ecrã de Fim de Jogo -->
+    <div id="game-over-screen" class="absolute inset-0 bg-slate-900/95 backdrop-blur-lg flex items-center justify-center z-20 hidden">
+        <div class="bg-white p-10 rounded-3xl shadow-2xl max-w-md text-center border-4 border-slate-800 relative">
+            <div id="go-icon" class="text-7xl mb-4">💀</div>
+            <h1 id="go-title" class="text-4xl font-black mb-2 text-red-600">DERROTA</h1>
+            <p id="go-desc" class="text-slate-700 mb-8 text-xl font-medium">A Rainha matou-te!</p>
+           
+            <button id="btn-restart" class="bg-slate-800 hover:bg-slate-900 text-white text-xl font-bold py-4 px-8 rounded-full shadow-[0_5px_0_rgb(15,23,42)] hover:shadow-[0_2px_0_rgb(15,23,42)] hover:translate-y-[3px] transition-all w-full">
+                Jogar Novamente
+            </button>
+        </div>
+    </div>
+
+    <!-- Canvas do Jogo -->
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const aliveCountElement = document.getElementById('alive-count');
+        const statusMsg = document.getElementById('status-msg');
+       
+        const startScreen = document.getElementById('start-screen');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const btnStart = document.getElementById('btn-start');
+        const btnRestart = document.getElementById('btn-restart');
+       
+        const goTitle = document.getElementById('go-title');
+        const goDesc = document.getElementById('go-desc');
+        const goIcon = document.getElementById('go-icon');
+
+        // Estado do Jogo
+        let gameState = 'START'; // START, PLAYING, GAMEOVER
+        let animationId;
+        let lastTime = 0;
+        let shakeTime = 0;
+        let ambientLight = 1.0;
+
+        // Entidades
+        let player;
+        let npcs = [];
+        let particles = [];
+        let props = [];
+       
+        // Input
+        const keys = {};
+        const pointer = { active: false, x: 0, y: 0, clicked: false };
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        function drawEmoji(emoji, x, y, size) {
+            ctx.font = `${size}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(emoji, x, y);
+        }
+
+        // --- SISTEMA DE PARTÍCULAS ---
+        class Particle {
+            constructor(x, y, emoji, type = 'normal') {
+                this.x = x;
+                this.y = y;
+                this.emoji = emoji;
+                const angle = Math.random() * Math.PI * 2;
+                const speed = type === 'blood' ? 100 + Math.random() * 200 : 50 + Math.random() * 100;
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed;
+                this.life = 1.0;
+                this.decay = type === 'blood' ? 1.5 : 0.8;
+                this.size = type === 'blood' ? 10 + Math.random() * 15 : 20;
+            }
+            update(dt) {
+                this.x += this.vx * dt;
+                this.y += this.vy * dt;
+                this.life -= this.decay * dt;
+            }
+            draw() {
+                ctx.globalAlpha = Math.max(0, this.life);
+                drawEmoji(this.emoji, this.x, this.y, this.size * (0.5 + this.life * 0.5));
+                ctx.globalAlpha = 1.0;
+            }
+        }
+
+        function spawnParticles(x, y, emoji, count, type = 'normal') {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x, y, emoji, type));
+            }
+        }
+
+        // --- CLASSES ---
+        class Prop {
+            constructor(emoji, x, y, size) {
+                this.emoji = emoji;
+                this.x = x;
+                this.y = y;
+                this.size = size;
+            }
+            draw() {
+                // Sombra do prop
+                ctx.beginPath();
+                ctx.arc(this.x, this.y + this.size*0.3, this.size * 0.4, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                ctx.fill();
+                drawEmoji(this.emoji, this.x, this.y, this.size);
+            }
+        }
+
+        class Player {
+            constructor() {
+                this.x = canvas.width / 2;
+                this.y = canvas.height / 2 + 100;
+                this.radius = 20;
+                this.speed = 250;
+                this.emoji = '👧🏼';
+                this.attackCooldown = 0;
+                this.isAttacking = false;
+                this.attackAngle = 0;
+                this.attackDuration = 0.2; // 200ms de animação de ataque
+                this.attackTimer = 0;
+               
+                // Dash
+                this.dashCooldown = 0;
+                this.isDashing = false;
+                this.dashTimer = 0;
+            }
+
+            update(dt) {
+                if (this.attackCooldown > 0) this.attackCooldown -= dt;
+                if (this.dashCooldown > 0) this.dashCooldown -= dt;
+               
+                if (this.attackTimer > 0) this.attackTimer -= dt;
+                else this.isAttacking = false;
+
+                if (this.dashTimer > 0) {
+                    this.dashTimer -= dt;
+                    this.isDashing = true;
+                    if (Math.random() < 0.5) spawnParticles(this.x, this.y, '💨', 1); // Rastro
+                } else {
+                    this.isDashing = false;
+                }
+
+                let dx = 0;
+                let dy = 0;
+
+                if (keys['ArrowLeft'] || keys['a']) dx -= 1;
+                if (keys['ArrowRight'] || keys['d']) dx += 1;
+                if (keys['ArrowUp'] || keys['w']) dy -= 1;
+                if (keys['ArrowDown'] || keys['s']) dy += 1;
+
+                if (dx !== 0 && dy !== 0) {
+                    const length = Math.sqrt(dx * dx + dy * dy);
+                    dx /= length;
+                    dy /= length;
+                }
+
+                const currentSpeed = this.isDashing ? this.speed * 3.5 : this.speed;
+
+                this.x += dx * currentSpeed * dt;
+                this.y += dy * currentSpeed * dt;
+
+                // Limites (borda da arena para não fugir)
+                this.x = Math.max(50, Math.min(canvas.width - 50, this.x));
+                this.y = Math.max(50, Math.min(canvas.height - 50, this.y));
+
+                // Lógica de Ataque
+                if (pointer.clicked && this.attackCooldown <= 0) {
+                    this.isAttacking = true;
+                    this.attackCooldown = 1.0; // 1 segundo de cooldown
+                    this.attackTimer = this.attackDuration;
+                   
+                    // Calcular ângulo para o ponteiro
+                    this.attackAngle = Math.atan2(pointer.y - this.y, pointer.x - this.x);
+                   
+                    pointer.clicked = false;
+                    this.checkAttackHit();
+                }
+
+                // Lógica de Dash
+                if (keys[' '] && this.dashCooldown <= 0 && (dx !== 0 || dy !== 0)) {
+                    this.dashTimer = 0.15; // 150ms de dash
+                    this.dashCooldown = 1.5; // 1.5s de cooldown
+                }
+            }
+
+            checkAttackHit() {
+                // Criar um ponto de impacto na direção do clique
+                const reach = 50;
+                const hitX = this.x + Math.cos(this.attackAngle) * reach;
+                const hitY = this.y + Math.sin(this.attackAngle) * reach;
+                const hitRadius = 40; // Área do corte
+
+                let hitSomeone = false;
+
+                npcs.forEach(npc => {
+                    if (npc.isDead) return;
+                   
+                    const dist = Math.sqrt((npc.x - hitX)**2 + (npc.y - hitY)**2);
+                    if (dist < hitRadius + npc.radius) {
+                        hitSomeone = true;
+                        if (npc.isKiller) {
+                            // ACERTOU NO ASSASSINO! VITÓRIA!
+                            spawnParticles(npc.x, npc.y, '✨', 20);
+                            endGame(true, "Apanhaste a Rainha!");
+                        } else {
+                            // ACERTOU NUM INOCENTE! DERROTA!
+                            spawnParticles(npc.x, npc.y, '🩸', 15, 'blood');
+                            npc.die();
+                            endGame(false, "Atacaste um inocente!", "Xerife Corrupto");
+                        }
+                    }
+                });
+
+                if (hitSomeone) shakeScreen();
+            }
+
+            draw() {
+                // Linha de mira
+                if (!this.isAttacking && this.attackCooldown <= 0) {
+                    ctx.beginPath();
+                    ctx.moveTo(this.x, this.y);
+                    ctx.lineTo(pointer.x, pointer.y);
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([5, 5]);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+
+                // Sombra
+                ctx.beginPath();
+                ctx.arc(this.x, this.y + 12, this.radius * 0.8, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                ctx.fill();
+               
+                // Opacidade ao dar dash
+                ctx.globalAlpha = this.isDashing ? 0.6 : 1.0;
+                drawEmoji(this.emoji, this.x, this.y, 45);
+                ctx.globalAlpha = 1.0;
+
+                // Desenhar Espada se estiver a atacar
+                if (this.isAttacking) {
+                    ctx.save();
+                    ctx.translate(this.x, this.y);
+                   
+                    // Animação de corte
+                    const progress = 1 - (this.attackTimer / this.attackDuration);
+                    const currentAngle = this.attackAngle - Math.PI/4 + (Math.PI/2 * progress);
+                   
+                    ctx.rotate(currentAngle);
+                    drawEmoji('🗡️', 40, 0, 40);
+                   
+                    // Efeito de rastro
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 40, -Math.PI/4, currentAngle, false);
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                    ctx.lineWidth = 5;
+                    ctx.stroke();
+
+                    ctx.restore();
+                }
+            }
+        }
+
+        class NPC {
+            constructor(isKiller = false) {
+                this.x = 50 + Math.random() * (canvas.width - 100);
+                this.y = 50 + Math.random() * (canvas.height - 100);
+                this.radius = 20;
+                this.baseSpeed = 80 + Math.random() * 40;
+                this.speed = this.baseSpeed;
+                this.isKiller = isKiller;
+                this.isDead = false;
+               
+                this.emojiNormal = '🃏';
+                this.emojiKiller = '👸🏻';
+                this.emojiDead = '💀';
+               
+                // Estado da IA
+                this.targetX = this.x;
+                this.targetY = this.y;
+                this.waitTime = Math.random() * 2;
+               
+                // Lógica específica do Killer
+                this.isRevealed = false;
+                this.killerState = 'hidden'; // hidden, hunting, cooling
+                this.huntTimer = 0;
+            }
+
+            die() {
+                this.isDead = true;
+                this.isRevealed = false; // Se o killer morrer
+                updateUI();
+            }
+
+            update(dt) {
+                if (this.isDead) return;
+
+                if (this.isKiller) {
+                    this.updateKillerAI(dt);
+                } else {
+                    this.updateInnocentAI(dt);
+                }
+
+                // Mover
+                const dx = this.targetX - this.x;
+                const dy = this.targetY - this.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+
+                if (dist > 5 && this.waitTime <= 0) {
+                    this.x += (dx/dist) * this.speed * dt;
+                    this.y += (dy/dist) * this.speed * dt;
+                }
+
+                // Limites
+                this.x = Math.max(50, Math.min(canvas.width - 50, this.x));
+                this.y = Math.max(50, Math.min(canvas.height - 50, this.y));
+            }
+
+            updateInnocentAI(dt) {
+                if (this.waitTime > 0) {
+                    this.waitTime -= dt;
+                } else {
+                    const dx = this.targetX - this.x;
+                    const dy = this.targetY - this.y;
+                    if (Math.sqrt(dx*dx + dy*dy) < 10) {
+                        // Chegou ao destino, esperar e escolher novo
+                        this.waitTime = 1 + Math.random() * 3;
+                        this.targetX = Math.max(50, Math.min(canvas.width - 50, this.x + (Math.random() - 0.5) * 300));
+                        this.targetY = Math.max(50, Math.min(canvas.height - 50, this.y + (Math.random() - 0.5) * 300));
+                    }
+                }
+            }
+
+            updateKillerAI(dt) {
+                if (this.huntTimer > 0) this.huntTimer -= dt;
+
+                if (this.killerState === 'hidden') {
+                    this.isRevealed = false;
+                    this.speed = this.baseSpeed;
+                    this.updateInnocentAI(dt); // Finge ser inocente
+
+                    // Chance de começar uma caçada
+                    if (this.huntTimer <= 0 && Math.random() < 0.01) { // 1% chance per frame once timer is up
+                        this.killerState = 'hunting';
+                        this.isRevealed = true;
+                        this.speed = this.baseSpeed * 2.5; // Corre muito rápido
+                       
+                        // Mostrar aviso e ativar modo escuro
+                        showStatusMessage("A Rainha revelou-se!");
+                        ambientLight = 0.2;
+                        spawnParticles(this.x, this.y, '💨', 10);
+                    }
+
+                } else if (this.killerState === 'hunting') {
+                    // Encontrar alvo mais próximo (inocente ou jogador)
+                    let closestDist = Infinity;
+                    let target = null;
+
+                    npcs.forEach(n => {
+                        if (!n.isKiller && !n.isDead) {
+                            let d = Math.sqrt((n.x - this.x)**2 + (n.y - this.y)**2);
+                            if (d < closestDist) { closestDist = d; target = n; }
+                        }
+                    });
+
+                    // Distância para o jogador (o Xerife)
+                    let dToPlayer = Math.sqrt((player.x - this.x)**2 + (player.y - this.y)**2);
+                    if (dToPlayer < closestDist) {
+                        closestDist = dToPlayer;
+                        target = player;
+                    }
+
+                    if (target) {
+                        this.targetX = target.x;
+                        this.targetY = target.y;
+
+                        // Se apanhar o alvo
+                        if (closestDist < this.radius + 20) {
+                            if (target === player) {
+                                endGame(false, "A Rainha cortou-te a cabeça!", "Fim da Linha");
+                            } else {
+                                target.die();
+                                spawnParticles(target.x, target.y, '🩸', 15, 'blood');
+                                shakeScreen();
+                               
+                                // Voltar a esconder-se após matar
+                                this.killerState = 'cooling';
+                                this.huntTimer = 4 + Math.random() * 3; // Fica calma por 4 a 7 segs
+                                this.isRevealed = false;
+                                this.speed = this.baseSpeed;
+                                this.waitTime = 1;
+                                ambientLight = 1.0; // Volta a clarear
+                               
+                                // Caminhar para longe da cena do crime
+                                this.targetX = this.x + (Math.random() - 0.5) * 400;
+                                this.targetY = this.y + (Math.random() - 0.5) * 400;
+                            }
+                        }
+                    } else {
+                        // Não há mais alvos (inocentes mortos)
+                        endGame(false, "A Rainha eliminou todos os inocentes!", "Falhaste");
+                    }
+                } else if (this.killerState === 'cooling') {
+                    this.updateInnocentAI(dt);
+                    if (this.huntTimer <= 0) {
+                        this.killerState = 'hidden';
+                        this.huntTimer = 3 + Math.random() * 5; // Tempo até próxima vontade de matar
+                    }
+                }
+            }
+
+            draw() {
+                // Sombra
+                ctx.beginPath();
+                ctx.arc(this.x, this.y + 10, this.radius * 0.8, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                ctx.fill();
+
+                let emojiToDraw = this.emojiNormal;
+                if (this.isDead) emojiToDraw = this.emojiDead;
+                else if (this.isKiller && this.isRevealed) emojiToDraw = this.emojiKiller;
+
+                drawEmoji(emojiToDraw, this.x, this.y, 40);
+
+                // Desenhar machado nas mãos da Rainha quando revelada
+                if (this.isKiller && this.isRevealed) {
+                    drawEmoji('🪓', this.x + 15, this.y - 15, 25);
+                }
+            }
+        }
+
+        // --- SISTEMA CORE ---
+        function showStatusMessage(msg) {
+            statusMsg.innerText = msg;
+            statusMsg.classList.remove('opacity-0');
+            setTimeout(() => {
+                statusMsg.classList.add('opacity-0');
+            }, 2000);
+        }
+
+        function updateUI() {
+            let alive = npcs.filter(n => !n.isDead && !n.isKiller).length;
+            aliveCountElement.innerText = alive;
+        }
+
+        function shakeScreen() {
+            shakeTime = 0.2; // 200ms
+        }
+
+        function endGame(isWin, desc, titleStr) {
+            gameState = 'GAMEOVER';
+            ambientLight = 1.0; // Restaura a luz para o ecrã final
+           
+            goTitle.innerText = isWin ? "VITÓRIA!" : (titleStr || "DERROTA");
+            goTitle.className = isWin ? "text-4xl font-black mb-2 text-green-500" : "text-4xl font-black mb-2 text-red-600";
+            goDesc.innerText = desc;
+            goIcon.innerText = isWin ? "🏆" : "💀";
+           
+            gameOverScreen.classList.remove('hidden');
+        }
+
+        function initGame() {
+            player = new Player();
+            npcs = [];
+            particles = [];
+            props = [];
+            ambientLight = 1.0;
+           
+            // Criar Cenário (Árvores, Cogumelos, Bules de Chá)
+            const cenarios = ['🍄', '🌲', '🌳', '🫖'];
+            for(let i=0; i<15; i++) {
+                let px = 100 + Math.random() * (canvas.width - 200);
+                let py = 100 + Math.random() * (canvas.height - 200);
+                let emoji = cenarios[Math.floor(Math.random() * cenarios.length)];
+                let size = (emoji === '🍄' || emoji === '🫖') ? 40 : 90;
+                props.push(new Prop(emoji, px, py, size));
+            }
+           
+            // Criar Inocentes
+            const NUM_INOCENTES = 12;
+            for(let i=0; i<NUM_INOCENTES; i++) {
+                npcs.push(new NPC(false));
+            }
+           
+            // Criar o Assassino
+            let killer = new NPC(true);
+            killer.huntTimer = 5; // Demora 5 segs até o 1º ataque
+            npcs.push(killer);
+
+            // Misturar array para ordem de desenho aleatória
+            npcs.sort(() => Math.random() - 0.5);
+
+            updateUI();
+           
+            gameState = 'PLAYING';
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+           
+            lastTime = performance.now();
+            if (animationId) cancelAnimationFrame(animationId);
+            loop(lastTime);
+        }
+
+        function loop(timestamp) {
+            if (gameState !== 'PLAYING') return;
+
+            const dt = Math.min((timestamp - lastTime) / 1000, 0.1); // Cap dt
+            lastTime = timestamp;
+
+            update(dt);
+            draw(timestamp);
+
+            animationId = requestAnimationFrame(loop);
+        }
+
+        function update(dt) {
+            if (shakeTime > 0) shakeTime -= dt;
+
+            player.update(dt);
+            npcs.forEach(npc => npc.update(dt));
+           
+            particles.forEach(p => p.update(dt));
+            particles = particles.filter(p => p.life > 0);
+
+            // Ordenar por Y para dar noção de profundidade (Top-Down pseudo-3D)
+            npcs.sort((a, b) => a.y - b.y);
+        }
+
+        function draw(time) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+           
+            // Efeito Camera Shake
+            if (shakeTime > 0) {
+                const intensity = 5;
+                const dx = (Math.random() - 0.5) * intensity;
+                const dy = (Math.random() - 0.5) * intensity;
+                ctx.translate(dx, dy);
+            }
+
+            // Desenhar chão (opcional: elementos decorativos fixos)
+            ctx.fillStyle = 'rgba(0,0,0,0.1)';
+            ctx.beginPath();
+            ctx.arc(canvas.width/2, canvas.height/2, 200, 0, Math.PI*2);
+            ctx.fill();
+
+            // Desenhar NPCs mortos primeiro (para ficarem no chão)
+            npcs.filter(n => n.isDead).forEach(npc => npc.draw());
+
+            // Desenhar partículas de sangue por baixo dos vivos
+            particles.filter(p => p.emoji === '🩸').forEach(p => p.draw());
+
+            // Filtro de luz ambiente no chão (Modo Assassina)
+            if (ambientLight < 1.0) {
+                ctx.fillStyle = `rgba(0, 5, 15, ${0.85 * (1.0 - ambientLight)})`;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+
+            // Efeito de Lanterna/Brilho se a luz estiver baixa
+            if (ambientLight < 1.0) {
+                // Brilho do Player
+                ctx.beginPath();
+                ctx.arc(player.x, player.y, 120, 0, Math.PI * 2);
+                const grd = ctx.createRadialGradient(player.x, player.y, 20, player.x, player.y, 120);
+                grd.addColorStop(0, 'rgba(255, 255, 255, 0.2)');
+                grd.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                ctx.fillStyle = grd;
+                ctx.fill();
+
+                // Brilho da Rainha
+                npcs.forEach(n => {
+                    if (n.isKiller && n.isRevealed) {
+                        ctx.beginPath();
+                        ctx.arc(n.x, n.y, 120, 0, Math.PI * 2);
+                        const grdQ = ctx.createRadialGradient(n.x, n.y, 20, n.x, n.y, 120);
+                        grdQ.addColorStop(0, 'rgba(255, 0, 0, 0.3)');
+                        grdQ.addColorStop(1, 'rgba(255, 0, 0, 0)');
+                        ctx.fillStyle = grdQ;
+                        ctx.fill();
+                    }
+                });
+            }
+
+            // Desenhar NPCs vivos, o Player e os Props de cenário
+            let drawables = [...npcs.filter(n => !n.isDead), player, ...props];
+            drawables.sort((a, b) => a.y - b.y); // Profundidade
+
+            drawables.forEach(d => d.draw());
+
+            // Partículas normais/mágicas por cima
+            particles.filter(p => p.emoji !== '🩸').forEach(p => p.draw());
+
+            ctx.restore();
+        }
+
+        // --- CONTROLOS ---
+        window.addEventListener('keydown', e => keys[e.key] = true);
+        window.addEventListener('keyup', e => keys[e.key] = false);
+
+        function handlePointerUpdate(e) {
+            let clientX, clientY;
+            if (e.touches && e.touches.length > 0) {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else {
+                clientX = e.clientX;
+                clientY = e.clientY;
+            }
+            const rect = canvas.getBoundingClientRect();
+            pointer.x = clientX - rect.left;
+            pointer.y = clientY - rect.top;
+        }
+
+        canvas.addEventListener('mousemove', handlePointerUpdate);
+        canvas.addEventListener('mousedown', (e) => {
+            handlePointerUpdate(e);
+            pointer.clicked = true;
+        });
+       
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handlePointerUpdate(e);
+            pointer.clicked = true;
+        }, { passive: false });
+       
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            handlePointerUpdate(e);
+        }, { passive: false });
+
+        // Evento do botão Dash Mobile
+        const btnDash = document.getElementById('btn-dash');
+        if (btnDash) {
+            btnDash.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                keys[' '] = true; // Simula a barra de espaço
+            });
+            btnDash.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                keys[' '] = false;
+            });
+            btnDash.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                keys[' '] = true;
+            });
+            btnDash.addEventListener('mouseup', (e) => {
+                e.preventDefault();
+                keys[' '] = false;
+            });
+        }
+
+        btnStart.addEventListener('click', initGame);
+        btnRestart.addEventListener('click', initGame);
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>País das Maravilhas - A Queda</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Poppins:wght@400;700&display=swap');
+       
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: #1e1b4b; /* Deep Indigo */
+            background-image: radial-gradient(circle at 50% 50%, #2e1065 0%, #0f172a 100%);
+            overscroll-behavior: none;
+            touch-action: none;
+            color: white;
+        }
+
+        h1, h2, .magic-text {
+            font-family: 'Playfair Display', serif;
+        }
+
+        canvas {
+            touch-action: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .wonderland-gradient {
+            background: linear-gradient(135deg, #d8b4fe 0%, #c084fc 50%, #818cf8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* Animação de flutuação para o ecrã inicial */
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+            100% { transform: translateY(0px); }
+        }
+        .floating {
+            animation: float 3s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen overflow-hidden m-0 p-0">
+
+    <!-- Interface do Jogo -->
+    <div id="ui" class="absolute top-4 left-0 w-full px-4 flex justify-between items-center z-10 pointer-events-none max-w-md mx-auto right-0">
+        <div class="bg-indigo-950/80 backdrop-blur text-purple-200 px-4 py-2 rounded-2xl border border-purple-500/50 shadow-lg">
+            Pontos: <span id="scoreDisplay" class="font-bold text-xl text-white">0</span>
+        </div>
+       
+        <div class="bg-indigo-950/80 backdrop-blur text-purple-200 px-4 py-2 rounded-2xl border border-purple-500/50 shadow-lg">
+            Nível: <span id="levelDisplay" class="font-bold text-xl text-white">1</span>
+        </div>
+    </div>
+
+    <!-- Ecrã Inicial -->
+    <div id="startScreen" class="absolute inset-0 bg-slate-950/90 flex flex-col items-center justify-center z-20 px-4 transition-opacity duration-500">
+        <div class="floating text-center">
+            <h1 class="text-5xl md:text-6xl font-bold mb-2 wonderland-gradient drop-shadow-[0_0_15px_rgba(192,132,252,0.5)]">
+                País das Maravilhas
+            </h1>
+            <h2 class="text-xl md:text-2xl text-purple-300 italic mb-8">A Queda na Toca do Coelho</h2>
+        </div>
+       
+        <div class="bg-indigo-950/50 p-6 rounded-3xl backdrop-blur-md max-w-sm text-center border border-purple-500/30 mb-8 shadow-2xl">
+            <p class="text-md mb-4 text-purple-100">Caiaste na toca do coelho! Tenta sobreviver o máximo de tempo possível.</p>
+            <ul class="text-left space-y-3 mb-4 text-sm text-purple-200">
+                <li class="flex items-center">👉 <span class="ml-2"><b>Arrasta</b> para a esquerda/direita para mover.</span></li>
+                <li class="flex items-center">🍄 <span class="ml-2">Apanha cogumelos mágicos (+100 pts).</span></li>
+                <li class="flex items-center">🃏⏱️🎩 <span class="ml-2 text-red-300">Evita as ilusões (Fim de jogo!).</span></li>
+            </ul>
+        </div>
+
+        <button id="startBtn" class="bg-purple-600 hover:bg-purple-500 text-white font-bold text-xl py-4 px-12 rounded-full shadow-[0_0_20px_rgba(147,51,234,0.6)] active:scale-95 transition-all cursor-pointer pointer-events-auto magic-text tracking-wider">
+            MERGULHAR
+        </button>
+    </div>
+
+    <!-- Ecrã de Fim de Jogo -->
+    <div id="gameOverScreen" class="hidden absolute inset-0 bg-slate-950/95 flex flex-col items-center justify-center z-30 px-4 transition-opacity duration-500 opacity-0">
+        <h1 class="text-5xl font-bold mb-4 text-red-400 magic-text drop-shadow-[0_0_15px_rgba(248,113,113,0.5)]">
+            Acordaste!
+        </h1>
+       
+        <div class="bg-indigo-950/50 p-8 rounded-3xl backdrop-blur-md max-w-sm text-center border border-red-500/30 mb-8 shadow-2xl">
+            <p class="text-lg text-purple-200 mb-2">A tua viagem terminou.</p>
+            <p class="text-3xl font-bold text-white mb-6">Pontuação: <span id="finalScore" class="wonderland-gradient">0</span></p>
+        </div>
+
+        <button id="restartBtn" class="bg-purple-600 hover:bg-purple-500 text-white font-bold text-xl py-4 px-12 rounded-full shadow-[0_0_20px_rgba(147,51,234,0.6)] active:scale-95 transition-all cursor-pointer pointer-events-auto magic-text tracking-wider">
+            VOLTAR A SONHAR
+        </button>
+    </div>
+
+    <!-- Contentor do Canvas -->
+    <div class="relative w-full h-full flex justify-center items-center">
+        <canvas id="gameCanvas" class="shadow-[0_0_50px_rgba(0,0,0,0.8)] bg-slate-900 w-full h-full max-w-[450px] max-h-[800px] md:rounded-2xl border-x md:border-y border-purple-500/20"></canvas>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startScreen = document.getElementById('startScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const startBtn = document.getElementById('startBtn');
+        const restartBtn = document.getElementById('restartBtn');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const levelDisplay = document.getElementById('levelDisplay');
+        const finalScoreDisplay = document.getElementById('finalScore');
+
+        // Resolução interna fixa para retrato
+        const GAME_WIDTH = 400;
+        const GAME_HEIGHT = 700;
+        canvas.width = GAME_WIDTH;
+        canvas.height = GAME_HEIGHT;
+
+        // Variáveis de Estado do Jogo
+        let isPlaying = false;
+        let score = 0;
+        let level = 1;
+        let frameCount = 0;
+        let baseSpeed = 4;
+        let particles = [];
+
+        // O Jogador (A Alice a cair)
+        const player = {
+            x: GAME_WIDTH / 2,
+            y: 150,
+            targetX: GAME_WIDTH / 2,
+            size: 20,
+            emoji: '👧🏼'
+        };
+
+        // Entidades (Obstáculos e Colecionáveis)
+        let entities = [];
+        const OBSTACLES = ['🃏', '⏱️', '🎩', '🫖'];
+        const COLLECTIBLES = ['🍄'];
+
+        // Sons (Simulados com emojis visuais)
+        let floatingTexts = [];
+
+        // Inicialização
+        function initGame() {
+            score = 0;
+            level = 1;
+            baseSpeed = 4;
+            frameCount = 0;
+            entities = [];
+            particles = [];
+            floatingTexts = [];
+            player.x = GAME_WIDTH / 2;
+            player.targetX = GAME_WIDTH / 2;
+            updateUI();
+           
+            // Criar estrelas/partículas de fundo iniciais
+            for(let i=0; i<50; i++) {
+                particles.push(createParticle(true));
+            }
+        }
+
+        startBtn.addEventListener('click', startGame);
+        restartBtn.addEventListener('click', startGame);
+
+        function startGame() {
+            startScreen.style.opacity = '0';
+            gameOverScreen.style.opacity = '0';
+           
+            setTimeout(() => {
+                startScreen.style.display = 'none';
+                gameOverScreen.classList.add('hidden');
+                initGame();
+                isPlaying = true;
+                gameLoop();
+            }, 300);
+        }
+
+        function gameOver() {
+            isPlaying = false;
+            finalScoreDisplay.textContent = Math.floor(score);
+            gameOverScreen.classList.remove('hidden');
+            // Pequeno atraso para a transição de opacidade funcionar
+            setTimeout(() => {
+                gameOverScreen.style.opacity = '1';
+            }, 50);
+        }
+
+        // Controlos (Toque e Rato)
+        function updatePlayerTarget(clientX) {
+            if (!isPlaying) return;
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            let canvasX = (clientX - rect.left) * scaleX;
+           
+            // Limitar dentro do ecrã
+            canvasX = Math.max(player.size, Math.min(GAME_WIDTH - player.size, canvasX));
+            player.targetX = canvasX;
+        }
+
+        // Eventos de Rato
+        let isDragging = false;
+        canvas.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            updatePlayerTarget(e.clientX);
+        });
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDragging) updatePlayerTarget(e.clientX);
+        });
+        window.addEventListener('mouseup', () => isDragging = false);
+
+        // Eventos de Toque
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            updatePlayerTarget(e.touches[0].clientX);
+        }, { passive: false });
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            updatePlayerTarget(e.touches[0].clientX);
+        }, { passive: false });
+
+        // --- Lógica Auxiliar ---
+       
+        function createParticle(randomY = false) {
+            return {
+                x: Math.random() * GAME_WIDTH,
+                y: randomY ? Math.random() * GAME_HEIGHT : GAME_HEIGHT + 20,
+                size: Math.random() * 2 + 1,
+                speed: (Math.random() * 2 + 1) * (baseSpeed * 0.5),
+                color: `hsla(${Math.random() * 60 + 250}, 100%, 70%, ${Math.random() * 0.5 + 0.1})`
+            };
+        }
+
+        function spawnEntity() {
+            // Frequência de spawn aumenta com o nível
+            const spawnRate = Math.max(20, 60 - (level * 2));
+           
+            if (frameCount % Math.floor(spawnRate) === 0) {
+                const isCollectible = Math.random() < 0.15; // 15% de chance de ser cogumelo
+                const typeArray = isCollectible ? COLLECTIBLES : OBSTACLES;
+                const emoji = typeArray[Math.floor(Math.random() * typeArray.length)];
+               
+                entities.push({
+                    x: Math.random() * (GAME_WIDTH - 60) + 30,
+                    y: GAME_HEIGHT + 40,
+                    size: 25, // Raio de colisão
+                    emoji: emoji,
+                    isCollectible: isCollectible,
+                    speedOffset: Math.random() * 2 - 1, // Variação de velocidade
+                    rotation: Math.random() * Math.PI * 2,
+                    rotSpeed: (Math.random() - 0.5) * 0.1
+                });
+            }
+        }
+
+        function addFloatingText(text, x, y, color) {
+            floatingTexts.push({
+                text, x, y, color, life: 60, maxLife: 60
+            });
+        }
+
+        function updateUI() {
+            scoreDisplay.textContent = Math.floor(score);
+            levelDisplay.textContent = level;
+        }
+
+        // --- Ciclo de Atualização ---
+        function update() {
+            if (!isPlaying) return;
+            frameCount++;
+
+            // Dificuldade (Aumentar a cada 500 frames)
+            if (frameCount % 500 === 0) {
+                level++;
+                baseSpeed += 0.5;
+                updateUI();
+            }
+
+            // Pontuação passiva (sobrevivência)
+            score += 0.1 * level;
+            if (frameCount % 10 === 0) updateUI();
+
+            // Movimento Suave do Jogador (Lerp)
+            player.x += (player.targetX - player.x) * 0.15;
+
+            // Partículas de fundo (Túnel)
+            particles.forEach(p => {
+                p.y -= p.speed;
+                // Sensação de perspetiva (opcional)
+                const distFromCenter = p.x - GAME_WIDTH/2;
+                p.x += distFromCenter * 0.005;
+            });
+            // Remover partículas fora do ecrã e criar novas
+            particles = particles.filter(p => p.y > -20 && p.x > -20 && p.x < GAME_WIDTH + 20);
+            while(particles.length < 50) particles.push(createParticle());
+
+            // Gerar Entidades
+            spawnEntity();
+
+            // Atualizar Entidades
+            for (let i = entities.length - 1; i >= 0; i--) {
+                let ent = entities[i];
+                // Eles vêm de baixo para cima, pois a Alice está a cair
+                ent.y -= (baseSpeed + ent.speedOffset);
+                ent.rotation += ent.rotSpeed;
+
+                // Colisão (Círculos simples)
+                const dx = player.x - ent.x;
+                const dy = player.y - ent.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < player.size + ent.size - 5) { // -5 para margem de tolerância
+                    if (ent.isCollectible) {
+                        score += 100;
+                        addFloatingText('+100', ent.x, ent.y, '#4ade80');
+                        updateUI();
+                        entities.splice(i, 1);
+                    } else {
+                        // Bateu num obstáculo
+                        gameOver();
+                    }
+                    continue; // Saltar resto da lógica para esta entidade
+                }
+
+                // Remover se saiu do ecrã
+                if (ent.y < -50) {
+                    entities.splice(i, 1);
+                }
+            }
+
+            // Textos Flutuantes
+            floatingTexts.forEach(ft => {
+                ft.y -= 1;
+                ft.life--;
+            });
+            floatingTexts = floatingTexts.filter(ft => ft.life > 0);
+        }
+
+        // --- Desenho ---
+        function draw() {
+            // Limpar Ecrã
+            ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+            // Efeito visual (Rasto mágico atrás da Alice)
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.beginPath();
+            const tailGradient = ctx.createLinearGradient(player.x, player.y, player.x, player.y - 150);
+            tailGradient.addColorStop(0, 'rgba(192, 132, 252, 0.4)');
+            tailGradient.addColorStop(1, 'rgba(192, 132, 252, 0)');
+            ctx.fillStyle = tailGradient;
+            ctx.moveTo(player.x - 10, player.y);
+            ctx.lineTo(player.x + 10, player.y);
+            ctx.lineTo(player.x, player.y - 150);
+            ctx.fill();
+            ctx.globalCompositeOperation = 'source-over';
+
+            // Partículas
+            particles.forEach(p => {
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Entidades
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            entities.forEach(ent => {
+                ctx.save();
+                ctx.translate(ent.x, ent.y);
+                ctx.rotate(ent.rotation);
+               
+                // Brilho especial para cogumelos
+                if (ent.isCollectible) {
+                    ctx.shadowColor = '#4ade80';
+                    ctx.shadowBlur = 15;
+                } else {
+                    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+                    ctx.shadowBlur = 5;
+                }
+
+                ctx.font = `${ent.size * 2}px Arial`;
+                ctx.fillText(ent.emoji, 0, 0);
+                ctx.restore();
+            });
+
+            // Alice (Jogador)
+            ctx.save();
+            ctx.translate(player.x, player.y);
+            // Inclinar a Alice ligeiramente com base no movimento
+            const tilt = (player.targetX - player.x) * 0.05;
+            ctx.rotate(tilt);
+           
+            ctx.shadowColor = '#d8b4fe';
+            ctx.shadowBlur = 10;
+            ctx.font = '40px Arial';
+            ctx.fillText(player.emoji, 0, 0);
+            ctx.restore();
+
+            // Textos Flutuantes
+            floatingTexts.forEach(ft => {
+                ctx.save();
+                ctx.globalAlpha = ft.life / ft.maxLife;
+                ctx.fillStyle = ft.color;
+                ctx.font = 'bold 24px Poppins';
+                ctx.shadowColor = '#000';
+                ctx.shadowBlur = 4;
+                ctx.fillText(ft.text, ft.x, ft.y);
+                ctx.restore();
+            });
+           
+            // Vignette (Escurecer bordas)
+            const vignette = ctx.createRadialGradient(GAME_WIDTH/2, GAME_HEIGHT/2, GAME_WIDTH/3, GAME_WIDTH/2, GAME_HEIGHT/2, GAME_HEIGHT);
+            vignette.addColorStop(0, 'rgba(0,0,0,0)');
+            vignette.addColorStop(1, 'rgba(0,0,0,0.6)');
+            ctx.fillStyle = vignette;
+            ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+        }
+
+        // --- Loop Principal ---
+        function gameLoop() {
+            if (!isPlaying) return;
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Renderização estática inicial para o fundo aparecer antes de jogar
+        initGame();
+        draw();
+
+    </script>
+</body>
+</html>

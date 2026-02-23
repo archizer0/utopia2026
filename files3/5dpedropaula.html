@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice: Fuga da Rainha 3D</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1a0b2e; /* Céu noturno mágico */
+        }
+       
+        #game-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        #score-display {
+            font-size: 26px;
+            font-weight: bold;
+            color: #FFF;
+            text-shadow: 0 0 10px rgba(255, 105, 180, 0.8);
+            background: rgba(26, 11, 46, 0.7);
+            padding: 15px 25px;
+            border-radius: 20px;
+            align-self: flex-start;
+            border: 2px solid #ff69b4;
+            transition: transform 0.2s;
+            backdrop-filter: blur(4px);
+        }
+
+        .score-bump {
+            transform: scale(1.2);
+            color: #ff69b4 !important;
+            text-shadow: 0 0 20px #fff;
+        }
+
+        #webcam-container {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 180px;
+            height: 135px;
+            border-radius: 15px;
+            overflow: hidden;
+            border: 3px solid #ff69b4;
+            box-shadow: 0 0 20px rgba(255, 105, 180, 0.5);
+            z-index: 5;
+            background-color: #000;
+        }
+
+        #webcam {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle, rgba(40,15,60,0.85) 0%, rgba(10,5,20,0.95) 100%);
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            pointer-events: auto;
+            text-align: center;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        h1 {
+            font-size: 4rem;
+            margin-bottom: 10px;
+            color: #ffb6c1;
+            text-shadow: 0 0 15px #ff69b4;
+            letter-spacing: 2px;
+            font-family: 'Georgia', serif;
+        }
+       
+        h1.danger {
+            color: #FF1744;
+            text-shadow: 0 0 20px #D50000;
+        }
+
+        p {
+            font-size: 1.3rem;
+            max-width: 600px;
+            margin-bottom: 40px;
+            line-height: 1.6;
+            background: rgba(0,0,0,0.4);
+            padding: 25px;
+            border-radius: 15px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        button {
+            padding: 15px 50px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #fff;
+            background: linear-gradient(45deg, #9C27B0, #E91E63);
+            border: none;
+            border-radius: 40px;
+            cursor: pointer;
+            box-shadow: 0 0 15px rgba(233, 30, 99, 0.5);
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        button:hover {
+            transform: translateY(-3px) scale(1.05);
+            box-shadow: 0 0 25px rgba(233, 30, 99, 0.8);
+        }
+
+        button.danger-btn {
+            background: linear-gradient(45deg, #D50000, #FF1744);
+            box-shadow: 0 0 15px rgba(213, 0, 0, 0.5);
+        }
+
+        #loading-text {
+            color: #E040FB;
+            font-weight: bold;
+            margin-top: 25px;
+            font-size: 1.2rem;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.5; }
+            50% { opacity: 1; }
+            100% { opacity: 0.5; }
+        }
+
+    </style>
+   
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+</head>
+<body>
+
+    <div id="game-container"></div>
+
+    <div id="ui-layer">
+        <div id="score-display">Cogumelos: 0 | Tamanho: 1.0x</div>
+    </div>
+
+    <div id="webcam-container">
+        <video id="webcam" autoplay playsinline></video>
+    </div>
+
+    <div id="start-screen" class="overlay">
+        <h1>Fuga no País das Maravilhas</h1>
+        <p>Controla a Garota com o <b>movimento da tua cabeça</b> na câmara.<br><br>
+        🍄 Apanha os <b>Cogumelos Mágicos</b> para cresceres!<br>
+        👑 Foge da <b>Rainha Vermelha</b> que te persegue!</p>
+        <button id="start-btn">Entrar na Toca</button>
+        <div id="loading-text" class="hidden">A conjurar a magia da câmara... Aguarde.</div>
+    </div>
+
+    <div id="game-over-screen" class="overlay hidden">
+        <h1 class="danger">CORTEM-LHE A CABEÇA!</h1>
+        <p id="final-score">A Rainha apanhou-te.<br>Conseguiste X cogumelos.</p>
+        <button id="restart-btn" class="danger-btn">Tentar Novamente</button>
+    </div>
+
+    <script>
+        // --- VARIÁVEIS GLOBAIS ---
+        let scene, camera, renderer;
+       
+        // Entidades
+        let girlGroup, girlLegL, girlLegR, girlArmL, girlArmR;
+        let items = [];
+        let enemies = [];
+        let particles = [];
+       
+        // Estado do Jogo
+        let score = 0;
+        let girlScale = 1;
+        let gameActive = false;
+        let animationId;
+       
+        // Controlos
+        let targetX = 0;
+        let targetZ = 0;
+        let isMoving = false;
+       
+        const ARENA_SIZE = 24;
+
+        // UI DOM
+        const videoElement = document.getElementById('webcam');
+        const startScreen = document.getElementById('start-screen');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const scoreDisplay = document.getElementById('score-display');
+        const startBtn = document.getElementById('start-btn');
+        const restartBtn = document.getElementById('restart-btn');
+        const loadingText = document.getElementById('loading-text');
+
+        // --- INICIALIZAÇÃO 3D ---
+        function init3D() {
+            const container = document.getElementById('game-container');
+           
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a0b2e);
+            scene.fog = new THREE.FogExp2(0x1a0b2e, 0.02);
+
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 22, 30);
+            camera.lookAt(0, 0, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            // Luzes Mágicas
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xe0b0ff, 0.8);
+            dirLight.position.set(15, 30, 10);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            dirLight.shadow.camera.left = -30;
+            dirLight.shadow.camera.right = 30;
+            dirLight.shadow.camera.top = 30;
+            dirLight.shadow.camera.bottom = -30;
+            scene.add(dirLight);
+
+            const pointLight = new THREE.PointLight(0xff69b4, 1, 50);
+            pointLight.position.set(0, 5, 0);
+            scene.add(pointLight);
+
+            // Chão Mágico (Xadrez Procedural simples com texturas baseadas em canvas)
+            createCheckerboardFloor();
+
+            createGirl();
+           
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        function createCheckerboardFloor() {
+            // Criar textura de xadrez usando Canvas HTML
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const context = canvas.getContext('2d');
+           
+            context.fillStyle = '#2c1b4d'; // Roxo escuro
+            context.fillRect(0, 0, 512, 512);
+            context.fillStyle = '#1a0b2e'; // Quase preto
+            context.fillRect(0, 0, 256, 256);
+            context.fillRect(256, 256, 256, 256);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(15, 15); // Repetições do xadrez
+
+            const planeGeo = new THREE.PlaneGeometry(100, 100);
+            const planeMat = new THREE.MeshStandardMaterial({
+                map: texture,
+                roughness: 0.6,
+                metalness: 0.2
+            });
+            const plane = new THREE.Mesh(planeGeo, planeMat);
+            plane.rotation.x = -Math.PI / 2;
+            plane.receiveShadow = true;
+            scene.add(plane);
+        }
+
+        // --- MODELO DA GAROTA ---
+        function createGirl() {
+            girlGroup = new THREE.Group();
+
+            const skinMat = new THREE.MeshStandardMaterial({ color: 0xffdbac, roughness: 0.4 });
+            const dressMat = new THREE.MeshStandardMaterial({ color: 0x4169e1, roughness: 0.7 }); // Azul Alice
+            const hairMat = new THREE.MeshStandardMaterial({ color: 0xffd700, roughness: 0.9 }); // Loiro
+            const shoeMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+
+            // Vestido (Cone)
+            const dressGeo = new THREE.ConeGeometry(1.2, 2.5, 16);
+            dressGeo.translate(0, 1.25, 0);
+            const dress = new THREE.Mesh(dressGeo, dressMat);
+            dress.position.y = 1;
+            dress.castShadow = true;
+            girlGroup.add(dress);
+
+            // Cabeça
+            const headGeo = new THREE.SphereGeometry(0.8, 32, 32);
+            const head = new THREE.Mesh(headGeo, skinMat);
+            head.position.set(0, 4.2, 0);
+            head.castShadow = true;
+            girlGroup.add(head);
+
+            // Cabelo
+            const hairGeo = new THREE.SphereGeometry(0.85, 32, 32, 0, Math.PI * 2, 0, Math.PI * 0.6);
+            const hair = new THREE.Mesh(hairGeo, hairMat);
+            hair.position.set(0, 4.25, -0.05);
+            girlGroup.add(hair);
+
+            // Fita do cabelo
+            const ribbonGeo = new THREE.TorusGeometry(0.86, 0.08, 8, 24);
+            const ribbonMat = new THREE.MeshStandardMaterial({ color: 0x000000 });
+            const ribbon = new THREE.Mesh(ribbonGeo, ribbonMat);
+            ribbon.position.set(0, 4.4, 0);
+            ribbon.rotation.x = Math.PI / 2;
+            girlGroup.add(ribbon);
+
+            // Pernas
+            const legGeo = new THREE.CylinderGeometry(0.2, 0.15, 1.2, 8);
+            legGeo.translate(0, -0.6, 0); // Pivo no topo
+           
+            girlLegL = new THREE.Mesh(legGeo, skinMat);
+            girlLegL.position.set(-0.4, 1.2, 0);
+            girlGroup.add(girlLegL);
+
+            girlLegR = new THREE.Mesh(legGeo, skinMat);
+            girlLegR.position.set(0.4, 1.2, 0);
+            girlGroup.add(girlLegR);
+
+            // Sapatos
+            const shoeGeo = new THREE.BoxGeometry(0.4, 0.3, 0.5);
+            shoeGeo.translate(0, -1.1, 0.1);
+            const shoeL = new THREE.Mesh(shoeGeo, shoeMat);
+            girlLegL.add(shoeL);
+            const shoeR = new THREE.Mesh(shoeGeo, shoeMat);
+            girlLegR.add(shoeR);
+
+            // Braços
+            const armGeo = new THREE.CylinderGeometry(0.15, 0.15, 1.5, 8);
+            armGeo.translate(0, -0.75, 0); // Pivo no ombro
+
+            girlArmL = new THREE.Mesh(armGeo, skinMat);
+            girlArmL.position.set(-1.0, 3.2, 0);
+            girlArmL.rotation.z = 0.3;
+            girlGroup.add(girlArmL);
+
+            girlArmR = new THREE.Mesh(armGeo, skinMat);
+            girlArmR.position.set(1.0, 3.2, 0);
+            girlArmR.rotation.z = -0.3;
+            girlGroup.add(girlArmR);
+
+            // Sombras para tudo
+            girlGroup.traverse((child) => {
+                if (child.isMesh) child.castShadow = true;
+            });
+
+            scene.add(girlGroup);
+        }
+
+        // --- COGUMELOS MÁGICOS (ITENS) ---
+        function spawnMushroom() {
+            const shroomGroup = new THREE.Group();
+           
+            // Caule
+            const stemGeo = new THREE.CylinderGeometry(0.2, 0.3, 1, 16);
+            const stemMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
+            const stem = new THREE.Mesh(stemGeo, stemMat);
+            stem.position.y = 0.5;
+            shroomGroup.add(stem);
+
+            // Chapéu do Cogumelo
+            const capGeo = new THREE.SphereGeometry(0.8, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+            const capMat = new THREE.MeshStandardMaterial({
+                color: 0xff1493, // Rosa forte/Vermelho
+                emissive: 0x8a004a,
+                emissiveIntensity: 0.3,
+                roughness: 0.4
+            });
+            const cap = new THREE.Mesh(capGeo, capMat);
+            cap.position.y = 0.9;
+            shroomGroup.add(cap);
+
+            // Pintas brancas
+            const spotMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+            for(let i=0; i<5; i++) {
+                const spot = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 8), spotMat);
+                const angle = (i / 5) * Math.PI * 2;
+                spot.position.set(Math.cos(angle)*0.5, 1.2, Math.sin(angle)*0.5);
+                // Inclinar pintas
+                spot.lookAt(0, 0.9, 0);
+                shroomGroup.add(spot);
+            }
+
+            shroomGroup.position.x = (Math.random() - 0.5) * ARENA_SIZE * 1.8;
+            shroomGroup.position.z = (Math.random() - 0.5) * ARENA_SIZE * 1.8;
+           
+            // Luz mágica em torno do cogumelo
+            const shroomLight = new THREE.PointLight(0xff1493, 0.5, 5);
+            shroomLight.position.y = 1;
+            shroomGroup.add(shroomLight);
+
+            shroomGroup.traverse((child) => {
+                if (child.isMesh) child.castShadow = true;
+            });
+           
+            scene.add(shroomGroup);
+            items.push({ mesh: shroomGroup, timeOffset: Math.random() * 10 });
+        }
+
+        // --- RAINHA INIMIGA ---
+        function spawnQueen() {
+            const queenGroup = new THREE.Group();
+
+            // Vestido Rainha
+            const bodyGeo = new THREE.ConeGeometry(1.8, 4, 16);
+            const bodyMat = new THREE.MeshStandardMaterial({
+                color: 0x8b0000, // Vermelho escuro
+                roughness: 0.8
+            });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 2;
+            body.castShadow = true;
+            queenGroup.add(body);
+
+            // Cabeça
+            const headGeo = new THREE.SphereGeometry(0.7, 16, 16);
+            const headMat = new THREE.MeshStandardMaterial({ color: 0xffdbac });
+            const head = new THREE.Mesh(headGeo, headMat);
+            head.position.y = 4.5;
+            queenGroup.add(head);
+
+            // Coroa
+            const crownGeo = new THREE.CylinderGeometry(0.8, 0.5, 1, 8, 1, false, 0, Math.PI * 2);
+            const crownMat = new THREE.MeshStandardMaterial({
+                color: 0xFFD700,
+                metalness: 0.8,
+                roughness: 0.2,
+                emissive: 0x554400
+            });
+            const crown = new THREE.Mesh(crownGeo, crownMat);
+            crown.position.y = 5.2;
+            crown.castShadow = true;
+            queenGroup.add(crown);
+
+            const angle = Math.random() * Math.PI * 2;
+            const radius = 20 + Math.random() * 5;
+            queenGroup.position.x = Math.cos(angle) * radius;
+            queenGroup.position.z = Math.sin(angle) * radius;
+           
+            scene.add(queenGroup);
+            enemies.push(queenGroup);
+        }
+
+        // --- SISTEMA DE PARTÍCULAS (EXPLOSÃO MÁGICA) ---
+        function createExplosion(position) {
+            const particleCount = 15;
+            const particleGeo = new THREE.SphereGeometry(0.15, 8, 8);
+            const particleMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+           
+            for(let i=0; i<particleCount; i++) {
+                const p = new THREE.Mesh(particleGeo, particleMat);
+                p.position.copy(position);
+                p.position.y += 1; // Centro do cogumelo
+               
+                // Velocidade aleatória
+                const vx = (Math.random() - 0.5) * 0.4;
+                const vy = Math.random() * 0.4 + 0.1;
+                const vz = (Math.random() - 0.5) * 0.4;
+               
+                // Cor aleatória mágica (rosa, roxo, amarelo)
+                const colors = [0xff1493, 0xffffff, 0xffd700, 0xda70d6];
+                p.material.color.setHex(colors[Math.floor(Math.random() * colors.length)]);
+
+                scene.add(p);
+                particles.push({
+                    mesh: p,
+                    vx: vx, vy: vy, vz: vz,
+                    life: 1.0 // 100% de vida
+                });
+            }
+        }
+
+        function updateParticles() {
+            for(let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+               
+                p.mesh.position.x += p.vx;
+                p.mesh.position.y += p.vy;
+                p.mesh.position.z += p.vz;
+               
+                // Gravidade leve
+                p.vy -= 0.015;
+               
+                // Encolher e desvanecer
+                p.life -= 0.03;
+                p.mesh.scale.set(p.life, p.life, p.life);
+               
+                if(p.life <= 0) {
+                    scene.remove(p.mesh);
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        // --- UTILITÁRIOS ---
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- MEDIA PIPE (RASTREAMENTO DE CABEÇA) ---
+        function initHeadTracking() {
+            const faceMesh = new FaceMesh({locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+            }});
+
+            faceMesh.setOptions({
+                maxNumFaces: 1,
+                refineLandmarks: false,
+                minDetectionConfidence: 0.7,
+                minTrackingConfidence: 0.7
+            });
+
+            faceMesh.onResults(onFaceResults);
+
+            const webCamera = new Camera(videoElement, {
+                onFrame: async () => {
+                    await faceMesh.send({image: videoElement});
+                },
+                width: 640,
+                height: 480
+            });
+           
+            webCamera.start().then(() => {
+                startScreen.classList.add('hidden');
+                startGame();
+            }).catch(err => {
+                alert("Erro ao aceder à câmara. Por favor permita o uso da câmara.");
+                loadingText.classList.add('hidden');
+                startBtn.classList.remove('hidden');
+            });
+        }
+
+        function onFaceResults(results) {
+            if (!gameActive) return;
+
+            if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                // O índice 1 no FaceMesh corresponde à ponta do nariz
+                const nose = results.multiFaceLandmarks[0][1];
+               
+                // Sensibilidade aumentada porque a cabeça move-se menos no quadro que a mão
+                targetX = (0.5 - nose.x) * ARENA_SIZE * 3.5;
+                targetZ = (nose.y - 0.5) * ARENA_SIZE * 3.0;
+            }
+        }
+
+        // --- LÓGICA PRINCIPAL DO JOGO ---
+        function startGame() {
+            score = 0;
+            girlScale = 1;
+            girlGroup.scale.set(1, 1, 1);
+            girlGroup.position.set(0, 0, 0);
+            updateScoreDisplay();
+           
+            items.forEach(item => scene.remove(item.mesh));
+            enemies.forEach(enemy => scene.remove(enemy));
+            particles.forEach(p => scene.remove(p.mesh));
+           
+            items = [];
+            enemies = [];
+            particles = [];
+
+            for(let i=0; i<4; i++) spawnMushroom();
+            spawnQueen();
+
+            gameActive = true;
+            animate();
+        }
+
+        function gameOver() {
+            gameActive = false;
+            cancelAnimationFrame(animationId);
+            document.getElementById('final-score').innerHTML = `A Rainha ordenou que te cortassem a cabeça!<br><br>Chegaste ao tamanho <b>${girlScale.toFixed(1)}x</b><br>e comeste <b>${score}</b> cogumelos.`;
+            gameOverScreen.classList.remove('hidden');
+        }
+
+        function updateScoreDisplay() {
+            scoreDisplay.innerText = `Cogumelos: ${score} | Tamanho: ${girlScale.toFixed(1)}x`;
+            scoreDisplay.classList.add('score-bump');
+            setTimeout(() => scoreDisplay.classList.remove('score-bump'), 200);
+        }
+
+        function animate() {
+            if (!gameActive) return;
+            animationId = requestAnimationFrame(animate);
+            const time = Date.now() * 0.001;
+
+            // --- MOVER A GAROTA ---
+            const dx = targetX - girlGroup.position.x;
+            const dz = targetZ - girlGroup.position.z;
+            const moveSpeed = 0.1;
+           
+            girlGroup.position.x += dx * moveSpeed;
+            girlGroup.position.z += dz * moveSpeed;
+
+            const speed = Math.sqrt(dx*dx + dz*dz);
+            isMoving = speed > 0.3;
+
+            // Rotação e Animação de Caminhada
+            if (isMoving) {
+                // Virar para a direção do movimento
+                const angle = Math.atan2(dx, dz);
+                let rotDiff = angle - girlGroup.rotation.y;
+                while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
+                while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
+                girlGroup.rotation.y += rotDiff * 0.15;
+
+                // Animação Pernas e Braços (movimento senoidal)
+                const walkCycle = time * 15;
+                girlLegL.rotation.x = Math.sin(walkCycle) * 0.5;
+                girlLegR.rotation.x = Math.sin(walkCycle + Math.PI) * 0.5;
+               
+                girlArmL.rotation.x = Math.sin(walkCycle + Math.PI) * 0.5;
+                girlArmR.rotation.x = Math.sin(walkCycle) * 0.5;
+               
+                // Balanço do corpo
+                girlGroup.rotation.z = Math.sin(walkCycle * 0.5) * 0.05;
+            } else {
+                // Parar suavemente
+                girlLegL.rotation.x *= 0.8;
+                girlLegR.rotation.x *= 0.8;
+                girlArmL.rotation.x *= 0.8;
+                girlArmR.rotation.x *= 0.8;
+                girlGroup.rotation.z *= 0.8;
+            }
+
+            // --- ANIMAR COGUMELOS ---
+            for (let i = items.length - 1; i >= 0; i--) {
+                const itemData = items[i];
+                const shroom = itemData.mesh;
+               
+                // Efeito de flutuar e respirar
+                shroom.position.y = Math.sin(time * 3 + itemData.timeOffset) * 0.2;
+                shroom.rotation.y += 0.01;
+
+                // Colisão (Baseado na escala)
+                const hitRadius = (1.5 * girlScale) + 0.8;
+                if (girlGroup.position.distanceTo(shroom.position) < hitRadius) {
+                    // Explosão de Partículas!
+                    createExplosion(shroom.position);
+                   
+                    scene.remove(shroom);
+                    items.splice(i, 1);
+                   
+                    score++;
+                    girlScale += 0.05; // Cresce 5%
+                    girlGroup.scale.set(girlScale, girlScale, girlScale);
+                    updateScoreDisplay();
+                   
+                    spawnMushroom();
+                   
+                    // Adicionar nova Rainha a cada 5 cogumelos
+                    if (score > 0 && score % 5 === 0) {
+                        spawnQueen();
+                    }
+                }
+            }
+
+            // --- ANIMAR RAINHAS INIMIGAS ---
+            const enemyBaseSpeed = 0.04 + (score * 0.001);
+            for (let i = 0; i < enemies.length; i++) {
+                const queen = enemies[i];
+               
+                const qdx = girlGroup.position.x - queen.position.x;
+                const qdz = girlGroup.position.z - queen.position.z;
+                const dist = Math.sqrt(qdx*qdx + qdz*qdz);
+               
+                if (dist > 0) {
+                    queen.position.x += (qdx / dist) * enemyBaseSpeed;
+                    queen.position.z += (qdz / dist) * enemyBaseSpeed;
+                   
+                    // Animação assustadora da Rainha (flutuar e balançar)
+                    queen.position.y = Math.abs(Math.sin(time * 5 + i)) * 1.5;
+                    queen.rotation.z = Math.sin(time * 3 + i) * 0.15;
+                   
+                    // Fazer rainha olhar para a Alice
+                    queen.rotation.y = Math.atan2(qdx, qdz);
+                }
+
+                const safeDistance = (1.5 * girlScale) + 1.5;
+                if (girlGroup.position.distanceTo(queen.position) < safeDistance) {
+                    gameOver();
+                    return;
+                }
+            }
+
+            // Atualizar partículas
+            updateParticles();
+
+            renderer.render(scene, camera);
+        }
+
+        // --- EVENTOS DE BOTÕES ---
+        startBtn.addEventListener('click', () => {
+            startBtn.classList.add('hidden');
+            loadingText.classList.remove('hidden');
+            if (!scene) init3D();
+            initHeadTracking();
+        });
+
+        restartBtn.addEventListener('click', () => {
+            gameOverScreen.classList.add('hidden');
+            startGame();
+        });
+
+    </script>
+</body>
+</html>

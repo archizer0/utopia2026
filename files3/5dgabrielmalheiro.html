@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>A Fuga de Alice: Masmorra das Maravilhas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #0f172a; /* Slate 900 */
+            color: #e2e8f0;
+            font-family: 'Georgia', serif;
+            touch-action: none; /* Previne rolagem no mobile ao tocar no jogo */
+            overflow: hidden;
+        }
+        #gameCanvas {
+            background-color: #1e293b;
+            image-rendering: pixelated;
+            box-shadow: 0 0 20px rgba(220, 38, 38, 0.4);
+        }
+        .control-btn {
+            background: rgba(30, 41, 59, 0.8);
+            border: 2px solid #991b1b;
+            color: #fca5a5;
+            font-size: 1.5rem;
+            border-radius: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            cursor: pointer;
+            transition: background 0.1s;
+        }
+        .control-btn:active {
+            background: #991b1b;
+            color: white;
+        }
+        .modal {
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(4px);
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-2">
+
+    <div class="text-center mb-4 z-10">
+        <h1 class="text-3xl md:text-4xl font-bold text-red-600 mb-2 drop-shadow-md" style="font-family: 'Times New Roman', Times, serif;">Masmorra das Maravilhas</h1>
+        <p class="text-sm md:text-base text-gray-300 max-w-md mx-auto">A Rainha de Copas te prendeu! Encontre a <span class="text-yellow-400">🗝️ Chave</span> e alcance a <span class="text-amber-600">🚪 Porta</span> antes que os <span class="text-red-500">🃏 Guardas</span> cortem sua cabeça.</p>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="flex justify-between w-full max-w-[450px] mb-2 px-2 text-lg font-bold">
+        <div id="inventory" class="text-yellow-400">Inventário: Vazio</div>
+        <div id="message" class="text-red-400 text-right transition-opacity duration-300"></div>
+    </div>
+
+    <!-- Game Canvas -->
+    <div class="relative">
+        <canvas id="gameCanvas" width="450" height="450" class="border-4 border-red-900 rounded-lg"></canvas>
+       
+        <!-- Game Over / Win Modal -->
+        <div id="gameModal" class="modal absolute inset-0 rounded-lg flex flex-col items-center justify-center hidden">
+            <h2 id="modalTitle" class="text-4xl font-bold mb-4 text-center"></h2>
+            <p id="modalText" class="text-lg mb-6 text-center px-4"></p>
+            <button onclick="resetGame()" class="px-6 py-3 bg-red-700 hover:bg-red-600 text-white font-bold rounded-lg border-2 border-red-400 transition-colors">
+                Jogar Novamente
+            </button>
+        </div>
+    </div>
+
+    <!-- Mobile Controls -->
+    <div class="grid grid-cols-3 gap-2 mt-6 w-48 h-48 md:hidden z-10">
+        <div></div>
+        <button class="control-btn" id="btn-up">▲</button>
+        <div></div>
+        <button class="control-btn" id="btn-left">◀</button>
+        <button class="control-btn" id="btn-down">▼</button>
+        <button class="control-btn" id="btn-right">▶</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const inventoryDisplay = document.getElementById('inventory');
+        const messageDisplay = document.getElementById('message');
+        const gameModal = document.getElementById('gameModal');
+        const modalTitle = document.getElementById('modalTitle');
+        const modalText = document.getElementById('modalText');
+
+        // Configurações do Jogo
+        const TILE_SIZE = 30; // 15 tiles de 30px = 450px
+        const COLS = 15;
+        const ROWS = 15;
+
+        // Mapa inicial base
+        // W: Parede, P: Player, K: Chave, E: Saída, H/V: Guardas (Horizontal/Vertical), .: Chão
+        const layoutBase = [
+            "WWWWWWWWWWWWWWW",
+            "WP......W.....W",
+            "W.WWWWW.W.WWW.W",
+            "W.....W...W.K.W",
+            "W.WWW.W.WWWWW.W",
+            "W.W.H.........W",
+            "W.WWWWW.WWWWW.W",
+            "W.....W.W.....W",
+            "WWWWW.W.W.WWW.W",
+            "W...H.....W...W",
+            "W.WWWWWWWWW.WWW",
+            "W.....W.....H.W",
+            "W.WWW.W.WWWWW.W",
+            "W.W.......W.E.W",
+            "WWWWWWWWWWWWWWW"
+        ];
+
+        let map = [];
+        let player = { x: 1, y: 1, hasKey: false };
+        let guards = [];
+        let gameOver = false;
+        let gameLoopInterval;
+
+        // Cores e Temas
+        const COLOR_WALL = "#450a0a"; // Dark red
+        const COLOR_WALL_BORDER = "#7f1d1d";
+        const COLOR_FLOOR_1 = "#1e293b";
+        const COLOR_FLOOR_2 = "#0f172a";
+
+        function initMap() {
+            map = [];
+            guards = [];
+            player = { x: 1, y: 1, hasKey: false };
+            gameOver = false;
+            inventoryDisplay.innerText = "Inventário: Vazio";
+            showMessage("");
+            gameModal.classList.add('hidden');
+
+            for (let y = 0; y < ROWS; y++) {
+                let row = layoutBase[y].split('');
+                for (let x = 0; x < COLS; x++) {
+                    let tile = row[x];
+                    if (tile === 'P') {
+                        player.x = x;
+                        player.y = y;
+                        row[x] = '.';
+                    } else if (tile === 'H') {
+                        guards.push({ x: x, y: y, dx: 1, dy: 0, symbol: '🃏' });
+                        row[x] = '.';
+                    } else if (tile === 'V') {
+                        guards.push({ x: x, y: y, dx: 0, dy: 1, symbol: '🃏' });
+                        row[x] = '.';
+                    }
+                }
+                map.push(row);
+            }
+        }
+
+        function drawMap() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Desenhar tiles
+            for (let y = 0; y < ROWS; y++) {
+                for (let x = 0; x < COLS; x++) {
+                    let tile = map[y][x];
+                    let px = x * TILE_SIZE;
+                    let py = y * TILE_SIZE;
+
+                    // Chão em xadrez escuro
+                    ctx.fillStyle = (x + y) % 2 === 0 ? COLOR_FLOOR_1 : COLOR_FLOOR_2;
+                    ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+
+                    if (tile === 'W') {
+                        ctx.fillStyle = COLOR_WALL;
+                        ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+                        ctx.strokeStyle = COLOR_WALL_BORDER;
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(px, py, TILE_SIZE, TILE_SIZE);
+                       
+                        // Detalhe de tijolo (opcional)
+                        ctx.beginPath();
+                        ctx.moveTo(px, py + TILE_SIZE/2);
+                        ctx.lineTo(px + TILE_SIZE, py + TILE_SIZE/2);
+                        ctx.stroke();
+                    } else if (tile === 'K') {
+                        drawEmoji('🗝️', px, py);
+                    } else if (tile === 'E') {
+                        drawEmoji('🚪', px, py);
+                    }
+                }
+            }
+
+            // Desenhar Guardas
+            guards.forEach(g => drawEmoji(g.symbol, g.x * TILE_SIZE, g.y * TILE_SIZE));
+
+            // Desenhar Player (Alice)
+            drawEmoji('👧🏼', player.x * TILE_SIZE, player.y * TILE_SIZE);
+        }
+
+        function drawEmoji(emoji, x, y) {
+            ctx.font = "20px Arial";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(emoji, x + TILE_SIZE / 2, y + TILE_SIZE / 2 + 2);
+        }
+
+        function movePlayer(dx, dy) {
+            if (gameOver) return;
+           
+            let nx = player.x + dx;
+            let ny = player.y + dy;
+
+            if (nx >= 0 && nx < COLS && ny >= 0 && ny < ROWS && map[ny][nx] !== 'W') {
+                player.x = nx;
+                player.y = ny;
+                checkInteractions();
+            }
+            drawMap();
+            checkCollisions(); // Verifica novamente se andou direto para um guarda
+        }
+
+        function moveGuards() {
+            if (gameOver) return;
+
+            guards.forEach(g => {
+                let nx = g.x + g.dx;
+                let ny = g.y + g.dy;
+
+                // Se bater na parede ou fora do limite, inverte a direção
+                if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS || map[ny][nx] === 'W') {
+                    g.dx *= -1;
+                    g.dy *= -1;
+                } else {
+                    g.x = nx;
+                    g.y = ny;
+                }
+            });
+            drawMap();
+            checkCollisions();
+        }
+
+        function checkInteractions() {
+            let currentTile = map[player.y][player.x];
+           
+            if (currentTile === 'K') {
+                player.hasKey = true;
+                map[player.y][player.x] = '.'; // Remove a chave do mapa
+                inventoryDisplay.innerText = "Inventário: 🗝️ Chave Dourada";
+                showMessage("Você encontrou a chave!", "#facc15");
+            } else if (currentTile === 'E') {
+                if (player.hasKey) {
+                    winGame();
+                } else {
+                    showMessage("A porta está trancada. Encontre a chave!", "#f87171");
+                }
+            }
+        }
+
+        function checkCollisions() {
+            for (let i = 0; i < guards.length; i++) {
+                if (guards[i].x === player.x && guards[i].y === player.y) {
+                    loseGame();
+                    return;
+                }
+            }
+        }
+
+        function showMessage(text, color = "white") {
+            messageDisplay.innerText = text;
+            messageDisplay.style.color = color;
+            messageDisplay.style.opacity = 1;
+           
+            // Apaga após 2.5 segundos
+            clearTimeout(window.msgTimeout);
+            window.msgTimeout = setTimeout(() => {
+                messageDisplay.style.opacity = 0;
+            }, 2500);
+        }
+
+        function loseGame() {
+            gameOver = true;
+            clearInterval(gameLoopInterval);
+            modalTitle.innerText = "CORTEM-LHE A CABEÇA!";
+            modalTitle.className = "text-4xl font-bold mb-4 text-center text-red-500";
+            modalText.innerText = "Os Guardas de Cartas da Rainha te pegaram.";
+            gameModal.classList.remove('hidden');
+        }
+
+        function winGame() {
+            gameOver = true;
+            clearInterval(gameLoopInterval);
+            modalTitle.innerText = "VOCÊ ESCAPOU!";
+            modalTitle.className = "text-4xl font-bold mb-4 text-center text-green-400";
+            modalText.innerText = "Você abriu a porta e fugiu do País das Maravilhas com sucesso.";
+            gameModal.classList.remove('hidden');
+        }
+
+        function resetGame() {
+            clearInterval(gameLoopInterval);
+            initMap();
+            drawMap();
+            // Guardas se movem a cada 400ms
+            gameLoopInterval = setInterval(moveGuards, 400);
+        }
+
+        // --- Controles ---
+
+        // Teclado
+        window.addEventListener('keydown', (e) => {
+            if(gameOver) return;
+            // Previne scroll da tela
+            if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight", " "].indexOf(e.code) > -1) {
+                e.preventDefault();
+            }
+
+            switch(e.key) {
+                case 'ArrowUp': case 'w': case 'W': movePlayer(0, -1); break;
+                case 'ArrowDown': case 's': case 'S': movePlayer(0, 1); break;
+                case 'ArrowLeft': case 'a': case 'A': movePlayer(-1, 0); break;
+                case 'ArrowRight': case 'd': case 'D': movePlayer(1, 0); break;
+            }
+        });
+
+        // Botões Mobile
+        const btnControls = {
+            'btn-up': [0, -1],
+            'btn-down': [0, 1],
+            'btn-left': [-1, 0],
+            'btn-right': [1, 0]
+        };
+
+        for (const [id, [dx, dy]] of Object.entries(btnControls)) {
+            const btn = document.getElementById(id);
+            // Touch e Clickevents para mobile/mouse
+            btn.addEventListener('touchstart', (e) => { e.preventDefault(); movePlayer(dx, dy); });
+            btn.addEventListener('mousedown', (e) => { e.preventDefault(); movePlayer(dx, dy); });
+        }
+
+        // Iniciar jogo ao carregar
+        window.onload = resetGame;
+
+    </script>
+</body>
+</html>

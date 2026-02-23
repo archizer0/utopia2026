@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Jogo de Blocos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Rajdhani:wght@500;700&display=swap');
+       
+        body {
+            font-family: 'Rajdhani', sans-serif;
+            background-color: #0f172a; /* Tailwind slate-900 */
+            color: #f8fafc;
+            touch-action: none; /* Previne scroll no telemóvel ao tocar no ecrã */
+        }
+
+        .title-font {
+            font-family: 'Press Start 2P', cursive;
+        }
+
+        #game-container {
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5), inset 0 0 10px rgba(255, 255, 255, 0.1);
+        }
+
+        canvas {
+            display: block;
+            image-rendering: pixelated;
+        }
+
+        /* Prevenir selecção de texto nos botões mobile */
+        .no-select {
+            user-select: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center overflow-hidden py-4">
+
+    <div class="text-center mb-4 md:mb-8">
+        <h1 class="title-font text-2xl md:text-4xl text-yellow-400 tracking-wider drop-shadow-lg">TETRA BLOCOS</h1>
+    </div>
+
+    <div class="flex flex-col md:flex-row gap-6 items-center md:items-start justify-center w-full max-w-4xl px-4">
+       
+        <!-- Área do Jogo -->
+        <div id="game-container" class="relative bg-slate-800 border-4 border-slate-600 rounded-lg p-2 w-fit">
+            <canvas id="tetris" width="240" height="400" class="bg-slate-900 rounded"></canvas>
+           
+            <!-- Ecrã de Fim de Jogo -->
+            <div id="game-over-screen" class="hidden absolute inset-0 bg-black/80 flex flex-col items-center justify-center rounded-lg z-10 backdrop-blur-sm">
+                <h2 class="title-font text-xl text-red-500 mb-4">FIM DE JOGO</h2>
+                <p class="text-lg mb-1 text-slate-300">Pontuação Final</p>
+                <p id="final-score" class="text-3xl font-bold text-yellow-400 mb-6">0</p>
+                <button onclick="resetGame()" class="px-6 py-3 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold rounded shadow-lg transition-transform transform hover:scale-105 active:scale-95">
+                    JOGAR NOVAMENTE
+                </button>
+            </div>
+           
+            <!-- Ecrã de Início -->
+            <div id="start-screen" class="absolute inset-0 bg-black/80 flex flex-col items-center justify-center rounded-lg z-10 backdrop-blur-sm">
+                <button onclick="startGame()" class="px-8 py-4 bg-green-600 hover:bg-green-500 active:bg-green-700 text-white font-bold rounded shadow-lg text-xl transition-transform transform hover:scale-105 active:scale-95 animate-pulse">
+                    INICIAR JOGO
+                </button>
+            </div>
+        </div>
+
+        <!-- Painel de Informação -->
+        <div class="flex flex-row md:flex-col gap-4 w-full md:w-48 justify-center">
+            <div class="bg-slate-800 border-2 border-slate-700 p-4 rounded-lg text-center flex-1 shadow-md">
+                <h3 class="text-slate-400 text-sm uppercase font-bold tracking-widest mb-1">Pontuação</h3>
+                <p id="score" class="title-font text-xl text-green-400">0</p>
+            </div>
+           
+            <div class="bg-slate-800 border-2 border-slate-700 p-4 rounded-lg text-center flex-1 shadow-md">
+                <h3 class="text-slate-400 text-sm uppercase font-bold tracking-widest mb-1">Linhas</h3>
+                <p id="lines" class="title-font text-xl text-blue-400">0</p>
+            </div>
+
+            <div class="bg-slate-800 border-2 border-slate-700 p-4 rounded-lg text-center flex-1 shadow-md">
+                <h3 class="text-slate-400 text-sm uppercase font-bold tracking-widest mb-1">Nível</h3>
+                <p id="level" class="title-font text-xl text-purple-400">1</p>
+            </div>
+
+            <!-- Instruções Desktop -->
+            <div class="hidden md:block bg-slate-800 border-2 border-slate-700 p-4 rounded-lg mt-4 shadow-md text-sm text-slate-300">
+                <h3 class="text-white font-bold mb-2 uppercase border-b border-slate-600 pb-1">Controlos</h3>
+                <ul class="space-y-2 mt-2">
+                    <li class="flex justify-between"><span>Esquerda:</span> <kbd class="bg-slate-700 px-1 rounded">←</kbd> / <kbd class="bg-slate-700 px-1 rounded">A</kbd></li>
+                    <li class="flex justify-between"><span>Direita:</span> <kbd class="bg-slate-700 px-1 rounded">→</kbd> / <kbd class="bg-slate-700 px-1 rounded">D</kbd></li>
+                    <li class="flex justify-between"><span>Rodar:</span> <kbd class="bg-slate-700 px-1 rounded">↑</kbd> / <kbd class="bg-slate-700 px-1 rounded">W</kbd></li>
+                    <li class="flex justify-between"><span>Descer:</span> <kbd class="bg-slate-700 px-1 rounded">↓</kbd> / <kbd class="bg-slate-700 px-1 rounded">S</kbd></li>
+                    <li class="flex justify-between"><span>Cair Rápido:</span> <kbd class="bg-slate-700 px-1 rounded">Espaço</kbd></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Controlos Mobile (Visível apenas em ecrãs pequenos) -->
+    <div class="md:hidden flex flex-col gap-2 mt-6 w-full max-w-sm px-4">
+        <div class="flex justify-center mb-2">
+            <button id="btn-rotate" class="no-select bg-slate-700 active:bg-slate-600 p-4 rounded-full w-16 h-16 flex items-center justify-center shadow-lg border border-slate-500">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+            </button>
+        </div>
+        <div class="flex justify-between gap-2">
+            <button id="btn-left" class="no-select bg-slate-700 active:bg-slate-600 p-4 rounded-lg flex-1 flex justify-center shadow-lg border border-slate-500">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+            </button>
+            <button id="btn-drop" class="no-select bg-slate-700 active:bg-slate-600 p-4 rounded-lg flex-1 flex justify-center shadow-lg border border-slate-500">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <button id="btn-right" class="no-select bg-slate-700 active:bg-slate-600 p-4 rounded-lg flex-1 flex justify-center shadow-lg border border-slate-500">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('tetris');
+        const context = canvas.getContext('2d');
+       
+        // Escalar tudo para blocos de 20x20. Resolução original: 240x400 = grelha de 12x20
+        context.scale(20, 20);
+
+        // Cores dos blocos (Índices de 1 a 7)
+        const COLORS = [
+            null,
+            '#a855f7', // 1: T (Purple)
+            '#eab308', // 2: O (Yellow)
+            '#f97316', // 3: L (Orange)
+            '#3b82f6', // 4: J (Blue)
+            '#06b6d4', // 5: I (Cyan)
+            '#22c55e', // 6: S (Green)
+            '#ef4444'  // 7: Z (Red)
+        ];
+
+        // Definir as peças
+        const SHAPES = [
+            [], // 0
+            [   // 1: T
+                [0, 1, 0],
+                [1, 1, 1],
+                [0, 0, 0],
+            ],
+            [   // 2: O
+                [2, 2],
+                [2, 2],
+            ],
+            [   // 3: L
+                [0, 3, 0],
+                [0, 3, 0],
+                [0, 3, 3],
+            ],
+            [   // 4: J
+                [0, 4, 0],
+                [0, 4, 0],
+                [4, 4, 0],
+            ],
+            [   // 5: I
+                [0, 5, 0, 0],
+                [0, 5, 0, 0],
+                [0, 5, 0, 0],
+                [0, 5, 0, 0],
+            ],
+            [   // 6: S
+                [0, 6, 6],
+                [6, 6, 0],
+                [0, 0, 0],
+            ],
+            [   // 7: Z
+                [7, 7, 0],
+                [0, 7, 7],
+                [0, 0, 0],
+            ]
+        ];
+
+        let arena = createMatrix(12, 20);
+        let player = {
+            pos: {x: 0, y: 0},
+            matrix: null,
+            score: 0,
+            lines: 0,
+            level: 1
+        };
+
+        let dropCounter = 0;
+        let dropInterval = 1000;
+        let lastTime = 0;
+        let isGameOver = false;
+        let isGameRunning = false;
+        let animationId;
+
+        function createMatrix(w, h) {
+            const matrix = [];
+            while (h--) {
+                matrix.push(new Array(w).fill(0));
+            }
+            return matrix;
+        }
+
+        function createPiece(type) {
+            // Clona a matriz da forma para não alterar as constantes originais
+            return SHAPES[type].map(row => [...row]);
+        }
+
+        function drawMatrix(matrix, offset, isGhost = false) {
+            matrix.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value !== 0) {
+                        if (isGhost) {
+                            // Peça fantasma (mostra onde vai cair)
+                            context.fillStyle = 'rgba(255, 255, 255, 0.1)';
+                            context.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                            context.lineWidth = 0.05;
+                            context.fillRect(x + offset.x, y + offset.y, 1, 1);
+                            context.strokeRect(x + offset.x, y + offset.y, 1, 1);
+                        } else {
+                            // Peça normal
+                            context.fillStyle = COLORS[value];
+                            context.fillRect(x + offset.x, y + offset.y, 1, 1);
+                           
+                            // Efeito de bloco 3D (Bordas)
+                            context.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                            context.fillRect(x + offset.x, y + offset.y, 1, 0.1); // Topo
+                            context.fillRect(x + offset.x, y + offset.y, 0.1, 1); // Esquerda
+                           
+                            context.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                            context.fillRect(x + offset.x, y + offset.y + 0.9, 1, 0.1); // Base
+                            context.fillRect(x + offset.x + 0.9, y + offset.y, 0.1, 1); // Direita
+                        }
+                    }
+                });
+            });
+        }
+
+        function getGhostPosition() {
+            const ghost = {
+                matrix: player.matrix,
+                pos: { x: player.pos.x, y: player.pos.y }
+            };
+            while (!collide(arena, ghost)) {
+                ghost.pos.y++;
+            }
+            ghost.pos.y--;
+            return ghost.pos;
+        }
+
+        function draw() {
+            // Limpa o canvas
+            context.fillStyle = '#0f172a'; // Fundo
+            context.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Desenha a grelha de fundo
+            context.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            context.lineWidth = 0.05;
+            for(let x = 0; x <= 12; x++) {
+                context.beginPath();
+                context.moveTo(x, 0);
+                context.lineTo(x, 20);
+                context.stroke();
+            }
+            for(let y = 0; y <= 20; y++) {
+                context.beginPath();
+                context.moveTo(0, y);
+                context.lineTo(12, y);
+                context.stroke();
+            }
+
+            drawMatrix(arena, {x: 0, y: 0});
+           
+            if (player.matrix && !isGameOver) {
+                // Desenha a sombra (ghost piece)
+                const ghostPos = getGhostPosition();
+                drawMatrix(player.matrix, ghostPos, true);
+               
+                // Desenha a peça actual
+                drawMatrix(player.matrix, player.pos);
+            }
+        }
+
+        function merge(arena, player) {
+            player.matrix.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value !== 0) {
+                        arena[y + player.pos.y][x + player.pos.x] = value;
+                    }
+                });
+            });
+        }
+
+        function collide(arena, player) {
+            const [m, o] = [player.matrix, player.pos];
+            for (let y = 0; y < m.length; ++y) {
+                for (let x = 0; x < m[y].length; ++x) {
+                    if (m[y][x] !== 0 &&
+                       (arena[y + o.y] && arena[y + o.y][x + o.x]) !== 0) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function arenaSweep() {
+            let rowCount = 1;
+            let linesClearedThisTurn = 0;
+           
+            outer: for (let y = arena.length - 1; y >= 0; --y) {
+                for (let x = 0; x < arena[y].length; ++x) {
+                    if (arena[y][x] === 0) {
+                        continue outer;
+                    }
+                }
+
+                // Remove a linha cheia e adiciona uma vazia no topo
+                const row = arena.splice(y, 1)[0].fill(0);
+                arena.unshift(row);
+                ++y;
+
+                linesClearedThisTurn++;
+            }
+
+            if (linesClearedThisTurn > 0) {
+                // Pontuação estilo clássico
+                const scores = [0, 40, 100, 300, 1200];
+                player.score += scores[linesClearedThisTurn] * player.level;
+                player.lines += linesClearedThisTurn;
+               
+                // Aumenta o nível a cada 10 linhas
+                player.level = Math.floor(player.lines / 10) + 1;
+               
+                // Aumenta a velocidade
+                dropInterval = Math.max(100, 1000 - (player.level - 1) * 100);
+               
+                updateScore();
+            }
+        }
+
+        function playerDrop() {
+            player.pos.y++;
+            if (collide(arena, player)) {
+                player.pos.y--;
+                merge(arena, player);
+                playerReset();
+                arenaSweep();
+                updateScore();
+            }
+            dropCounter = 0;
+        }
+
+        function playerHardDrop() {
+            while (!collide(arena, player)) {
+                player.pos.y++;
+            }
+            player.pos.y--;
+            merge(arena, player);
+            playerReset();
+            arenaSweep();
+            updateScore();
+            dropCounter = 0;
+        }
+
+        function playerMove(dir) {
+            player.pos.x += dir;
+            if (collide(arena, player)) {
+                player.pos.x -= dir;
+            }
+        }
+
+        function playerReset() {
+            const pieces = [1, 2, 3, 4, 5, 6, 7];
+            // Escolhe peça aleatória
+            player.matrix = createPiece(pieces[pieces.length * Math.random() | 0]);
+            player.pos.y = 0;
+            // Centra a peça
+            player.pos.x = (arena[0].length / 2 | 0) -
+                           (player.matrix[0].length / 2 | 0);
+           
+            // Verifica Fim de Jogo
+            if (collide(arena, player)) {
+                handleGameOver();
+            }
+        }
+
+        function playerRotate(dir) {
+            const pos = player.pos.x;
+            let offset = 1;
+            rotate(player.matrix, dir);
+           
+            // Wall Kick (Impede que a peça rode para fora do ecrã ou para dentro de outra)
+            while (collide(arena, player)) {
+                player.pos.x += offset;
+                offset = -(offset + (offset > 0 ? 1 : -1));
+                if (offset > player.matrix[0].length) {
+                    rotate(player.matrix, -dir);
+                    player.pos.x = pos;
+                    return;
+                }
+            }
+        }
+
+        function rotate(matrix, dir) {
+            // Transpõe a matriz
+            for (let y = 0; y < matrix.length; ++y) {
+                for (let x = 0; x < y; ++x) {
+                    [
+                        matrix[x][y],
+                        matrix[y][x],
+                    ] = [
+                        matrix[y][x],
+                        matrix[x][y],
+                    ];
+                }
+            }
+           
+            // Inverte as colunas
+            if (dir > 0) {
+                matrix.forEach(row => row.reverse());
+            } else {
+                matrix.reverse();
+            }
+        }
+
+        function update(time = 0) {
+            if (!isGameRunning || isGameOver) return;
+
+            const deltaTime = time - lastTime;
+            lastTime = time;
+
+            dropCounter += deltaTime;
+            if (dropCounter > dropInterval) {
+                playerDrop();
+            }
+
+            draw();
+            animationId = requestAnimationFrame(update);
+        }
+
+        function updateScore() {
+            document.getElementById('score').innerText = player.score;
+            document.getElementById('lines').innerText = player.lines;
+            document.getElementById('level').innerText = player.level;
+        }
+
+        function handleGameOver() {
+            isGameOver = true;
+            isGameRunning = false;
+            cancelAnimationFrame(animationId);
+            document.getElementById('final-score').innerText = player.score;
+            document.getElementById('game-over-screen').classList.remove('hidden');
+        }
+
+        function startGame() {
+            document.getElementById('start-screen').classList.add('hidden');
+            resetGame();
+        }
+
+        function resetGame() {
+            arena = createMatrix(12, 20);
+            player.score = 0;
+            player.lines = 0;
+            player.level = 1;
+            dropInterval = 1000;
+            isGameOver = false;
+            isGameRunning = true;
+           
+            document.getElementById('game-over-screen').classList.add('hidden');
+            updateScore();
+            playerReset();
+           
+            lastTime = performance.now();
+            update();
+        }
+
+        // Controlos de Teclado
+        document.addEventListener('keydown', event => {
+            if(!isGameRunning || isGameOver) return;
+
+            switch (event.keyCode) {
+                case 37: // Seta Esquerda
+                case 65: // A
+                    playerMove(-1);
+                    break;
+                case 39: // Seta Direita
+                case 68: // D
+                    playerMove(1);
+                    break;
+                case 40: // Seta Baixo
+                case 83: // S
+                    playerDrop();
+                    break;
+                case 38: // Seta Cima
+                case 87: // W
+                    playerRotate(1);
+                    break;
+                case 32: // Espaço
+                    playerHardDrop();
+                    break;
+            }
+            draw(); // Desenha imediatamente após o input para resposta rápida
+        });
+
+        // Controlos Touch (Mobile)
+        let dropIntervalId = null;
+
+        const btnLeft = document.getElementById('btn-left');
+        const btnRight = document.getElementById('btn-right');
+        const btnDrop = document.getElementById('btn-drop');
+        const btnRotate = document.getElementById('btn-rotate');
+
+        const setupTouchControl = (element, actionStart, actionEnd = null) => {
+            element.addEventListener('touchstart', (e) => {
+                e.preventDefault(); // Previne comportamentos default como zoom
+                if(isGameRunning && !isGameOver) actionStart();
+            }, {passive: false});
+
+            if (actionEnd) {
+                element.addEventListener('touchend', (e) => {
+                    e.preventDefault();
+                    actionEnd();
+                }, {passive: false});
+            }
+        };
+
+        setupTouchControl(btnLeft, () => { playerMove(-1); draw(); });
+        setupTouchControl(btnRight, () => { playerMove(1); draw(); });
+        setupTouchControl(btnRotate, () => { playerRotate(1); draw(); });
+        setupTouchControl(btnDrop,
+            () => { // Quando pressiona, acelera a queda
+                playerDrop(); draw();
+                if(dropIntervalId) clearInterval(dropIntervalId);
+                dropIntervalId = setInterval(() => { playerDrop(); draw(); }, 100);
+            },
+            () => { // Quando solta, volta ao normal
+                if(dropIntervalId) clearInterval(dropIntervalId);
+            }
+        );
+
+        // Desenha a grelha inicial antes de começar
+        draw();
+
+    </script>
+</body>
+</html>
