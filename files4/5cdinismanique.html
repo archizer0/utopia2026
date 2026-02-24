@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice Racing no País das Maravilhas</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1a0b2e; /* Roxo escuro */
+            color: white;
+            user-select: none;
+        }
+
+        #game-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none; /* Deixa os cliques passarem para o jogo quando necessário */
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        #score-board {
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px #000;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px 20px;
+            border-radius: 20px;
+            align-self: flex-start;
+            border: 2px solid #fff;
+        }
+
+        #start-screen, #game-over-screen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.9);
+            color: #333;
+            padding: 40px;
+            border-radius: 15px;
+            text-align: center;
+            box-shadow: 0 0 30px rgba(100, 149, 237, 0.8);
+            pointer-events: auto;
+            border: 4px solid #4169E1; /* Royal Blue da Alice */
+        }
+
+        h1 {
+            margin-top: 0;
+            color: #4169E1;
+            font-size: 32px;
+        }
+
+        p {
+            font-size: 18px;
+            margin-bottom: 20px;
+        }
+
+        button {
+            background: #4169E1;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 20px;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: transform 0.2s, background 0.2s;
+            font-weight: bold;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+            background: #27408B;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        #controls-hint {
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            text-align: center;
+            font-size: 14px;
+            opacity: 0.7;
+            text-shadow: 1px 1px 2px black;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- UI do Jogo -->
+    <div id="ui-layer">
+        <div id="score-board" class="hidden">Pontuação: 0</div>
+       
+        <div id="start-screen">
+            <h1>Alice no País das Maravilhas 3D</h1>
+            <p>A Rainha de Copas enviou as cartas!</p>
+            <p>Tu és a Alice. Desvia-te e apanha as rosas!</p>
+            <button id="start-btn">Começar a Fugir</button>
+        </div>
+
+        <div id="game-over-screen" class="hidden">
+            <h1>Fim de Jogo!</h1>
+            <p id="final-score">Pontuação Final: 0</p>
+            <button id="restart-btn">Tentar de Novo</button>
+        </div>
+       
+        <div id="controls-hint">Usa o Rato ou Setas para mover</div>
+    </div>
+
+    <!-- Contentor 3D -->
+    <div id="game-container"></div>
+
+    <!-- Three.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        // --- Variáveis Globais ---
+        let scene, camera, renderer;
+        let aliceCar;
+        let cards = [];
+        let roses = []; // Nova lista para as rosas
+        let particles = [];
+        let score = 0;
+        let gameRunning = false;
+        let speed = 0.5;
+        let clock = new THREE.Clock();
+       
+        // Input
+        let targetX = 0;
+        const LANE_WIDTH = 3.5;
+       
+        // DOM Elements
+        const scoreEl = document.getElementById('score-board');
+        const startScreen = document.getElementById('start-screen');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const finalScoreEl = document.getElementById('final-score');
+        const startBtn = document.getElementById('start-btn');
+        const restartBtn = document.getElementById('restart-btn');
+
+        // --- Inicialização ---
+        function init() {
+            // Cena
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a0b2e); // Roxo Místico
+            scene.fog = new THREE.Fog(0x1a0b2e, 10, 50);
+
+            // Câmara
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 3, 6);
+            camera.lookAt(0, 0, -5);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            document.getElementById('game-container').appendChild(renderer.domElement);
+
+            // Luzes
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(10, 20, 10);
+            dirLight.castShadow = true;
+            scene.add(dirLight);
+
+            // Chão (Tabuleiro de Xadrez)
+            createCheckerboardFloor();
+
+            // Alice Carro
+            createAliceCar();
+
+            // Partículas Mágicas
+            createParticles();
+
+            // Event Listeners
+            window.addEventListener('resize', onWindowResize, false);
+            document.addEventListener('mousemove', onMouseMove, false);
+            document.addEventListener('keydown', onKeyDown, false);
+            document.addEventListener('touchmove', onTouchMove, { passive: false });
+
+            // Botões
+            startBtn.addEventListener('click', startGame);
+            restartBtn.addEventListener('click', resetGame);
+
+            // Loop de Animação
+            animate();
+        }
+
+        // --- Criação de Objetos ---
+
+        function createCheckerboardFloor() {
+            // Criar textura procedural de xadrez
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 128;
+            const context = canvas.getContext('2d');
+            context.fillStyle = '#ffffff';
+            context.fillRect(0, 0, 128, 128);
+            context.fillStyle = '#000000';
+            context.fillRect(0, 0, 64, 64);
+            context.fillRect(64, 64, 64, 64);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(10, 20);
+            texture.magFilter = THREE.NearestFilter;
+
+            const planeGeo = new THREE.PlaneGeometry(20, 200);
+            const planeMat = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.5 });
+            const floor = new THREE.Mesh(planeGeo, planeMat);
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.z = -50;
+            scene.add(floor);
+        }
+
+        function createAliceCar() {
+            aliceCar = new THREE.Group();
+
+            // Materiais da Alice
+            const dressMat = new THREE.MeshStandardMaterial({ color: 0x4169E1, roughness: 0.8 }); // Azul Vestido
+            const apronMat = new THREE.MeshStandardMaterial({ color: 0xFFFFFF, roughness: 0.9 }); // Branco Avental
+            const skinMat = new THREE.MeshStandardMaterial({ color: 0xFFCCAA, roughness: 0.4 }); // Pele
+            const hairMat = new THREE.MeshStandardMaterial({ color: 0xFFD700, roughness: 0.5 }); // Loiro
+            const blackMat = new THREE.MeshStandardMaterial({ color: 0x111111 }); // Preto para laço
+
+            // Saia (Cone)
+            const skirtGeo = new THREE.ConeGeometry(0.7, 1.2, 16);
+            const skirt = new THREE.Mesh(skirtGeo, dressMat);
+            skirt.position.y = 0.8;
+            skirt.castShadow = true;
+            aliceCar.add(skirt);
+
+            // Tronco (Cilindro)
+            const torsoGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.7, 16);
+            const torso = new THREE.Mesh(torsoGeo, dressMat);
+            torso.position.y = 1.6;
+            torso.castShadow = true;
+            aliceCar.add(torso);
+
+            // Avental (Plano Branco)
+            const apronGeo = new THREE.BoxGeometry(0.5, 0.7, 0.1);
+            const apron = new THREE.Mesh(apronGeo, apronMat);
+            apron.position.set(0, 1.5, -0.35); // Frente do tronco
+            aliceCar.add(apron);
+
+            // Cabeça
+            const headGeo = new THREE.SphereGeometry(0.35, 16, 16);
+            const head = new THREE.Mesh(headGeo, skinMat);
+            head.position.set(0, 2.2, 0);
+            aliceCar.add(head);
+
+            // Cabelo (Topo)
+            const hairGeo = new THREE.SphereGeometry(0.38, 16, 16, 0, Math.PI * 2, 0, Math.PI * 0.6);
+            const hair = new THREE.Mesh(hairGeo, hairMat);
+            hair.position.set(0, 2.25, 0);
+            aliceCar.add(hair);
+
+            // Cabelo (Atrás)
+            const hairBackGeo = new THREE.BoxGeometry(0.8, 0.6, 0.3);
+            const hairBack = new THREE.Mesh(hairBackGeo, hairMat);
+            hairBack.position.set(0, 1.9, 0.25);
+            aliceCar.add(hairBack);
+
+            // Fita de cabelo (Preta)
+            const ribbonGeo = new THREE.BoxGeometry(0.8, 0.05, 0.3);
+            const ribbon = new THREE.Mesh(ribbonGeo, blackMat);
+            ribbon.position.set(0, 2.4, 0);
+            aliceCar.add(ribbon);
+
+            // Braços
+            const armGeo = new THREE.CylinderGeometry(0.1, 0.1, 0.6);
+            const armL = new THREE.Mesh(armGeo, skinMat);
+            armL.position.set(-0.5, 1.5, 0);
+            armL.rotation.z = Math.PI / 6;
+            aliceCar.add(armL);
+
+            const armR = new THREE.Mesh(armGeo, skinMat);
+            armR.position.set(0.5, 1.5, 0);
+            armR.rotation.z = -Math.PI / 6;
+            aliceCar.add(armR);
+
+            // Pernas
+            const legGeo = new THREE.CylinderGeometry(0.1, 0.1, 0.4);
+            const legL = new THREE.Mesh(legGeo, skinMat);
+            legL.position.set(-0.2, 0.2, 0);
+            aliceCar.add(legL);
+            const legR = new THREE.Mesh(legGeo, skinMat);
+            legR.position.set(0.2, 0.2, 0);
+            aliceCar.add(legR);
+
+            scene.add(aliceCar);
+        }
+
+        function createCardTexture(suit) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 384; // Proporção de carta
+            const ctx = canvas.getContext('2d');
+
+            // Fundo Branco
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, 256, 384);
+           
+            // Borda
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 10;
+            ctx.strokeRect(5, 5, 246, 374);
+
+            // Naipe e Cor
+            ctx.textAlign = 'center';
+            ctx.font = '150px Arial';
+           
+            if (suit === 'heart') {
+                ctx.fillStyle = 'red';
+                ctx.fillText('♥', 128, 230);
+                ctx.font = '40px Arial';
+                ctx.fillText('Q', 40, 50); // Rainha
+                ctx.fillText('♥', 40, 90);
+            } else if (suit === 'spade') {
+                ctx.fillStyle = 'black';
+                ctx.fillText('♠', 128, 230);
+                ctx.font = '40px Arial';
+                ctx.fillText('A', 40, 50); // As
+                ctx.fillText('♠', 40, 90);
+            }
+
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        // Pré-carregar texturas
+        const heartTexture = createCardTexture('heart');
+        const spadeTexture = createCardTexture('spade');
+
+        function spawnCard() {
+            if (!gameRunning) return;
+
+            const isHeart = Math.random() > 0.5;
+            const geometry = new THREE.BoxGeometry(1.5, 2.2, 0.1);
+            const material = new THREE.MeshStandardMaterial({
+                map: isHeart ? heartTexture : spadeTexture,
+                color: 0xffffff
+            });
+
+            const card = new THREE.Mesh(geometry, material);
+           
+            // Posição Aleatória X (-4 a 4)
+            const lane = (Math.floor(Math.random() * 3) - 1) * LANE_WIDTH; // -3.5, 0, ou 3.5
+           
+            card.position.set(lane, 1.1, -60); // Nasce longe
+            card.castShadow = true;
+           
+            // Ligeira rotação aleatória
+            card.rotation.y = (Math.random() - 0.5) * 0.5;
+
+            scene.add(card);
+            cards.push(card);
+        }
+
+        // --- NOVA FUNÇÃO: CRIAR ROSA ---
+        function spawnRose() {
+            if (!gameRunning) return;
+
+            const group = new THREE.Group();
+
+            // Flor (Icosaedro vermelho)
+            const flowerGeo = new THREE.IcosahedronGeometry(0.4, 0);
+            const flowerMat = new THREE.MeshStandardMaterial({
+                color: 0xff0033,
+                emissive: 0x440011, // Brilha um pouco no escuro
+                roughness: 0.3
+            });
+            const flower = new THREE.Mesh(flowerGeo, flowerMat);
+            group.add(flower);
+
+            // Folha Verde
+            const leafGeo = new THREE.BoxGeometry(0.4, 0.1, 0.2);
+            const leafMat = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
+            const leaf = new THREE.Mesh(leafGeo, leafMat);
+            leaf.position.set(0.3, -0.2, 0);
+            leaf.rotation.z = 0.5;
+            group.add(leaf);
+
+            // Posição Aleatória (a rosa flutua um pouco mais baixo que as cartas)
+            const lane = (Math.floor(Math.random() * 3) - 1) * LANE_WIDTH;
+            group.position.set(lane, 0.6, -60);
+           
+            scene.add(group);
+            roses.push(group);
+        }
+        // -------------------------------
+
+        function createParticles() {
+            const geometry = new THREE.BufferGeometry();
+            const vertices = [];
+            for (let i = 0; i < 500; i++) {
+                vertices.push(
+                    (Math.random() - 0.5) * 40,
+                    Math.random() * 20,
+                    (Math.random() - 0.5) * 100 - 20
+                );
+            }
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+            const material = new THREE.PointsMaterial({ color: 0xff00ff, size: 0.1, transparent: true });
+            const points = new THREE.Points(geometry, material);
+            scene.add(points);
+            particles.push(points);
+        }
+
+        // --- Lógica do Jogo ---
+
+        function startGame() {
+            startScreen.classList.add('hidden');
+            scoreEl.classList.remove('hidden');
+            gameRunning = true;
+            score = 0;
+            speed = 0.4;
+            scoreEl.innerText = `Pontuação: ${score}`;
+        }
+
+        function resetGame() {
+            gameOverScreen.classList.add('hidden');
+           
+            // Limpar cartas
+            cards.forEach(card => scene.remove(card));
+            cards = [];
+
+            // Limpar rosas
+            roses.forEach(rose => scene.remove(rose));
+            roses = [];
+           
+            aliceCar.position.x = 0;
+            targetX = 0;
+           
+            startGame();
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            gameOverScreen.classList.remove('hidden');
+            finalScoreEl.innerText = `Pontuação Final: ${Math.floor(score)}`;
+        }
+
+        // --- Controlos ---
+
+        function onMouseMove(event) {
+            if (!gameRunning) return;
+            // Normalizar mouse X de -1 a 1
+            const x = (event.clientX / window.innerWidth) * 2 - 1;
+            targetX = x * 5; // Limite de movimento
+        }
+
+        function onTouchMove(event) {
+            if (!gameRunning) return;
+            event.preventDefault(); // Prevenir scroll
+            const x = (event.touches[0].clientX / window.innerWidth) * 2 - 1;
+            targetX = x * 5;
+        }
+
+        function onKeyDown(event) {
+            if (!gameRunning) return;
+            if (event.key === 'ArrowLeft') targetX -= 2;
+            if (event.key === 'ArrowRight') targetX += 2;
+           
+            // Limitar teclado
+            targetX = Math.max(-5, Math.min(5, targetX));
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- Loop Principal ---
+
+        let frameCount = 0;
+        let roseFrameCount = 0; // Contador separado para as rosas
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (!gameRunning) {
+                // Animação idle no menu
+                if(aliceCar) aliceCar.rotation.y += 0.01;
+                renderer.render(scene, camera);
+                return;
+            }
+
+            // Mover Carro (Interpolação suave)
+            aliceCar.rotation.y = 0; // Reset rotação idle
+            aliceCar.position.x += (targetX - aliceCar.position.x) * 0.1;
+           
+            // Inclinar o carro nas curvas
+            aliceCar.rotation.z = (aliceCar.position.x - targetX) * 0.1;
+
+            // Spawnar Cartas (Inimigos)
+            frameCount++;
+            if (frameCount > (60 / speed)) {
+                spawnCard();
+                frameCount = 0;
+            }
+
+            // --- SPAWNAR ROSAS (Bónus) ---
+            // As rosas aparecem com menos frequência que as cartas
+            roseFrameCount++;
+            if (roseFrameCount > (150 / speed)) { // Aprox a cada 2-3 segundos
+                spawnRose();
+                roseFrameCount = 0;
+            }
+            // -----------------------------
+
+            // Atualizar Cartas
+            for (let i = cards.length - 1; i >= 0; i--) {
+                const card = cards[i];
+                card.position.z += speed;
+
+                // Colisão com Carta (GAME OVER)
+                const distZ = Math.abs(card.position.z - aliceCar.position.z);
+                const distX = Math.abs(card.position.x - aliceCar.position.x);
+
+                if (distZ < 1.0 && distX < 1.2) {
+                    gameOver();
+                }
+
+                // Remover cartas que passaram
+                if (card.position.z > 10) {
+                    scene.remove(card);
+                    cards.splice(i, 1);
+                    score += 10; // Pontos por desviar
+                    scoreEl.innerText = `Pontuação: ${score}`;
+                   
+                    if (speed < 1.5) speed += 0.001;
+                }
+            }
+
+            // --- ATUALIZAR ROSAS ---
+            for (let i = roses.length - 1; i >= 0; i--) {
+                const rose = roses[i];
+                rose.position.z += speed;
+                rose.rotation.y += 0.05; // Rosa gira
+                rose.rotation.x += 0.02;
+
+                // Colisão com Rosa (BÓNUS)
+                const distZ = Math.abs(rose.position.z - aliceCar.position.z);
+                const distX = Math.abs(rose.position.x - aliceCar.position.x);
+
+                if (distZ < 1.0 && distX < 1.2) {
+                    // Apanhou a rosa!
+                    scene.remove(rose);
+                    roses.splice(i, 1);
+                    score += 30; // +30 PONTOS
+                    scoreEl.innerText = `Pontuação: ${score}`;
+                }
+                // Remover rosas que passaram (sem penalidade)
+                else if (rose.position.z > 10) {
+                    scene.remove(rose);
+                    roses.splice(i, 1);
+                }
+            }
+            // -----------------------
+
+            // Mover Partículas (Efeito túnel)
+            particles.forEach(p => {
+                p.position.z += speed / 2;
+                if (p.position.z > 20) p.position.z = -80;
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        // Iniciar
+        init();
+
+    </script>
+</body>
+</html>

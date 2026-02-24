@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice no País das Maravilhas - Foge da Rainha!</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+        }
+        #game-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .hud {
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .health-bar-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .health-bar {
+            width: 200px;
+            height: 20px;
+            background-color: rgba(0,0,0,0.5);
+            border: 2px solid white;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 5px;
+        }
+        #alice-health-fill {
+            height: 100%;
+            background-color: #3498db;
+            width: 100%;
+            transition: width 0.3s;
+        }
+        #queen-health-fill {
+            height: 100%;
+            background-color: #e74c3c;
+            width: 100%;
+            transition: width 0.3s;
+        }
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            pointer-events: auto;
+            text-align: center;
+        }
+        .hidden {
+            display: none !important;
+        }
+        h1 {
+            font-size: 48px;
+            margin-bottom: 10px;
+            color: #f1c40f;
+            text-shadow: 0 0 10px rgba(241, 196, 15, 0.5);
+        }
+        p {
+            font-size: 20px;
+            max-width: 600px;
+            margin-bottom: 30px;
+            line-height: 1.5;
+        }
+        button {
+            padding: 15px 40px;
+            font-size: 24px;
+            background-color: #e74c3c;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            transition: transform 0.1s, background-color 0.2s;
+        }
+        button:hover {
+            background-color: #c0392b;
+            transform: scale(1.05);
+        }
+        button:active {
+            transform: scale(0.95);
+        }
+        .controls-info {
+            margin-top: 20px;
+            font-size: 16px;
+            color: #aaa;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container"></div>
+
+<div id="ui-layer">
+    <div class="hud hidden" id="game-hud">
+        <div class="health-bar-container">
+            <span>Vida da Alice</span>
+            <div class="health-bar"><div id="alice-health-fill"></div></div>
+        </div>
+        <div id="timer-display" style="position: absolute; left: 50%; transform: translateX(-50%); font-size: 36px; color: #fff; text-shadow: 2px 2px 4px #000;">02:00</div>
+        <div class="health-bar-container">
+            <span>Vida da Rainha</span>
+            <div class="health-bar"><div id="queen-health-fill"></div></div>
+        </div>
+    </div>
+</div>
+
+<!-- Ecrã Inicial -->
+<div id="start-screen" class="overlay">
+    <h1>Alice vs Rainha de Copas</h1>
+    <p>Bem-vinda ao País das Maravilhas!<br><br>
+       A Rainha de Copas quer cortar-te a cabeça!
+       Desvia-te das cartas que ela lança e apanha as <b>Tartes Mágicas (Amarelas)</b> para reduzires a vida da Rainha até a derrotares.</p>
+    <button onclick="startGame()">Começar Aventura</button>
+    <div class="controls-info">Usa as setas do teclado ou W, A, S, D para mover.</div>
+</div>
+
+<!-- Ecrã de Derrota -->
+<div id="game-over-screen" class="overlay hidden">
+    <h1 style="color: #e74c3c;">Cortem-lhe a cabeça!</h1>
+    <p id="game-over-reason">A Rainha de Copas apanhou-te. A tua jornada no País das Maravilhas terminou.</p>
+    <button onclick="resetGame()">Tentar Novamente</button>
+</div>
+
+<!-- Ecrã de Vitória -->
+<div id="victory-screen" class="overlay hidden">
+    <h1 style="color: #2ecc71;">Vitória Maravilhosa!</h1>
+    <p>Derrotaste a terrível Rainha de Copas e salvaste o País das Maravilhas!</p>
+    <button onclick="resetGame()">Jogar Novamente</button>
+</div>
+
+<!-- Importar Three.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+    // --- Variáveis Globais ---
+    let scene, camera, renderer;
+    let alice, queen;
+    let tarts = [];
+    let cards = [];
+    let mushrooms = [];
+   
+    // Estado do jogo
+    let gameState = 'start'; // 'start', 'playing', 'gameover', 'victory'
+    let clock = new THREE.Clock();
+   
+    // Configurações
+    const ARENA_SIZE = 40;
+    const MAX_ALICE_HEALTH = 5;
+    const MAX_QUEEN_HEALTH = 10;
+    const MAX_TIME = 120; // 2 minutos em segundos
+   
+    let aliceHealth = MAX_ALICE_HEALTH;
+    let queenHealth = MAX_QUEEN_HEALTH;
+    let timeLeft = MAX_TIME;
+   
+    let queenShootTimer = 0;
+    const QUEEN_SHOOT_INTERVAL = 1.5; // Segundos entre cada carta lançada
+    let tartSpawnTimer = 0;
+
+    // Controlos
+    const keys = { w: false, a: false, s: false, d: false, ArrowUp: false, ArrowLeft: false, ArrowDown: false, ArrowRight: false };
+
+    // --- Inicialização ---
+    function init() {
+        // Cena
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB); // Céu azul
+        scene.fog = new THREE.Fog(0x87CEEB, 20, 60);
+
+        // Câmara (Vista Isométrica / Top-Down)
+        camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 25, 20);
+        camera.lookAt(0, 0, 0);
+
+        // Renderizador
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.getElementById('game-container').appendChild(renderer.domElement);
+
+        // Iluminação
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(20, 40, 20);
+        dirLight.castShadow = true;
+        dirLight.shadow.camera.left = -30;
+        dirLight.shadow.camera.right = 30;
+        dirLight.shadow.camera.top = 30;
+        dirLight.shadow.camera.bottom = -30;
+        scene.add(dirLight);
+
+        // Criar o Mundo
+        createWorld();
+       
+        // Criar Personagens
+        createAlice();
+        createQueen();
+
+        // Gerar Tartes iniciais
+        for(let i=0; i<3; i++) spawnTart();
+
+        // Eventos
+        window.addEventListener('resize', onWindowResize);
+        window.addEventListener('keydown', (e) => { if(keys.hasOwnProperty(e.key)) keys[e.key] = true; });
+        window.addEventListener('keyup', (e) => { if(keys.hasOwnProperty(e.key)) keys[e.key] = false; });
+
+        // Iniciar Loop
+        animate();
+    }
+
+    // --- Criação de Elementos 3D ---
+    function createWorld() {
+        // Chão (Padrão de Xadrez - típico da Alice)
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 512;
+        const context = canvas.getContext('2d');
+       
+        context.fillStyle = '#ffffff';
+        context.fillRect(0, 0, 512, 512);
+        context.fillStyle = '#222222';
+        for (let i = 0; i < 8; i++) {
+            for (let j = 0; j < 8; j++) {
+                if ((i + j) % 2 === 0) {
+                    context.fillRect(i * 64, j * 64, 64, 64);
+                }
+            }
+        }
+       
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        texture.repeat.set(ARENA_SIZE/5, ARENA_SIZE/5);
+
+        const groundGeo = new THREE.PlaneGeometry(ARENA_SIZE, ARENA_SIZE);
+        const groundMat = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.8 });
+        const ground = new THREE.Mesh(groundGeo, groundMat);
+        ground.rotation.x = -Math.PI / 2;
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        // Sebes (Limites do mapa)
+        const hedgeGeo = new THREE.BoxGeometry(ARENA_SIZE, 4, 2);
+        const hedgeMat = new THREE.MeshStandardMaterial({ color: 0x228B22, roughness: 1 });
+       
+        const hedge1 = new THREE.Mesh(hedgeGeo, hedgeMat);
+        hedge1.position.set(0, 2, -ARENA_SIZE/2 - 1);
+        hedge1.castShadow = true;
+        scene.add(hedge1);
+
+        const hedge2 = new THREE.Mesh(hedgeGeo, hedgeMat);
+        hedge2.position.set(0, 2, ARENA_SIZE/2 + 1);
+        hedge2.castShadow = true;
+        scene.add(hedge2);
+
+        const hedge3 = new THREE.Mesh(hedgeGeo, hedgeMat);
+        hedge3.rotation.y = Math.PI / 2;
+        hedge3.position.set(-ARENA_SIZE/2 - 1, 2, 0);
+        hedge3.castShadow = true;
+        scene.add(hedge3);
+
+        const hedge4 = new THREE.Mesh(hedgeGeo, hedgeMat);
+        hedge4.rotation.y = Math.PI / 2;
+        hedge4.position.set(ARENA_SIZE/2 + 1, 2, 0);
+        hedge4.castShadow = true;
+        scene.add(hedge4);
+
+        // Cogumelos Gigantes Decorativos
+        for(let i=0; i<10; i++) {
+            createMushroom();
+        }
+    }
+
+    function createMushroom() {
+        const group = new THREE.Group();
+       
+        // Caule
+        const stemGeo = new THREE.CylinderGeometry(0.3, 0.5, 2);
+        const stemMat = new THREE.MeshStandardMaterial({ color: 0xddddcc });
+        const stem = new THREE.Mesh(stemGeo, stemMat);
+        stem.position.y = 1;
+        stem.castShadow = true;
+        group.add(stem);
+
+        // Chapéu
+        const topGeo = new THREE.SphereGeometry(1.2, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+        const topMat = new THREE.MeshStandardMaterial({ color: Math.random() > 0.5 ? 0xe74c3c : 0x9b59b6 });
+        const top = new THREE.Mesh(topGeo, topMat);
+        top.position.y = 2;
+        top.castShadow = true;
+        group.add(top);
+
+        // Posição aleatória fora do centro
+        let x, z;
+        do {
+            x = (Math.random() - 0.5) * (ARENA_SIZE - 4);
+            z = (Math.random() - 0.5) * (ARENA_SIZE - 4);
+        } while (Math.abs(x) < 10 && Math.abs(z) < 10); // Evitar o centro
+       
+        group.position.set(x, 0, z);
+        scene.add(group);
+        mushrooms.push(group);
+    }
+
+    function createAlice() {
+        alice = new THREE.Group();
+       
+        // Vestido (Azul)
+        const bodyGeo = new THREE.ConeGeometry(0.8, 1.5, 16);
+        const bodyMat = new THREE.MeshStandardMaterial({ color: 0x3498db });
+        const body = new THREE.Mesh(bodyGeo, bodyMat);
+        body.position.y = 0.75;
+        body.castShadow = true;
+        alice.add(body);
+
+        // Cabeça
+        const headGeo = new THREE.SphereGeometry(0.4, 16, 16);
+        const headMat = new THREE.MeshStandardMaterial({ color: 0xffdcb3 });
+        const head = new THREE.Mesh(headGeo, headMat);
+        head.position.y = 1.7;
+        head.castShadow = true;
+        alice.add(head);
+
+        // Cabelo (Amarelo)
+        const hairGeo = new THREE.SphereGeometry(0.45, 16, 16, 0, Math.PI * 2, 0, Math.PI/2);
+        const hairMat = new THREE.MeshStandardMaterial({ color: 0xf1c40f });
+        const hair = new THREE.Mesh(hairGeo, hairMat);
+        hair.position.y = 1.75;
+        alice.add(hair);
+
+        alice.position.set(0, 0, 10);
+        scene.add(alice);
+    }
+
+    function createQueen() {
+        queen = new THREE.Group();
+       
+        // Vestido (Vermelho e Maior)
+        const bodyGeo = new THREE.ConeGeometry(1.5, 2.5, 16);
+        const bodyMat = new THREE.MeshStandardMaterial({ color: 0xe74c3c });
+        const body = new THREE.Mesh(bodyGeo, bodyMat);
+        body.position.y = 1.25;
+        body.castShadow = true;
+        queen.add(body);
+
+        // Cabeça
+        const headGeo = new THREE.SphereGeometry(0.6, 16, 16);
+        const headMat = new THREE.MeshStandardMaterial({ color: 0xffdcb3 });
+        const head = new THREE.Mesh(headGeo, headMat);
+        head.position.y = 2.8;
+        head.castShadow = true;
+        queen.add(head);
+
+        // Coroa (Dourada)
+        const crownGeo = new THREE.CylinderGeometry(0.4, 0.3, 0.5, 8);
+        const crownMat = new THREE.MeshStandardMaterial({ color: 0xf1c40f });
+        const crown = new THREE.Mesh(crownGeo, crownMat);
+        crown.position.y = 3.3;
+        crown.castShadow = true;
+        queen.add(crown);
+
+        queen.position.set(0, 0, -10);
+        scene.add(queen);
+    }
+
+    function spawnTart() {
+        // Tarte Mágica (Colecionável)
+        const tartGeo = new THREE.CylinderGeometry(0.4, 0.3, 0.2, 16);
+        const tartMat = new THREE.MeshStandardMaterial({ color: 0xf39c12, emissive: 0xf39c12, emissiveIntensity: 0.2 });
+        const tart = new THREE.Mesh(tartGeo, tartMat);
+       
+        const x = (Math.random() - 0.5) * (ARENA_SIZE - 4);
+        const z = (Math.random() - 0.5) * (ARENA_SIZE - 4);
+       
+        tart.position.set(x, 0.5, z);
+        tart.rotation.x = Math.PI / 4;
+        tart.castShadow = true;
+       
+        scene.add(tart);
+        tarts.push({ mesh: tart, floatOffset: Math.random() * Math.PI * 2 });
+    }
+
+    function shootCard() {
+        // Criar uma Carta (Projétil)
+        const cardGeo = new THREE.BoxGeometry(0.6, 0.8, 0.05);
+        const cardMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+        const card = new THREE.Mesh(cardGeo, cardMat);
+       
+        // Coração no meio (simplificado com material vermelho nas faces)
+        const heartMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+        const materials = [cardMat, cardMat, cardMat, cardMat, heartMat, heartMat];
+        card.material = materials;
+
+        // Posição inicial (na Rainha)
+        card.position.copy(queen.position);
+        card.position.y = 1.5;
+
+        // Calcular direção para a Alice
+        const direction = new THREE.Vector3();
+        direction.subVectors(alice.position, queen.position);
+        direction.y = 0; // Manter no mesmo plano horizontal
+        direction.normalize();
+
+        card.lookAt(alice.position);
+       
+        scene.add(card);
+        cards.push({ mesh: card, velocity: direction.multiplyScalar(15) }); // Velocidade da carta
+    }
+
+    // --- Lógica do Jogo ---
+
+    function startGame() {
+        document.getElementById('start-screen').classList.add('hidden');
+        document.getElementById('game-hud').classList.remove('hidden');
+        gameState = 'playing';
+        clock.start();
+    }
+
+    function resetGame() {
+        // Limpar arrays
+        cards.forEach(c => scene.remove(c.mesh));
+        cards = [];
+        tarts.forEach(t => scene.remove(t.mesh));
+        tarts = [];
+       
+        // Reset Status
+        aliceHealth = MAX_ALICE_HEALTH;
+        queenHealth = MAX_QUEEN_HEALTH;
+        timeLeft = MAX_TIME;
+        updateUI();
+        updateTimerUI();
+       
+        // Reset posições
+        alice.position.set(0, 0, 10);
+        queen.position.set(0, 0, -10);
+       
+        // Respawn tartes
+        for(let i=0; i<3; i++) spawnTart();
+       
+        // Esconder ecrãs
+        document.getElementById('game-over-screen').classList.add('hidden');
+        document.getElementById('victory-screen').classList.add('hidden');
+        document.getElementById('game-hud').classList.remove('hidden');
+       
+        gameState = 'playing';
+        clock.start();
+    }
+
+    function takeDamage(target) {
+        if(target === 'alice') {
+            aliceHealth--;
+            // Efeito visual de dano (piscar)
+            alice.children.forEach(c => c.material.emissive.setHex(0xff0000));
+            setTimeout(() => {
+                if(gameState === 'playing') alice.children.forEach(c => c.material.emissive.setHex(0x000000));
+            }, 200);
+           
+            if(aliceHealth <= 0) gameOver(false);
+        } else if (target === 'queen') {
+            queenHealth--;
+            queen.children.forEach(c => c.material.emissive.setHex(0xffffff));
+            setTimeout(() => {
+                if(gameState === 'playing') queen.children.forEach(c => c.material.emissive.setHex(0x000000));
+            }, 200);
+           
+            if(queenHealth <= 0) gameOver(true);
+        }
+        updateUI();
+    }
+
+    function gameOver(isVictory, isTimeout = false) {
+        gameState = isVictory ? 'victory' : 'gameover';
+        document.getElementById('game-hud').classList.add('hidden');
+        if(isVictory) {
+            document.getElementById('victory-screen').classList.remove('hidden');
+        } else {
+            document.getElementById('game-over-screen').classList.remove('hidden');
+            if (isTimeout) {
+                document.getElementById('game-over-reason').innerText = "O tempo acabou! Foste capturada no País das Maravilhas.";
+            } else {
+                document.getElementById('game-over-reason').innerText = "A Rainha de Copas apanhou-te. A tua jornada no País das Maravilhas terminou.";
+            }
+        }
+    }
+
+    function updateUI() {
+        const alicePerc = Math.max(0, (aliceHealth / MAX_ALICE_HEALTH) * 100);
+        const queenPerc = Math.max(0, (queenHealth / MAX_QUEEN_HEALTH) * 100);
+       
+        document.getElementById('alice-health-fill').style.width = alicePerc + '%';
+        document.getElementById('queen-health-fill').style.width = queenPerc + '%';
+    }
+
+    function updateTimerUI() {
+        let minutes = Math.floor(Math.max(0, timeLeft) / 60);
+        let seconds = Math.floor(Math.max(0, timeLeft) % 60);
+        document.getElementById('timer-display').innerText =
+            (minutes < 10 ? "0" : "") + minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
+    }
+
+    function updatePhysics(delta) {
+        // --- Atualizar Temporizador ---
+        timeLeft -= delta;
+        updateTimerUI();
+        if (timeLeft <= 0) {
+            gameOver(false, true); // Derrota por tempo
+            return;
+        }
+
+        // --- Mover a Alice ---
+        const moveSpeed = 12 * delta;
+        let moveX = 0;
+        let moveZ = 0;
+
+        if (keys.w || keys.ArrowUp) moveZ -= 1;
+        if (keys.s || keys.ArrowDown) moveZ += 1;
+        if (keys.a || keys.ArrowLeft) moveX -= 1;
+        if (keys.d || keys.ArrowRight) moveX += 1;
+
+        // Normalizar movimento diagonal
+        if (moveX !== 0 && moveZ !== 0) {
+            const length = Math.sqrt(moveX * moveX + moveZ * moveZ);
+            moveX /= length;
+            moveZ /= length;
+        }
+
+        alice.position.x += moveX * moveSpeed;
+        alice.position.z += moveZ * moveSpeed;
+
+        // Rotação da Alice na direção do movimento
+        if (moveX !== 0 || moveZ !== 0) {
+            const angle = Math.atan2(moveX, moveZ);
+            alice.rotation.y = angle;
+        }
+
+        // Limites da Arena
+        const limit = ARENA_SIZE / 2 - 1.5;
+        alice.position.x = Math.max(-limit, Math.min(limit, alice.position.x));
+        alice.position.z = Math.max(-limit, Math.min(limit, alice.position.z));
+
+        // --- Mover a Rainha (Perseguir a Alice) ---
+        const queenSpeed = 3 * delta;
+        const dirToAlice = new THREE.Vector3().subVectors(alice.position, queen.position);
+        dirToAlice.y = 0;
+        const distToAlice = dirToAlice.length();
+       
+        if (distToAlice > 2) { // Não se sobrepor à Alice
+            dirToAlice.normalize();
+            queen.position.x += dirToAlice.x * queenSpeed;
+            queen.position.z += dirToAlice.z * queenSpeed;
+        }
+       
+        // Rainha olha sempre para a Alice
+        queen.lookAt(alice.position.x, queen.position.y, alice.position.z);
+
+        // --- Lançar Cartas ---
+        queenShootTimer += delta;
+        if(queenShootTimer >= QUEEN_SHOOT_INTERVAL) {
+            shootCard();
+            queenShootTimer = 0;
+        }
+
+        // --- Atualizar Cartas ---
+        for (let i = cards.length - 1; i >= 0; i--) {
+            let cardObj = cards[i];
+            cardObj.mesh.position.addScaledVector(cardObj.velocity, delta);
+            cardObj.mesh.rotation.y += 10 * delta; // Rodar carta no ar
+
+            // Calcular distância 2D (apenas X e Z) para ignorar a diferença de altura
+            const dx = cardObj.mesh.position.x - alice.position.x;
+            const dz = cardObj.mesh.position.z - alice.position.z;
+            const dist2D = Math.sqrt(dx * dx + dz * dz);
+
+            // Colisão com a Alice
+            if (dist2D < 1.2) {
+                takeDamage('alice');
+                scene.remove(cardObj.mesh);
+                cards.splice(i, 1);
+                continue;
+            }
+
+            // Remover cartas que saem da arena
+            if (Math.abs(cardObj.mesh.position.x) > ARENA_SIZE/2 || Math.abs(cardObj.mesh.position.z) > ARENA_SIZE/2) {
+                scene.remove(cardObj.mesh);
+                cards.splice(i, 1);
+            }
+        }
+
+        // --- Atualizar Tartes (Animação e Recolha) ---
+        for (let i = tarts.length - 1; i >= 0; i--) {
+            let tartObj = tarts[i];
+           
+            // Animação flutuante
+            tartObj.mesh.rotation.y += 2 * delta;
+            tartObj.mesh.position.y = 0.5 + Math.sin(clock.elapsedTime * 3 + tartObj.floatOffset) * 0.2;
+
+            // Colisão com a Alice (Recolher)
+            if (tartObj.mesh.position.distanceTo(alice.position) < 1.8) {
+                takeDamage('queen');
+                scene.remove(tartObj.mesh);
+                tarts.splice(i, 1);
+               
+                // Agendar spawn de nova tarte
+                setTimeout(spawnTart, 2000 + Math.random() * 2000);
+            }
+        }
+
+        // --- Colisão Direta Rainha <-> Alice ---
+        if (distToAlice < 2.0) {
+            // Empurrar Alice para trás para não receber dano constante
+            const pushDir = dirToAlice.clone().normalize().multiplyScalar(-3);
+            alice.position.add(pushDir);
+            takeDamage('alice');
+        }
+
+        // --- Câmara segue a Alice suavemente ---
+        const targetCamPos = new THREE.Vector3(alice.position.x, 25, alice.position.z + 15);
+        camera.position.lerp(targetCamPos, 0.05);
+        camera.lookAt(alice.position);
+    }
+
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    // --- Loop de Animação ---
+    function animate() {
+        requestAnimationFrame(animate);
+
+        const delta = clock.getDelta();
+
+        if (gameState === 'playing') {
+            updatePhysics(delta);
+        }
+
+        renderer.render(scene, camera);
+    }
+
+    // Iniciar tudo ao carregar a página
+    window.onload = init;
+
+</script>
+</body>
+</html>

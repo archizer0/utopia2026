@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice no Labirinto das Maravilhas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Quicksand:wght@400;600&display=swap');
+
+        body {
+            font-family: 'Quicksand', sans-serif;
+            background-color: #1a1a2e;
+            color: #fff;
+            overflow: hidden;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            touch-action: none;
+        }
+
+        h1 {
+            font-family: 'Cinzel', serif;
+            color: #e94560;
+            text-shadow: 2px 2px #0f3460;
+            margin-bottom: 0.5rem;
+        }
+
+        #game-container {
+            position: relative;
+            box-shadow: 0 0 50px rgba(233, 69, 96, 0.3);
+            border: 4px solid #e94560;
+            border-radius: 8px;
+            background: #16213e;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            image-rendering: auto;
+        }
+
+        .ui-overlay {
+            pointer-events: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(22, 33, 62, 0.9);
+            z-index: 20;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .btn {
+            pointer-events: auto;
+            background: #e94560;
+            color: white;
+            padding: 12px 32px;
+            border-radius: 9999px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+            margin-top: 20px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .btn:hover {
+            transform: scale(1.05);
+            background: #ff5e78;
+        }
+
+        #status-bar {
+            width: 100%;
+            max-width: 600px;
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-family: 'Cinzel', serif;
+            font-size: 1.1rem;
+            padding: 0 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Alice no Labirinto</h1>
+   
+    <div id="status-bar">
+        <div id="level-display">Nível: 1</div>
+        <div id="objective-display">Recolhe o Bolo 🍰</div>
+    </div>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+       
+        <!-- Menu inicial simplificado -->
+        <div id="start-menu" class="ui-overlay">
+            <button class="btn" onclick="startGame()">Começar Jogo</button>
+        </div>
+
+        <div id="game-over" class="ui-overlay hidden">
+            <h2 class="text-4xl font-bold mb-2 text-red-500">PERDESTE!</h2>
+            <p class="mb-4 text-center">Foste apanhada!<br>Tenta novamente este mesmo labirinto.</p>
+            <button class="btn" onclick="resetGame()">Tentar Novamente</button>
+        </div>
+
+        <div id="victory" class="ui-overlay hidden">
+            <h2 class="text-4xl font-bold mb-2 text-green-400">VITÓRIA!</h2>
+            <p class="mb-4">Nível concluído com sucesso!</p>
+            <button class="btn" onclick="nextLevel()">Próximo Nível</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startMenu = document.getElementById('start-menu');
+        const gameOverMenu = document.getElementById('game-over');
+        const victoryMenu = document.getElementById('victory');
+        const levelDisplay = document.getElementById('level-display');
+        const objectiveDisplay = document.getElementById('objective-display');
+
+        const TILE_SIZE = 40;
+        let level = 1;
+        let maze = [];
+        let COLS, ROWS;
+       
+        let player = { gridX: 1, gridY: 1, x: 0, y: 0, targetX: 0, targetY: 0 };
+        let cake = { gridX: 0, gridY: 0 };
+        let queen = { gridX: 0, gridY: 0 };
+        let guards = [];
+        let initialGuardPositions = [];
+       
+        let hasCake = false;
+        let gameRunning = false;
+        const PLAYER_LERP = 0.25;
+
+        const SPRITES = {
+            alice: '👧🏼',
+            aliceWithCake: '👗🍰',
+            cake: '🍰',
+            queen: '👑',
+            guard: '🃏',
+            wall: '🌳'
+        };
+
+        function generateMaze(cols, rows) {
+            const grid = Array(rows).fill().map(() => Array(cols).fill(1));
+            function walk(x, y) {
+                grid[y][x] = 0;
+                const dirs = [[0, -2], [0, 2], [-2, 0], [2, 0]].sort(() => Math.random() - 0.5);
+                for (let [dx, dy] of dirs) {
+                    const nx = x + dx, ny = y + dy;
+                    if (nx > 0 && nx < cols - 1 && ny > 0 && ny < rows - 1 && grid[ny][nx] === 1) {
+                        grid[y + dy / 2][x + dx / 2] = 0;
+                        walk(nx, ny);
+                    }
+                }
+            }
+            walk(1, 1);
+            // Atalhos
+            for (let i = 0; i < (cols * rows) / 8; i++) {
+                let rx = Math.floor(Math.random() * (cols - 2)) + 1;
+                let ry = Math.floor(Math.random() * (rows - 2)) + 1;
+                if (grid[ry][rx] === 1) grid[ry][rx] = 0;
+            }
+            return grid;
+        }
+
+        function setupLevel() {
+            COLS = 11 + (Math.floor((level - 1) / 3) * 2);
+            ROWS = 11 + (Math.floor((level - 1) / 3) * 2);
+            canvas.width = COLS * TILE_SIZE;
+            canvas.height = ROWS * TILE_SIZE;
+
+            maze = generateMaze(COLS, ROWS);
+           
+            cake.gridX = Math.floor(Math.random() * (COLS - 2)) + 1;
+            cake.gridY = Math.floor(Math.random() * (ROWS - 2)) + 1;
+            while(maze[cake.gridY][cake.gridX] !== 0 || (cake.gridX < 3 && cake.gridY < 3)) {
+                cake.gridX = Math.floor(Math.random() * (COLS - 2)) + 1;
+                cake.gridY = Math.floor(Math.random() * (ROWS - 2)) + 1;
+            }
+
+            queen.gridX = Math.floor(Math.random() * (COLS - 2)) + 1;
+            queen.gridY = Math.floor(Math.random() * (ROWS - 2)) + 1;
+            while(maze[queen.gridY][queen.gridX] !== 0 || (queen.gridX === cake.gridX && queen.gridY === cake.gridY)) {
+                queen.gridX = Math.floor(Math.random() * (COLS - 2)) + 1;
+                queen.gridY = Math.floor(Math.random() * (ROWS - 2)) + 1;
+            }
+
+            initialGuardPositions = [];
+            const guardCount = Math.min(15, 1 + Math.floor(level / 2));
+            for (let i = 0; i < guardCount; i++) {
+                let gx, gy;
+                do {
+                    gx = Math.floor(Math.random() * (COLS - 2)) + 1;
+                    gy = Math.floor(Math.random() * (ROWS - 2)) + 1;
+                } while (maze[gy][gx] !== 0 || (gx < 3 && gy < 3));
+                initialGuardPositions.push({ gx, gy });
+            }
+
+            resetEntities();
+            levelDisplay.innerText = `Nível: ${level}`;
+            victoryMenu.classList.add('hidden');
+            gameOverMenu.classList.add('hidden');
+        }
+
+        function resetEntities() {
+            player.gridX = 1; player.gridY = 1;
+            player.x = TILE_SIZE; player.y = TILE_SIZE;
+            player.targetX = TILE_SIZE; player.targetY = TILE_SIZE;
+           
+            guards = initialGuardPositions.map(pos => ({
+                gridX: pos.gx, gridY: pos.gy,
+                x: pos.gx * TILE_SIZE, y: pos.gy * TILE_SIZE,
+                targetX: pos.gx * TILE_SIZE, targetY: pos.gy * TILE_SIZE,
+                lastX: pos.gx, lastY: pos.gy,
+                speed: Math.min(0.15, 0.05 + (level * 0.006))
+            }));
+
+            hasCake = false;
+            objectiveDisplay.innerText = `Recolhe o Bolo 🍰`;
+        }
+
+        function startGame() {
+            level = 1;
+            setupLevel();
+            startMenu.classList.add('hidden');
+            gameRunning = true;
+        }
+
+        function nextLevel() {
+            level++;
+            setupLevel();
+            gameRunning = true;
+        }
+
+        function resetGame() {
+            resetEntities();
+            gameOverMenu.classList.add('hidden');
+            gameRunning = true;
+        }
+
+        function update() {
+            if (!gameRunning) return;
+
+            player.x += (player.targetX - player.x) * PLAYER_LERP;
+            player.y += (player.targetY - player.y) * PLAYER_LERP;
+
+            guards.forEach(g => {
+                if (Math.hypot(g.targetX - g.x, g.targetY - g.y) < 1) {
+                    const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+                    let validDirs = dirs.filter(([dx, dy]) => maze[g.gridY + dy]?.[g.gridX + dx] === 0);
+                    let smartDirs = validDirs.filter(([dx, dy]) => (g.gridX + dx !== g.lastX || g.gridY + dy !== g.lastY));
+                   
+                    let move = (smartDirs.length > 0 ? smartDirs : validDirs)[Math.floor(Math.random() * (smartDirs.length || validDirs.length))];
+                    if (move) {
+                        g.lastX = g.gridX; g.lastY = g.gridY;
+                        g.gridX += move[0]; g.gridY += move[1];
+                        g.targetX = g.gridX * TILE_SIZE; g.targetY = g.gridY * TILE_SIZE;
+                    }
+                }
+                g.x += (g.targetX - g.x) * g.speed;
+                g.y += (g.targetY - g.y) * g.speed;
+
+                if (Math.hypot(g.x - player.x, g.y - player.y) < TILE_SIZE * 0.6) {
+                    gameRunning = false;
+                    gameOverMenu.classList.remove('hidden');
+                }
+            });
+
+            if (player.gridX === cake.gridX && player.gridY === cake.gridY && !hasCake) {
+                hasCake = true;
+                objectiveDisplay.innerText = `Leva o bolo à Rainha 👑`;
+            }
+            if (player.gridX === queen.gridX && player.gridY === queen.gridY && hasCake) {
+                gameRunning = false;
+                victoryMenu.classList.remove('hidden');
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (maze.length === 0) return;
+
+            ctx.font = `${TILE_SIZE * 0.8}px serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            for (let y = 0; y < ROWS; y++) {
+                for (let x = 0; x < COLS; x++) {
+                    if (maze[y][x] === 1) ctx.fillText(SPRITES.wall, x * TILE_SIZE + TILE_SIZE/2, y * TILE_SIZE + TILE_SIZE/2);
+                    else {
+                        ctx.fillStyle = '#1b2a4e';
+                        ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                    }
+                }
+            }
+
+            if (!hasCake) ctx.fillText(SPRITES.cake, cake.gridX * TILE_SIZE + TILE_SIZE/2, cake.gridY * TILE_SIZE + TILE_SIZE/2);
+            ctx.fillText(SPRITES.queen, queen.gridX * TILE_SIZE + TILE_SIZE/2, queen.gridY * TILE_SIZE + TILE_SIZE/2);
+            guards.forEach(g => ctx.fillText(SPRITES.guard, g.x + TILE_SIZE/2, g.y + TILE_SIZE/2));
+            ctx.fillText(hasCake ? SPRITES.aliceWithCake : SPRITES.alice, player.x + TILE_SIZE/2, player.y + TILE_SIZE/2);
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        window.addEventListener('keydown', e => {
+            if (!gameRunning) return;
+            if (Math.hypot(player.targetX - player.x, player.targetY - player.y) > 2) return;
+            let dx = 0, dy = 0;
+            if (e.key === 'ArrowUp') dy = -1;
+            else if (e.key === 'ArrowDown') dy = 1;
+            else if (e.key === 'ArrowLeft') dx = -1;
+            else if (e.key === 'ArrowRight') dx = 1;
+           
+            if (maze[player.gridY + dy]?.[player.gridX + dx] === 0) {
+                player.gridX += dx; player.gridY += dy;
+                player.targetX = player.gridX * TILE_SIZE;
+                player.targetY = player.gridY * TILE_SIZE;
+            }
+        });
+
+        canvas.addEventListener('mousedown', e => {
+            if (!gameRunning) return;
+            const rect = canvas.getBoundingClientRect();
+            const tx = (e.clientX - rect.left) / (rect.width / canvas.width);
+            const ty = (e.clientY - rect.top) / (rect.height / canvas.height);
+            const dx = tx - (player.x + TILE_SIZE/2);
+            const dy = ty - (player.y + TILE_SIZE/2);
+            if (Math.abs(dx) > Math.abs(dy)) moveManual(dx > 0 ? 1 : -1, 0);
+            else moveManual(0, dy > 0 ? 1 : -1);
+        });
+
+        function moveManual(dx, dy) {
+            if (maze[player.gridY + dy]?.[player.gridX + dx] === 0) {
+                player.gridX += dx; player.gridY += dy;
+                player.targetX = player.gridX * TILE_SIZE;
+                player.targetY = player.gridY * TILE_SIZE;
+            }
+        }
+
+        gameLoop();
+    </script>
+</body>
+</html>

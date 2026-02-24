@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>A Fuga de Alice no País das Maravilhas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Lato:wght@400;700&display=swap');
+
+        body {
+            font-family: 'Lato', sans-serif;
+            background-color: #1a202c;
+            color: white;
+            overflow: hidden; /* Evita scroll no mobile */
+            touch-action: none; /* Previne comportamentos de toque padrão (pull-to-refresh) */
+        }
+
+        h1, h2, h3, .wonderland-font {
+            font-family: 'Cinzel', serif;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: radial-gradient(circle at center, #2d3748 0%, #1a202c 100%);
+        }
+
+        canvas {
+            background-color: #4CAF50;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border: 4px solid #fff;
+            border-radius: 8px;
+            max-width: 100%;
+            max-height: 70vh;
+            object-fit: contain;
+        }
+
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* D-Pad para Mobile */
+        .d-pad {
+            display: none;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 20px;
+            z-index: 5;
+        }
+
+        @media (max-width: 768px) {
+            .d-pad {
+                display: grid;
+            }
+            canvas {
+                max-height: 55vh;
+            }
+        }
+
+        .d-pad button {
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid white;
+            color: white;
+            font-size: 24px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+        }
+       
+        .d-pad button:active {
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        .empty-cell { visibility: hidden; }
+
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+   
+    <!-- Cabeçalho UI -->
+    <div class="w-full max-w-3xl flex justify-between items-center p-4 z-0">
+        <div class="text-xl wonderland-font text-pink-300 drop-shadow-md">Nível: <span id="ui-level">1</span></div>
+        <div class="text-2xl wonderland-font text-white drop-shadow-md">A Fuga de Alice</div>
+        <div class="text-xl wonderland-font text-yellow-300 drop-shadow-md">Pontos: <span id="ui-score">0</span></div>
+    </div>
+
+    <!-- Tela do Jogo -->
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+    <!-- Controlos Mobile (Visível apenas em ecrãs pequenos) -->
+    <div class="d-pad" id="mobile-controls">
+        <div class="empty-cell"></div>
+        <button id="btn-up">⬆️</button>
+        <div class="empty-cell"></div>
+        <button id="btn-left">⬅️</button>
+        <button id="btn-down">⬇️</button>
+        <button id="btn-right">➡️</button>
+    </div>
+
+    <!-- Ecrã Inicial -->
+    <div id="start-screen" class="overlay">
+        <h1 class="text-5xl wonderland-font text-pink-400 mb-4 text-center">A Fuga de Alice</h1>
+        <p class="text-lg text-gray-200 mb-6 text-center max-w-md">
+            Foge da implacável Rainha de Copas!<br><br>
+            Apanha todas as <b>Cartas (🃏)</b> e <b>Laços (🎀)</b> para passares de nível.<br>
+            Os laços dão-te um aumento de velocidade temporário!
+        </p>
+        <button id="start-btn" class="px-8 py-3 bg-pink-600 hover:bg-pink-500 text-white text-xl font-bold rounded-full transition-transform transform hover:scale-105 shadow-lg wonderland-font">
+            Entrar no País das Maravilhas
+        </button>
+    </div>
+
+    <!-- Ecrã de Fim de Jogo -->
+    <div id="game-over-screen" class="overlay hidden">
+        <h1 class="text-5xl wonderland-font text-red-500 mb-4 text-center">Cortem-lhe a Cabeça!</h1>
+        <p class="text-xl text-gray-200 mb-2">Foste apanhada pela Rainha de Copas.</p>
+        <p class="text-2xl text-yellow-300 mb-6 wonderland-font">Pontuação Final: <span id="final-score">0</span></p>
+        <button id="restart-btn" class="px-8 py-3 bg-red-600 hover:bg-red-500 text-white text-xl font-bold rounded-full transition-transform transform hover:scale-105 shadow-lg wonderland-font">
+            Tentar Novamente
+        </button>
+    </div>
+
+    <!-- Ecrã de Nível Concluído -->
+    <div id="level-up-screen" class="overlay hidden">
+        <h1 class="text-5xl wonderland-font text-green-400 mb-4 text-center">Nível Concluído!</h1>
+        <p class="text-xl text-gray-200 mb-6">A Rainha está a ficar mais rápida...</p>
+        <button id="next-level-btn" class="px-8 py-3 bg-green-600 hover:bg-green-500 text-white text-xl font-bold rounded-full transition-transform transform hover:scale-105 shadow-lg wonderland-font">
+            Avançar
+        </button>
+    </div>
+
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Elementos da UI
+    const uiLevel = document.getElementById('ui-level');
+    const uiScore = document.getElementById('ui-score');
+    const startScreen = document.getElementById('start-screen');
+    const gameOverScreen = document.getElementById('game-over-screen');
+    const levelUpScreen = document.getElementById('level-up-screen');
+    const finalScoreDisplay = document.getElementById('final-score');
+
+    // Botões
+    document.getElementById('start-btn').addEventListener('click', startGame);
+    document.getElementById('restart-btn').addEventListener('click', startGame);
+    document.getElementById('next-level-btn').addEventListener('click', startNextLevel);
+
+    // Estado do Jogo
+    let gameState = 'START'; // START, PLAYING, GAMEOVER, LEVELUP
+    let level = 1;
+    let score = 0;
+    let animationId;
+    let lastTime = 0;
+
+    // Entidades
+    const alice = {
+        x: 0, y: 0, size: 30, baseSpeed: 250, speed: 250,
+        emoji: '👧🏼', speedBoostTimer: 0
+    };
+
+    const queen = {
+        x: 0, y: 0, size: 40, baseSpeed: 80, speed: 80,
+        emoji: '👸🏻'
+    };
+
+    let collectibles = [];
+    const itemSize = 30;
+
+    // Controlos (Teclado)
+    const keys = {
+        ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false,
+        w: false, s: false, a: false, d: false
+    };
+
+    // Controlos (Mobile)
+    const mobileKeys = { up: false, down: false, left: false, right: false };
+
+    window.addEventListener('keydown', (e) => {
+        if (keys.hasOwnProperty(e.key)) keys[e.key] = true;
+    });
+
+    window.addEventListener('keyup', (e) => {
+        if (keys.hasOwnProperty(e.key)) keys[e.key] = false;
+    });
+
+    // Configurar D-Pad
+    const setupMobileButton = (id, direction) => {
+        const btn = document.getElementById(id);
+        btn.addEventListener('touchstart', (e) => { e.preventDefault(); mobileKeys[direction] = true; });
+        btn.addEventListener('touchend', (e) => { e.preventDefault(); mobileKeys[direction] = false; });
+        btn.addEventListener('mousedown', (e) => { e.preventDefault(); mobileKeys[direction] = true; });
+        btn.addEventListener('mouseup', (e) => { e.preventDefault(); mobileKeys[direction] = false; });
+        btn.addEventListener('mouseleave', (e) => { e.preventDefault(); mobileKeys[direction] = false; });
+    };
+
+    setupMobileButton('btn-up', 'up');
+    setupMobileButton('btn-down', 'down');
+    setupMobileButton('btn-left', 'left');
+    setupMobileButton('btn-right', 'right');
+
+    function resizeCanvas() {
+        // Lógica de resize mantida simples para preservar proporção lógica
+        // O CSS encarrega-se do scale (max-width, max-height)
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    function startGame() {
+        level = 1;
+        score = 0;
+        updateUI();
+        startScreen.classList.add('hidden');
+        gameOverScreen.classList.add('hidden');
+        initLevel();
+        gameState = 'PLAYING';
+        lastTime = performance.now();
+        requestAnimationFrame(gameLoop);
+    }
+
+    function startNextLevel() {
+        level++;
+        updateUI();
+        levelUpScreen.classList.add('hidden');
+        initLevel();
+        gameState = 'PLAYING';
+        lastTime = performance.now();
+        requestAnimationFrame(gameLoop);
+    }
+
+    function spawnSafePosition(safeDistanceX, safeDistanceY) {
+        let x, y;
+        let isSafe = false;
+        while (!isSafe) {
+            x = Math.random() * (canvas.width - itemSize * 2) + itemSize;
+            y = Math.random() * (canvas.height - itemSize * 2) + itemSize;
+           
+            // Garantir que não nasce em cima da Alice
+            const dist = Math.hypot(x - safeDistanceX, y - safeDistanceY);
+            if (dist > 150) {
+                isSafe = true;
+            }
+        }
+        return { x, y };
+    }
+
+    function initLevel() {
+        // Reset Alice
+        alice.x = canvas.width / 2;
+        alice.y = canvas.height / 2;
+        alice.speedBoostTimer = 0;
+        alice.speed = alice.baseSpeed;
+
+        // Reset Rainha (nasce num dos cantos)
+        const corners = [
+            {x: 50, y: 50}, {x: canvas.width - 50, y: 50},
+            {x: 50, y: canvas.height - 50}, {x: canvas.width - 50, y: canvas.height - 50}
+        ];
+        const randomCorner = corners[Math.floor(Math.random() * corners.length)];
+        queen.x = randomCorner.x;
+        queen.y = randomCorner.y;
+       
+        // Aumentar dificuldade (velocidade da rainha aumenta a cada nível)
+        queen.speed = queen.baseSpeed + (level * 20);
+        if (queen.speed > alice.baseSpeed - 20) {
+            queen.speed = alice.baseSpeed - 20; // Limite de velocidade para ser possível fugir
+        }
+
+        // Gerar Colecionáveis
+        collectibles = [];
+        const numCards = 4 + (level * 2);
+        const numBows = 1 + Math.floor(level / 2);
+
+        for (let i = 0; i < numCards; i++) {
+            const pos = spawnSafePosition(alice.x, alice.y);
+            collectibles.push({ x: pos.x, y: pos.y, type: 'card', emoji: '🃏', size: itemSize });
+        }
+
+        for (let i = 0; i < numBows; i++) {
+            const pos = spawnSafePosition(alice.x, alice.y);
+            collectibles.push({ x: pos.x, y: pos.y, type: 'bow', emoji: '🎀', size: itemSize });
+        }
+    }
+
+    function update(dt) {
+        if (gameState !== 'PLAYING') return;
+
+        // --- Movimento da Alice ---
+        let dx = 0;
+        let dy = 0;
+
+        if (keys.ArrowUp || keys.w || mobileKeys.up) dy = -1;
+        if (keys.ArrowDown || keys.s || mobileKeys.down) dy = 1;
+        if (keys.ArrowLeft || keys.a || mobileKeys.left) dx = -1;
+        if (keys.ArrowRight || keys.d || mobileKeys.right) dx = 1;
+
+        // Normalizar diagonal para não mover mais rápido
+        if (dx !== 0 && dy !== 0) {
+            const length = Math.sqrt(dx * dx + dy * dy);
+            dx /= length;
+            dy /= length;
+        }
+
+        alice.x += dx * alice.speed * dt;
+        alice.y += dy * alice.speed * dt;
+
+        // Limites do ecrã para Alice
+        alice.x = Math.max(alice.size/2, Math.min(canvas.width - alice.size/2, alice.x));
+        alice.y = Math.max(alice.size/2, Math.min(canvas.height - alice.size/2, alice.y));
+
+        // Efeito de Boost do Laço
+        if (alice.speedBoostTimer > 0) {
+            alice.speedBoostTimer -= dt;
+            alice.speed = alice.baseSpeed * 1.5;
+            if (alice.speedBoostTimer <= 0) {
+                alice.speed = alice.baseSpeed;
+            }
+        }
+
+        // --- Inteligência da Rainha (Perseguição) ---
+        let qdx = alice.x - queen.x;
+        let qdy = alice.y - queen.y;
+        let distToAlice = Math.hypot(qdx, qdy);
+
+        if (distToAlice > 0) {
+            queen.x += (qdx / distToAlice) * queen.speed * dt;
+            queen.y += (qdy / distToAlice) * queen.speed * dt;
+        }
+
+        // --- Colisões ---
+        // Alice vs Colecionáveis
+        for (let i = collectibles.length - 1; i >= 0; i--) {
+            const item = collectibles[i];
+            const dist = Math.hypot(alice.x - item.x, alice.y - item.y);
+           
+            if (dist < (alice.size/2 + item.size/2 + 5)) {
+                // Apanhou o item
+                if (item.type === 'card') {
+                    score += 10;
+                } else if (item.type === 'bow') {
+                    score += 50;
+                    alice.speedBoostTimer = 3.0; // 3 segundos de velocidade
+                }
+                collectibles.splice(i, 1);
+                updateUI();
+            }
+        }
+
+        // Condição de Vitória (Nível concluído)
+        if (collectibles.length === 0) {
+            gameState = 'LEVELUP';
+            levelUpScreen.classList.remove('hidden');
+        }
+
+        // Alice vs Rainha (Game Over)
+        // Hitbox ligeiramente menor para ser mais justo
+        const collisionTolerance = 10;
+        if (distToAlice < (alice.size/2 + queen.size/2 - collisionTolerance)) {
+            gameState = 'GAMEOVER';
+            finalScoreDisplay.innerText = score;
+            gameOverScreen.classList.remove('hidden');
+        }
+    }
+
+    function drawCheckerboard() {
+        const tileSize = 50;
+        for (let x = 0; x < canvas.width; x += tileSize) {
+            for (let y = 0; y < canvas.height; y += tileSize) {
+                // Padrão axadrezado verde escuro e claro
+                if ((x / tileSize + y / tileSize) % 2 === 0) {
+                    ctx.fillStyle = '#388E3C';
+                } else {
+                    ctx.fillStyle = '#2E7D32';
+                }
+                ctx.fillRect(x, y, tileSize, tileSize);
+            }
+        }
+    }
+
+    function draw() {
+        // Fundo
+        drawCheckerboard();
+
+        // Desenhar Colecionáveis
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        collectibles.forEach(item => {
+            ctx.font = `${item.size}px Arial`;
+           
+            // Efeito de flutuação para o laço
+            let yOffset = 0;
+            if (item.type === 'bow') {
+                yOffset = Math.sin(performance.now() / 200) * 5;
+            }
+
+            ctx.fillText(item.emoji, item.x, item.y + yOffset);
+        });
+
+        // Efeito visual quando a Alice tem boost (Rasto/Aura)
+        if (alice.speedBoostTimer > 0) {
+            ctx.beginPath();
+            ctx.arc(alice.x, alice.y, alice.size, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 105, 180, 0.4)'; // Rosa choque transparente
+            ctx.fill();
+        }
+
+        // Desenhar Alice
+        ctx.font = `${alice.size + 10}px Arial`;
+        ctx.fillText(alice.emoji, alice.x, alice.y);
+
+        // Desenhar Rainha
+        ctx.font = `${queen.size + 15}px Arial`;
+        ctx.fillText(queen.emoji, queen.x, queen.y);
+    }
+
+    function gameLoop(timestamp) {
+        if (gameState !== 'PLAYING') return;
+
+        // Calcular Delta Time em segundos
+        let dt = (timestamp - lastTime) / 1000;
+        if (dt > 0.1) dt = 0.1; // Limitar o dt em caso de lag
+        lastTime = timestamp;
+
+        update(dt);
+        draw();
+
+        if (gameState === 'PLAYING') {
+            animationId = requestAnimationFrame(gameLoop);
+        }
+    }
+
+    function updateUI() {
+        uiLevel.innerText = level;
+        uiScore.innerText = score;
+    }
+
+    // Primeiro render apenas para preencher o ecrã antes de jogar
+    drawCheckerboard();
+</script>
+
+</body>
+</html>

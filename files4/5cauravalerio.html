@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>A Fuga da Alice no País das Maravilhas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600&family=Mountains+of+Christmas:wght@700&display=swap');
+       
+        body {
+            background-color: #1a1a2e;
+            color: #e0e0e0;
+            font-family: 'Cinzel', serif;
+            overflow: hidden; /* Previne scroll acidental no telemóvel */
+            touch-action: none; /* Melhora controlos touch */
+        }
+       
+        h1 {
+            font-family: 'Mountains of Christmas', cursive;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        #game-container {
+            position: relative;
+            box-shadow: 0 0 20px rgba(138, 43, 226, 0.5);
+            border: 4px solid #4a0e4e;
+            border-radius: 12px;
+            overflow: hidden;
+            background: repeating-conic-gradient(#2b2b2b 0% 25%, #383838 0% 50%) 50% / 40px 40px;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .control-btn {
+            background: rgba(74, 14, 78, 0.8);
+            border: 2px solid #a64ca6;
+            color: white;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            user-select: none;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+       
+        .control-btn:active {
+            background: rgba(166, 76, 166, 0.9);
+            transform: scale(0.95);
+        }
+
+        /* Ecrãs de sobreposição (Mensagens) */
+        #overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 20px;
+            z-index: 10;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col items-center justify-center p-2 sm:p-4">
+
+    <div class="text-center mb-2">
+        <h1 class="text-3xl sm:text-4xl text-purple-400 mb-1">A Fuga da Alice</h1>
+        <p id="status-text" class="text-sm sm:text-base text-yellow-300">Apanha a chave (🗝️) para abrir a porta (🚪)! Cuidado com o Coelho!</p>
+    </div>
+
+    <!-- Contentor do Jogo -->
+    <div id="game-container" class="relative w-full max-w-2xl aspect-square sm:aspect-video bg-gray-900">
+        <canvas id="gameCanvas"></canvas>
+       
+        <!-- Interface de Fim de Jogo -->
+        <div id="overlay" class="hidden rounded-lg">
+            <h2 id="overlay-title" class="text-4xl font-bold mb-4 text-white"></h2>
+            <p id="overlay-desc" class="text-xl mb-6 text-gray-200"></p>
+            <button onclick="startGame()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 px-8 rounded-full shadow-lg transition transform hover:scale-105">
+                Jogar Novamente
+            </button>
+        </div>
+    </div>
+
+    <!-- Controlos Touch (Visíveis apenas em ecrãs mais pequenos ou por touch) -->
+    <div id="mobile-controls" class="mt-4 grid grid-cols-3 gap-2 sm:hidden">
+        <div></div>
+        <button class="control-btn" id="btn-up">⬆️</button>
+        <div></div>
+        <button class="control-btn" id="btn-left">⬅️</button>
+        <button class="control-btn" id="btn-down">⬇️</button>
+        <button class="control-btn" id="btn-right">➡️</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('game-container');
+        const overlay = document.getElementById('overlay');
+        const overlayTitle = document.getElementById('overlay-title');
+        const overlayDesc = document.getElementById('overlay-desc');
+        const statusText = document.getElementById('status-text');
+
+        // Estado do Jogo
+        let gameLoopId;
+        let isPlaying = false;
+        let keys = {};
+
+        // Tamanho base para cálculos de responsividade
+        const baseSize = 40;
+       
+        // Entidades
+        let alice, rabbit, keyItem, door;
+
+        function resizeCanvas() {
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+        }
+
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            if(!isPlaying) drawEnvironment(); // Redesenhar se estiver parado
+        });
+
+        // Configuração Inicial das Entidades
+        function initEntities() {
+            const w = canvas.width;
+            const h = canvas.height;
+            const size = Math.min(w, h) * 0.08; // Tamanho dinâmico baseado no ecrã
+
+            alice = {
+                x: size * 2,
+                y: h - size * 2,
+                size: size,
+                speed: size * 0.1,
+                emoji: '👧',
+                hasKey: false
+            };
+
+            rabbit = {
+                x: w / 2,
+                y: h / 2,
+                size: size * 1.2,
+                speedX: size * 0.06,
+                speedY: size * 0.05,
+                emoji: '🐇',
+                jumpTime: 0
+            };
+
+            keyItem = {
+                x: Math.random() * (w - size * 4) + size * 2,
+                y: Math.random() * (h - size * 4) + size * 2,
+                size: size * 0.8,
+                emoji: '🗝️',
+                collected: false
+            };
+
+            door = {
+                x: w - size * 2,
+                y: size * 2,
+                size: size * 1.5,
+                emoji: '🚪', // Muda para 🕳️ ou porta aberta quando tem a chave
+                isOpen: false
+            };
+           
+            // Garantir que a chave não aparece demasiado perto da Alice
+            while (Math.hypot(keyItem.x - alice.x, keyItem.y - alice.y) < size * 4) {
+                keyItem.x = Math.random() * (w - size * 4) + size * 2;
+                keyItem.y = Math.random() * (h - size * 4) + size * 2;
+            }
+        }
+
+        // Controlos de Teclado
+        window.addEventListener('keydown', (e) => { keys[e.key] = true; });
+        window.addEventListener('keyup', (e) => { keys[e.key] = false; });
+
+        // Controlos Mobile (Touch)
+        const setupTouchControl = (btnId, keyName) => {
+            const btn = document.getElementById(btnId);
+            btn.addEventListener('touchstart', (e) => { e.preventDefault(); keys[keyName] = true; });
+            btn.addEventListener('touchend', (e) => { e.preventDefault(); keys[keyName] = false; });
+            btn.addEventListener('mousedown', (e) => { e.preventDefault(); keys[keyName] = true; });
+            btn.addEventListener('mouseup', (e) => { e.preventDefault(); keys[keyName] = false; });
+            btn.addEventListener('mouseleave', (e) => { e.preventDefault(); keys[keyName] = false; });
+        };
+
+        setupTouchControl('btn-up', 'ArrowUp');
+        setupTouchControl('btn-down', 'ArrowDown');
+        setupTouchControl('btn-left', 'ArrowLeft');
+        setupTouchControl('btn-right', 'ArrowRight');
+
+        function update() {
+            if (!isPlaying) return;
+
+            // --- Movimento da Alice ---
+            let dx = 0; let dy = 0;
+            if (keys['ArrowUp'] || keys['w'] || keys['W']) dy -= alice.speed;
+            if (keys['ArrowDown'] || keys['s'] || keys['S']) dy += alice.speed;
+            if (keys['ArrowLeft'] || keys['a'] || keys['A']) dx -= alice.speed;
+            if (keys['ArrowRight'] || keys['d'] || keys['D']) dx += alice.speed;
+
+            // Normalizar movimento diagonal
+            if (dx !== 0 && dy !== 0) {
+                const length = Math.sqrt(dx * dx + dy * dy);
+                dx = (dx / length) * alice.speed;
+                dy = (dy / length) * alice.speed;
+            }
+
+            alice.x += dx;
+            alice.y += dy;
+
+            // Limites do ecrã para Alice
+            alice.x = Math.max(alice.size, Math.min(canvas.width - alice.size, alice.x));
+            alice.y = Math.max(alice.size, Math.min(canvas.height - alice.size, alice.y));
+
+            // --- Movimento do Coelho (Bouncing) ---
+            rabbit.x += rabbit.speedX;
+            rabbit.y += rabbit.speedY;
+            rabbit.jumpTime += 0.1; // Para o efeito visual de salto
+
+            if (rabbit.x <= rabbit.size || rabbit.x >= canvas.width - rabbit.size) {
+                rabbit.speedX *= -1;
+                // Mudar velocidade ligeiramente para ser imprevisível
+                rabbit.speedX += (Math.random() - 0.5) * 2;
+            }
+            if (rabbit.y <= rabbit.size || rabbit.y >= canvas.height - rabbit.size) {
+                rabbit.speedY *= -1;
+            }
+            // Limites estritos coelho
+            rabbit.x = Math.max(rabbit.size, Math.min(canvas.width - rabbit.size, rabbit.x));
+            rabbit.y = Math.max(rabbit.size, Math.min(canvas.height - rabbit.size, rabbit.y));
+
+            // --- Colisões ---
+           
+            // Alice e Chave
+            if (!keyItem.collected) {
+                const distKey = Math.hypot(alice.x - keyItem.x, alice.y - keyItem.y);
+                if (distKey < (alice.size + keyItem.size) * 0.6) {
+                    keyItem.collected = true;
+                    alice.hasKey = true;
+                    door.isOpen = true;
+                    statusText.innerText = "Chave apanhada! Corre para a porta!";
+                    statusText.classList.remove('text-yellow-300');
+                    statusText.classList.add('text-green-400');
+                }
+            }
+
+            // Alice e Porta
+            const distDoor = Math.hypot(alice.x - door.x, alice.y - door.y);
+            if (distDoor < (alice.size + door.size) * 0.5) {
+                if (alice.hasKey) {
+                    endGame(true);
+                } else {
+                    // Efeito de empurrar para trás ligeiramente
+                    alice.x -= dx * 2;
+                    alice.y -= dy * 2;
+                }
+            }
+
+            // Alice e Coelho
+            const distRabbit = Math.hypot(alice.x - rabbit.x, alice.y - rabbit.y);
+            // Caixa de colisão ligeiramente menor que o emoji para ser mais justo
+            if (distRabbit < (alice.size + rabbit.size) * 0.45) {
+                endGame(false);
+            }
+        }
+
+        function drawEmoji(emoji, x, y, size, yOffset = 0) {
+            ctx.font = `${size}px Arial`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            // Sombra para dar profundidade
+            ctx.shadowColor = "rgba(0,0,0,0.5)";
+            ctx.shadowBlur = 5;
+            ctx.shadowOffsetX = 2;
+            ctx.shadowOffsetY = 2;
+            ctx.fillText(emoji, x, y + yOffset);
+            // Reset sombra
+            ctx.shadowColor = "transparent";
+        }
+
+        function drawEnvironment() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // O fundo CSS já faz o xadrez, vamos só garantir que o canvas é transparente
+        }
+
+        function draw() {
+            drawEnvironment();
+
+            // Desenhar Porta
+            drawEmoji(door.isOpen ? '🌟' : '🚪', door.x, door.y, door.size);
+
+            // Desenhar Chave
+            if (!keyItem.collected) {
+                // Fazer a chave flutuar suavemente
+                const floatY = Math.sin(Date.now() / 200) * 5;
+                drawEmoji(keyItem.emoji, keyItem.x, keyItem.y, keyItem.size, floatY);
+            }
+
+            // Desenhar Coelho (com efeito de salto visual)
+            const jumpOffset = -Math.abs(Math.sin(rabbit.jumpTime)) * (rabbit.size * 0.5);
+            drawEmoji(rabbit.emoji, rabbit.x, rabbit.y, rabbit.size, jumpOffset);
+
+            // Desenhar Alice
+            drawEmoji(alice.emoji, alice.x, alice.y, alice.size);
+           
+            // Indicador de Chave na Alice
+            if(alice.hasKey) {
+                ctx.font = `${alice.size * 0.4}px Arial`;
+                ctx.fillText('🗝️', alice.x + alice.size*0.4, alice.y - alice.size*0.4);
+            }
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            if (isPlaying) {
+                gameLoopId = requestAnimationFrame(gameLoop);
+            }
+        }
+
+        function startGame() {
+            resizeCanvas();
+            initEntities();
+            isPlaying = true;
+            keys = {}; // Reset teclas
+            overlay.classList.add('hidden');
+            statusText.innerText = "Apanha a chave (🗝️) para abrir a porta (🚪)! Cuidado com o Coelho!";
+            statusText.classList.add('text-yellow-300');
+            statusText.classList.remove('text-green-400');
+            statusText.classList.remove('text-red-400');
+           
+            if (gameLoopId) cancelAnimationFrame(gameLoopId);
+            gameLoop();
+        }
+
+        function endGame(win) {
+            isPlaying = false;
+            overlay.classList.remove('hidden');
+           
+            if (win) {
+                overlayTitle.innerText = "Parabéns, Alice! 🎉";
+                overlayTitle.className = "text-4xl font-bold mb-4 text-green-400";
+                overlayDesc.innerText = "Conseguiste abrir a porta e escapar do País das Maravilhas!";
+                statusText.innerText = "Vitória!";
+            } else {
+                overlayTitle.innerText = "Oh não! 🐇";
+                overlayTitle.className = "text-4xl font-bold mb-4 text-red-500";
+                overlayDesc.innerText = "O Coelho Branco pisou-te! Estás atrasada!";
+                statusText.innerText = "Foste apanhada!";
+                statusText.classList.remove('text-yellow-300');
+                statusText.classList.add('text-red-400');
+            }
+        }
+
+        // Iniciar redimensionamento e primeiro frame
+        window.onload = () => {
+            resizeCanvas();
+            startGame();
+        };
+
+    </script>
+</body>
+</html>

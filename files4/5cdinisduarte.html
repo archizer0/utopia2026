@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice: Fuga das Cartas</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Courier New', Courier, monospace;
+            background-color: #000;
+            user-select: none; /* Evitar seleção de texto ao arrastar */
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        #score-board {
+            padding: 20px;
+            color: #fff;
+            font-size: 28px;
+            font-weight: bold;
+            text-shadow: 2px 2px 0px #d90000, -1px -1px 0 #000;
+            text-align: right;
+        }
+
+        #game-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            pointer-events: auto;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 40px;
+            border-radius: 20px;
+            border: 5px solid #d90000;
+            box-shadow: 0 0 40px rgba(217, 0, 0, 0.8);
+            max-width: 90%;
+            width: 400px;
+        }
+
+        h1 {
+            color: #2c3e50;
+            margin-top: 0;
+            font-size: 32px;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+        }
+
+        p {
+            color: #444;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        button {
+            background: linear-gradient(to bottom, #d90000, #990000);
+            color: white;
+            border: 2px solid #fff;
+            padding: 15px 40px;
+            font-size: 20px;
+            border-radius: 50px;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: bold;
+            transition: transform 0.2s, box-shadow 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-top: 20px;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.4);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* Instruções visuais */
+        .instructions {
+            margin: 20px 0;
+            font-size: 15px;
+            color: #555;
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px dashed #ccc;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <div id="score-board">Distância: 0m</div>
+    </div>
+
+    <div id="game-overlay">
+        <h1 id="title-text">País das Maravilhas</h1>
+        <p id="msg-text">A Rainha de Copas ordenou a tua captura!</p>
+        <div class="instructions">
+            Usa o <strong>RATO</strong> ou <strong>ARRASTA O DEDO</strong> para mover a Alice.<br><br>
+            <span style="color: #d90000; font-weight: bold;">CUIDADO COM AS CARTAS!</span>
+        </div>
+        <button id="start-btn">Começar Fuga</button>
+    </div>
+
+    <script>
+        // --- Configuração Principal do Three.js ---
+        const scene = new THREE.Scene();
+        // Névoa roxa para dar um ambiente mágico/surreal
+        scene.fog = new THREE.FogExp2(0x8e44ad, 0.025);
+       
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+       
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderer.domElement);
+
+        // --- Variáveis de Estado do Jogo ---
+        let gameActive = false;
+        let speed = 0;
+        let score = 0;
+        let obstacles = [];
+        let scenery = [];
+        const baseSpeed = 0.4;
+        const maxSpeed = 1.8;
+        let frameId;
+
+        // Elementos da Interface
+        const overlay = document.getElementById('game-overlay');
+        const startBtn = document.getElementById('start-btn');
+        const scoreEl = document.getElementById('score-board');
+        const titleEl = document.getElementById('title-text');
+        const msgEl = document.getElementById('msg-text');
+
+        // --- Iluminação ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffeb3b, 0.8);
+        dirLight.position.set(10, 20, 10);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        scene.add(dirLight);
+
+        // --- Textura do Chão de Xadrez (Gerada Proceduralmente) ---
+        function createCheckerTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const context = canvas.getContext('2d');
+           
+            context.fillStyle = '#ffffff'; // Quadrados Brancos
+            context.fillRect(0, 0, 512, 512);
+            context.fillStyle = '#111111'; // Quadrados Pretos
+           
+            for (let y = 0; y < 4; y++) {
+                for (let x = 0; x < 4; x++) {
+                    if ((x + y) % 2 === 0) {
+                        context.fillRect(x * 128, y * 128, 128, 128);
+                    }
+                }
+            }
+           
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(10, 20); // Faz o chão parecer enorme
+            return texture;
+        }
+
+        const planeGeometry = new THREE.PlaneGeometry(80, 400);
+        const planeMaterial = new THREE.MeshStandardMaterial({
+            map: createCheckerTexture(),
+            roughness: 0.8
+        });
+        const floor = new THREE.Mesh(planeGeometry, planeMaterial);
+        floor.rotation.x = -Math.PI / 2;
+        floor.position.z = -100;
+        floor.receiveShadow = true;
+        scene.add(floor);
+
+        // --- O Jogador (Alice) ---
+        const playerGroup = new THREE.Group();
+       
+        // Vestido (Azul clássico)
+        const dressGeo = new THREE.ConeGeometry(0.8, 1.6, 32);
+        const dressMat = new THREE.MeshToonMaterial({ color: 0x3498db });
+        const dress = new THREE.Mesh(dressGeo, dressMat);
+        dress.position.y = 0.8;
+        dress.castShadow = true;
+        playerGroup.add(dress);
+
+        // Avental (Branco)
+        const apronGeo = new THREE.CylinderGeometry(0.5, 0.85, 0.8, 16, 1, false, 0, Math.PI);
+        const apronMat = new THREE.MeshToonMaterial({ color: 0xffffff });
+        const apron = new THREE.Mesh(apronGeo, apronMat);
+        apron.position.set(0, 0.8, 0.05);
+        playerGroup.add(apron);
+
+        // Cabeça
+        const headGeo = new THREE.SphereGeometry(0.45, 32, 32);
+        const headMat = new THREE.MeshToonMaterial({ color: 0xffccaa }); // Cor de pele
+        const head = new THREE.Mesh(headGeo, headMat);
+        head.position.y = 1.9;
+        playerGroup.add(head);
+
+        // Cabelo (Loiro)
+        const hairGeo = new THREE.BoxGeometry(1.0, 0.5, 1.0);
+        const hairMat = new THREE.MeshToonMaterial({ color: 0xf1c40f });
+        const hair = new THREE.Mesh(hairGeo, hairMat);
+        hair.position.y = 2.1;
+        playerGroup.add(hair);
+
+        scene.add(playerGroup);
+        playerGroup.position.set(0, 0, 5); // Posição inicial
+
+        // --- Funções de Criação de Obstáculos e Cenário ---
+
+        // Criar uma Carta de Copas (Cavaleiro)
+        function createCardObstacle(xPos, zPos) {
+            const group = new THREE.Group();
+
+            // Corpo da carta
+            const cardGeo = new THREE.BoxGeometry(1.5, 2.5, 0.1);
+            const cardMat = new THREE.MeshPhongMaterial({ color: 0xffffff });
+            const cardBody = new THREE.Mesh(cardGeo, cardMat);
+            cardBody.position.y = 1.25;
+            cardBody.castShadow = true;
+            group.add(cardBody);
+
+            // Símbolo de Copas (Losango Vermelho)
+            const suitGeo = new THREE.BoxGeometry(0.6, 0.6, 0.15);
+            suitGeo.rotateZ(Math.PI / 4);
+            const suitMat = new THREE.MeshBasicMaterial({ color: 0xd90000 });
+            const suit = new THREE.Mesh(suitGeo, suitMat);
+            suit.position.set(0, 1.5, 0.05);
+            group.add(suit);
+           
+            // Símbolo pequeno inferior invertido
+            const suitSmall = new THREE.Mesh(suitGeo, suitMat);
+            suitSmall.scale.set(0.5, 0.5, 0.5);
+            suitSmall.position.set(0.5, 0.5, 0.05);
+            group.add(suitSmall);
+
+            // Lança do Cavaleiro
+            const spearGeo = new THREE.CylinderGeometry(0.05, 0.05, 3.5, 8);
+            const spearMat = new THREE.MeshStandardMaterial({ color: 0x555555 });
+            const spear = new THREE.Mesh(spearGeo, spearMat);
+            spear.rotation.z = Math.PI / 8;
+            spear.position.set(1.0, 1.5, 0.1);
+            group.add(spear);
+           
+            // Ponta da Lança (Prateada)
+            const tipGeo = new THREE.ConeGeometry(0.15, 0.5, 8);
+            const tipMat = new THREE.MeshStandardMaterial({ color: 0xbdc3c7 });
+            const tip = new THREE.Mesh(tipGeo, tipMat);
+            tip.position.set(1.6, 3.0, 0.1);
+            tip.rotation.z = Math.PI / 8;
+            group.add(tip);
+
+            group.position.set(xPos, 0, zPos);
+           
+            // Bounding Box para detetar colisões
+            group.userData = { isObstacle: true, boundingBox: new THREE.Box3() };
+           
+            scene.add(group);
+            obstacles.push(group);
+        }
+
+        // Criar Cogumelos Mágicos (Cenário)
+        function createMushroom(xPos, zPos) {
+            const group = new THREE.Group();
+           
+            // Caule
+            const stemGeo = new THREE.CylinderGeometry(0.4, 0.6, 2, 8);
+            const stemMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+            const stem = new THREE.Mesh(stemGeo, stemMat);
+            stem.position.y = 1;
+            group.add(stem);
+
+            // Chapéu Colorido
+            const capGeo = new THREE.SphereGeometry(1.8, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+            const isRed = Math.random() > 0.5;
+            const capMat = new THREE.MeshToonMaterial({ color: isRed ? 0xe74c3c : 0x3498db });
+            const cap = new THREE.Mesh(capGeo, capMat);
+            cap.position.y = 2;
+            group.add(cap);
+
+            group.position.set(xPos, 0, zPos);
+           
+            // Adicionar tamanhos aleatórios aos cogumelos
+            const scale = 0.8 + Math.random() * 1.5;
+            group.scale.set(scale, scale, scale);
+           
+            scene.add(group);
+            scenery.push(group);
+        }
+
+        // --- Lógica de Input ---
+        let targetX = 0;
+       
+        function handleInput(event) {
+            if (!gameActive) return;
+           
+            let clientX;
+            if (event.touches && event.touches.length > 0) {
+                clientX = event.touches[0].clientX;
+            } else {
+                clientX = event.clientX;
+            }
+
+            // Mapeia a posição do rato/dedo para a largura da pista (-10 a 10)
+            const normalizedX = (clientX / window.innerWidth) * 2 - 1;
+            targetX = normalizedX * 12;
+        }
+
+        window.addEventListener('mousemove', handleInput);
+        window.addEventListener('touchmove', handleInput, { passive: false });
+
+        // --- Lógica de Reset / Game Over ---
+        function resetGame() {
+            // Limpar jogo anterior
+            obstacles.forEach(ob => scene.remove(ob));
+            obstacles = [];
+            scenery.forEach(sc => scene.remove(sc));
+            scenery = [];
+           
+            playerGroup.position.set(0, 0, 5);
+            targetX = 0;
+            score = 0;
+            speed = baseSpeed;
+            scoreEl.innerText = "Distância: 0m";
+           
+            // Gerar cenário inicial (Cogumelos de lado)
+            for(let i = 10; i < 150; i += 15) {
+                if (Math.random() > 0.3) createMushroom(12 + Math.random() * 8, -i);
+                if (Math.random() > 0.3) createMushroom(-12 - Math.random() * 8, -i);
+            }
+        }
+
+        function gameOver() {
+            gameActive = false;
+            titleEl.innerText = "CORTEM-LHE A CABEÇA!";
+            titleEl.style.color = "#d90000";
+            msgEl.innerText = `Foste apanhada pelas cartas aos ${Math.floor(score)} metros.`;
+            startBtn.innerText = "Tentar Novamente";
+            overlay.classList.remove('hidden');
+        }
+
+        // --- Loop Principal de Animação ---
+        function animate() {
+            frameId = requestAnimationFrame(animate);
+
+            if (!gameActive) {
+                // Rotação suave da câmara enquanto está no menu
+                renderer.render(scene, camera);
+                return;
+            }
+
+            // 1. Movimento da Alice (Suavização / Lerp)
+            playerGroup.position.x += (targetX - playerGroup.position.x) * 0.15;
+            playerGroup.position.x = Math.max(-11, Math.min(11, playerGroup.position.x));
+
+            // Inclinação ao curvar
+            playerGroup.rotation.z = -(playerGroup.position.x - targetX) * 0.1;
+            playerGroup.rotation.y = -(playerGroup.position.x - targetX) * 0.05;
+
+            // Animação de corrida (saltitar)
+            playerGroup.position.y = Math.abs(Math.sin(Date.now() * 0.015)) * 0.3;
+
+            // 2. Mover Chão
+            floor.material.map.offset.y -= speed * 0.05;
+
+            // 3. Spawner de Cartas
+            // Probabilidade de aparecer uma carta aumenta com a pontuação
+            if (Math.random() < 0.02 + (score * 0.00004)) {
+                const spawnX = (Math.random() * 22) - 11;
+                createCardObstacle(spawnX, -120);
+            }
+
+            // Spawner de Cogumelos
+            if (Math.random() < 0.08) {
+                const side = Math.random() > 0.5 ? 1 : -1;
+                createMushroom(side * (12 + Math.random() * 10), -120);
+            }
+
+            // 4. Lógica de Colisão e Movimento de Obstáculos
+            const playerBox = new THREE.Box3().setFromObject(playerGroup);
+            playerBox.expandByScalar(-0.35); // Hitbox ligeiramente menor para ser mais justo
+
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                const ob = obstacles[i];
+                ob.position.z += speed * 2; // Carta aproxima-se da Alice
+
+                ob.userData.boundingBox.setFromObject(ob);
+
+                if (playerBox.intersectsBox(ob.userData.boundingBox)) {
+                    gameOver();
+                }
+
+                if (ob.position.z > 10) {
+                    scene.remove(ob);
+                    obstacles.splice(i, 1);
+                }
+            }
+
+            // Limpar cenário antigo
+            for (let i = scenery.length - 1; i >= 0; i--) {
+                const sc = scenery[i];
+                sc.position.z += speed * 2;
+                if (sc.position.z > 20) {
+                    scene.remove(sc);
+                    scenery.splice(i, 1);
+                }
+            }
+
+            // 5. Atualizar Pontuação e Velocidade
+            score += speed * 0.5;
+            scoreEl.innerText = `Distância: ${Math.floor(score)}m`;
+           
+            if (speed < maxSpeed) {
+                speed += 0.0002;
+            }
+
+            // Câmara dinâmica (segue ligeiramente o jogador)
+            camera.position.set(playerGroup.position.x * 0.3, 6, 12);
+            camera.lookAt(0, 0, -5);
+
+            renderer.render(scene, camera);
+        }
+
+        // --- Eventos de Botões ---
+        startBtn.addEventListener('click', () => {
+            overlay.classList.add('hidden');
+            if (!gameActive) {
+                resetGame();
+                gameActive = true;
+                titleEl.style.color = "#2c3e50"; // Reset cor do título
+            }
+        });
+
+        // Adaptação ao ecrã
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Iniciar Renderização
+        animate();
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>O Puzzle das Maravilhas</title>
+   
+    <!-- MediaPipe para Rastreamento de Mãos -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap');
+
+        :root {
+            --primary: #2c1b4d;
+            --secondary: #d4af37;
+            --bg-color: #0f0c29;
+            --board-bg: rgba(255, 255, 255, 0.1);
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(to bottom, #0f0c29, #302b63, #24243e);
+            color: white;
+            font-family: 'Playfair Display', serif;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            user-select: none;
+        }
+
+        h1 {
+            font-family: 'Cinzel', serif;
+            color: var(--secondary);
+            margin: 10px 0 5px 0;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            font-size: 2rem;
+            text-align: center;
+        }
+
+        #ui-bar {
+            display: flex;
+            justify-content: space-between;
+            width: 90%;
+            max-width: 1000px;
+            margin-bottom: 10px;
+            align-items: center;
+            background: rgba(0,0,0,0.3);
+            padding: 10px 20px;
+            border-radius: 15px;
+            border: 1px solid var(--secondary);
+        }
+
+        .instructions {
+            font-size: 0.9rem;
+            color: #ccc;
+        }
+
+        #game-container {
+            position: relative;
+            width: 90vw;
+            max-width: 1000px;
+            height: 70vh;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 20px;
+            border: 2px solid var(--secondary);
+            box-shadow: 0 0 20px rgba(212, 175, 55, 0.2);
+            display: flex;
+            overflow: hidden;
+        }
+
+        #board-area {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-right: 2px dashed rgba(212, 175, 55, 0.3);
+            position: relative;
+        }
+
+        #pieces-area {
+            flex: 1;
+            position: relative;
+            background: rgba(0,0,0,0.4);
+        }
+
+        .board-slot {
+            position: absolute;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.05);
+            box-sizing: border-box;
+            transition: background 0.3s;
+        }
+
+        .puzzle-piece {
+            position: absolute;
+            box-sizing: border-box;
+            border: 2px solid white;
+            border-radius: 5px;
+            box-shadow: 2px 2px 10px rgba(0,0,0,0.5);
+            cursor: pointer;
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+
+        .puzzle-piece.locked {
+            border: 2px solid var(--secondary);
+            box-shadow: 0 0 15px var(--secondary);
+            z-index: 10 !important;
+        }
+
+        /* Video / Webcam Feedback */
+        #video-container {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            width: 160px;
+            height: 120px;
+            border: 2px solid var(--secondary);
+            border-radius: 10px;
+            overflow: hidden;
+            z-index: 100;
+            background: #000;
+        }
+
+        #webcam-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); /* Mirror */
+        }
+
+        /* Magic Hand Cursor */
+        #hand-cursor {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: radial-gradient(circle, #fff, var(--secondary));
+            border-radius: 50%;
+            pointer-events: none; /* Let clicks pass through if we added mouse support */
+            z-index: 1000;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 15px var(--secondary);
+            transition: width 0.1s, height 0.1s, background 0.1s;
+            display: none;
+        }
+
+        #hand-cursor.pinching {
+            width: 15px;
+            height: 15px;
+            background: radial-gradient(circle, #ff0055, #80002a);
+            box-shadow: 0 0 20px #ff0055;
+        }
+
+        /* Overlay Messages */
+        #overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            text-align: center;
+            backdrop-filter: blur(5px);
+        }
+
+        .hidden { display: none !important; }
+
+        button {
+            padding: 12px 24px;
+            font-size: 1.2rem;
+            font-family: 'Cinzel', serif;
+            background: linear-gradient(45deg, var(--secondary), #f9f295);
+            color: #000;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-top: 20px;
+            box-shadow: 0 4px 15px rgba(212, 175, 55, 0.4);
+            transition: transform 0.2s;
+        }
+
+        button:hover { transform: scale(1.05); }
+
+        .loader {
+            border: 5px solid rgba(255,255,255,0.1);
+            border-top: 5px solid var(--secondary);
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <h1>O País das Maravilhas</h1>
+   
+    <div id="ui-bar">
+        <div id="level-display">Nível 1: A Toca do Coelho</div>
+        <div class="instructions">👉 Junta o polegar e o indicador para agarrar as peças!</div>
+    </div>
+
+    <div id="game-container">
+        <div id="board-area"></div>
+        <div id="pieces-area"></div>
+       
+        <div id="video-container">
+            <video id="webcam-video" autoplay playsinline></video>
+        </div>
+
+        <div id="hand-cursor"></div>
+    </div>
+
+    <!-- Overlays -->
+    <div id="overlay">
+        <div id="loading-ui">
+            <div class="loader"></div>
+            <h2>A invocar a Magia do Espelho...</h2>
+            <p>Por favor, permite o acesso à tua câmara web.</p>
+        </div>
+        <div id="level-complete-ui" class="hidden">
+            <h2 style="font-size: 2.5rem; color: var(--secondary); font-family: 'Cinzel', serif;">Esplêndido!</h2>
+            <p id="level-msg">O feitiço foi resolvido.</p>
+            <button id="next-btn" onclick="nextLevel()">Avançar na Toca</button>
+        </div>
+    </div>
+
+    <script>
+        // --- GAME CONFIGURATION ---
+        const levels = [
+            { grid: 2, name: "A Toca do Coelho", theme: "rabbit" },
+            { grid: 3, name: "O Chá do Chapeleiro", theme: "tea" },
+            { grid: 4, name: "O Jardim da Rainha", theme: "queen" }
+        ];
+
+        let currentLevelIndex = 0;
+        const boardSize = 320; // Tamanho do puzzle montado (quadrado)
+        let pieces = [];
+        let heldPiece = null;
+        let isPinching = false;
+       
+        // --- DOM ELEMENTS ---
+        const boardArea = document.getElementById('board-area');
+        const piecesArea = document.getElementById('pieces-area');
+        const videoElement = document.getElementById('webcam-video');
+        const cursorElement = document.getElementById('hand-cursor');
+        const overlay = document.getElementById('overlay');
+        const loadingUI = document.getElementById('loading-ui');
+        const levelCompleteUI = document.getElementById('level-complete-ui');
+        const levelDisplay = document.getElementById('level-display');
+        const gameContainer = document.getElementById('game-container');
+
+        // --- IMAGE GENERATOR (Canvas) ---
+        // Desenha imagens processualmente para não depender de links externos
+        function generatePuzzleImage(theme) {
+            const canvas = document.createElement('canvas');
+            canvas.width = boardSize;
+            canvas.height = boardSize;
+            const ctx = canvas.getContext('2d');
+
+            if (theme === "rabbit") {
+                // Toca do coelho: Espiral e relógio
+                const gradient = ctx.createRadialGradient(160, 160, 10, 160, 160, 200);
+                gradient.addColorStop(0, '#000000');
+                gradient.addColorStop(1, '#4b0082');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, boardSize, boardSize);
+               
+                ctx.font = '100px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('🐇', 160, 160);
+                ctx.font = '50px Arial';
+                ctx.fillText('⏱️', 240, 240);
+                ctx.fillText('🎩', 80, 80);
+
+                // Linhas de ilusão
+                ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+                ctx.lineWidth = 5;
+                for(let i=0; i<360; i+=20) {
+                    ctx.beginPath();
+                    ctx.moveTo(160, 160);
+                    ctx.lineTo(160 + Math.cos(i) * 200, 160 + Math.sin(i) * 200);
+                    ctx.stroke();
+                }
+            }
+            else if (theme === "tea") {
+                // Chá: Padrão xadrez rosa e roxo
+                for(let r=0; r<8; r++) {
+                    for(let c=0; c<8; c++) {
+                        ctx.fillStyle = (r+c)%2 === 0 ? '#ffb6c1' : '#8a2be2';
+                        ctx.fillRect(c*(boardSize/8), r*(boardSize/8), boardSize/8, boardSize/8);
+                    }
+                }
+                ctx.fillStyle = 'rgba(255,255,255,0.8)';
+                ctx.beginPath();
+                ctx.arc(160, 160, 100, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.font = '80px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('☕', 120, 160);
+                ctx.fillText('🍰', 200, 160);
+                ctx.font = '40px Arial';
+                ctx.fillText('10/6', 160, 100);
+            }
+            else if (theme === "queen") {
+                // Jardim: Verde escuro com rosas e cartas
+                ctx.fillStyle = '#006400';
+                ctx.fillRect(0, 0, boardSize, boardSize);
+               
+                // Rosas
+                ctx.font = '40px Arial';
+                const positions = [[50,50], [250,50], [50,250], [250,250], [150,150]];
+                positions.forEach(pos => {
+                    ctx.fillText('🌹', pos[0], pos[1]);
+                });
+
+                // Cartas
+                ctx.fillStyle = 'white';
+                ctx.fillRect(100, 100, 120, 160);
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(100, 100, 120, 160);
+
+                ctx.fillStyle = 'red';
+                ctx.font = '30px Arial';
+                ctx.fillText('♥', 120, 130);
+                ctx.fillText('Q', 120, 160);
+                ctx.font = '60px Arial';
+                ctx.fillText('👑', 160, 200);
+            }
+
+            return canvas.toDataURL();
+        }
+
+        // --- GAME LOGIC ---
+        function loadLevel(index) {
+            const level = levels[index];
+            levelDisplay.innerText = `Nível ${index + 1}: ${level.name}`;
+            boardArea.innerHTML = '';
+            piecesArea.innerHTML = '';
+            pieces = [];
+
+            const grid = level.grid;
+            const pieceSize = boardSize / grid;
+            const imgData = generatePuzzleImage(level.theme);
+
+            // Centrar o tabuleiro na área esquerda
+            const boardOffsetX = (boardArea.clientWidth - boardSize) / 2;
+            const boardOffsetY = (boardArea.clientHeight - boardSize) / 2;
+
+            for (let r = 0; r < grid; r++) {
+                for (let c = 0; c < grid; c++) {
+                    const targetX = boardOffsetX + c * pieceSize;
+                    const targetY = boardOffsetY + r * pieceSize;
+
+                    // Criar Slot visual
+                    const slot = document.createElement('div');
+                    slot.className = 'board-slot';
+                    slot.style.width = `${pieceSize}px`;
+                    slot.style.height = `${pieceSize}px`;
+                    slot.style.left = `${targetX}px`;
+                    slot.style.top = `${targetY}px`;
+                    boardArea.appendChild(slot);
+
+                    // Criar Peça
+                    const piece = document.createElement('div');
+                    piece.className = 'puzzle-piece';
+                    piece.style.width = `${pieceSize}px`;
+                    piece.style.height = `${pieceSize}px`;
+                    piece.style.backgroundImage = `url(${imgData})`;
+                    piece.style.backgroundPosition = `-${c * pieceSize}px -${r * pieceSize}px`;
+                   
+                    // Posição inicial aleatória na área da direita (piecesArea)
+                    // Offset para evitar que saia do contentor
+                    const maxRandX = piecesArea.clientWidth - pieceSize - 20;
+                    const maxRandY = piecesArea.clientHeight - pieceSize - 20;
+                    const startX = Math.max(10, Math.random() * maxRandX);
+                    const startY = Math.max(10, Math.random() * maxRandY);
+
+                    piece.style.left = `${startX}px`;
+                    piece.style.top = `${startY}px`;
+
+                    const pieceObj = {
+                        el: piece,
+                        targetX: targetX,
+                        targetY: targetY,
+                        currentX: startX,
+                        currentY: startY,
+                        width: pieceSize,
+                        height: pieceSize,
+                        locked: false,
+                        container: 'pieces' // 'pieces' ou 'board'
+                    };
+
+                    pieces.push(pieceObj);
+                    piecesArea.appendChild(piece);
+                }
+            }
+        }
+
+        function checkWin() {
+            const allLocked = pieces.every(p => p.locked);
+            if (allLocked) {
+                setTimeout(() => {
+                    overlay.classList.remove('hidden');
+                    loadingUI.classList.add('hidden');
+                    levelCompleteUI.classList.remove('hidden');
+                   
+                    if (currentLevelIndex === levels.length - 1) {
+                        document.getElementById('level-msg').innerText = "Venceste a Rainha de Copas! O País das Maravilhas está a salvo.";
+                        document.getElementById('next-btn').innerText = "Jogar Novamente";
+                    } else {
+                        document.getElementById('level-msg').innerText = "Fantástico! Prepara-te para descer mais fundo...";
+                        document.getElementById('next-btn').innerText = "Avançar na Toca";
+                    }
+                }, 500);
+            }
+        }
+
+        function nextLevel() {
+            overlay.classList.add('hidden');
+            currentLevelIndex++;
+            if (currentLevelIndex >= levels.length) {
+                currentLevelIndex = 0; // Reinicia o jogo
+            }
+            loadLevel(currentLevelIndex);
+        }
+
+        // --- HAND TRACKING & INTERACTION LOGIC ---
+        let cursorRect = { x: 0, y: 0 };
+
+        function updateInteraction(handX, handY, isPinchingNow) {
+            // Converter coordenadas [0,1] do mediapipe para píxeis locais do container principal
+            const rect = gameContainer.getBoundingClientRect();
+           
+            // Mirror X because webcam is mirrored
+            const localX = (1 - handX) * rect.width;
+            const localY = handY * rect.height;
+
+            cursorRect.x = localX;
+            cursorRect.y = localY;
+
+            // Update visual cursor
+            cursorElement.style.display = 'block';
+            cursorElement.style.left = `${localX}px`;
+            cursorElement.style.top = `${localY}px`;
+
+            if (isPinchingNow) {
+                cursorElement.classList.add('pinching');
+               
+                // Tentativa de agarrar
+                if (!isPinching && !heldPiece) {
+                    // Descobrir qual peça estamos a tocar
+                    for (let i = pieces.length - 1; i >= 0; i--) { // Do topo para o fundo
+                        let p = pieces[i];
+                        if (p.locked) continue;
+
+                        // Ajustar offset se a peça estiver na piecesArea vs boardArea
+                        let pieceGlobalX = p.currentX + (p.container === 'pieces' ? boardArea.clientWidth : 0);
+                        let pieceGlobalY = p.currentY;
+
+                        if (localX >= pieceGlobalX && localX <= pieceGlobalX + p.width &&
+                            localY >= pieceGlobalY && localY <= pieceGlobalY + p.height) {
+                           
+                            heldPiece = p;
+                            p.el.style.zIndex = 100;
+                            // Move logicamente para a board area para simplificar tracking contínuo
+                            if (p.container === 'pieces') {
+                                p.container = 'board';
+                                p.currentX = pieceGlobalX;
+                                p.el.style.left = `${p.currentX}px`;
+                                boardArea.appendChild(p.el); // Muda DOM parent
+                            }
+                            break;
+                        }
+                    }
+                }
+
+                // Mover a peça agarrada
+                if (heldPiece) {
+                    // Centraliza a peça no cursor
+                    heldPiece.currentX = localX - heldPiece.width / 2;
+                    heldPiece.currentY = localY - heldPiece.height / 2;
+                    heldPiece.el.style.left = `${heldPiece.currentX}px`;
+                    heldPiece.el.style.top = `${heldPiece.currentY}px`;
+                }
+
+            } else {
+                cursorElement.classList.remove('pinching');
+               
+                // Largar peça
+                if (isPinching && heldPiece) {
+                    // Verificar snap to grid
+                    const dist = Math.hypot(heldPiece.currentX - heldPiece.targetX, heldPiece.currentY - heldPiece.targetY);
+                   
+                    if (dist < 40) { // Tolerância de encaixe
+                        heldPiece.currentX = heldPiece.targetX;
+                        heldPiece.currentY = heldPiece.targetY;
+                        heldPiece.locked = true;
+                        heldPiece.el.classList.add('locked');
+                        heldPiece.el.style.zIndex = 1;
+                        checkWin();
+                    } else {
+                        heldPiece.el.style.zIndex = 5;
+                    }
+                   
+                    heldPiece.el.style.left = `${heldPiece.currentX}px`;
+                    heldPiece.el.style.top = `${heldPiece.currentY}px`;
+                    heldPiece = null;
+                }
+            }
+           
+            isPinching = isPinchingNow;
+        }
+
+        // --- MEDIAPIPE SETUP ---
+        function onResults(results) {
+            // Remove tela de loading ao receber o primeiro frame válido
+            if (!overlay.classList.contains('hidden') && loadingUI.style.display !== 'none') {
+                loadingUI.style.display = 'none';
+                overlay.classList.add('hidden');
+                loadLevel(0); // Inicia nível 1
+            }
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0]; // Usar a primeira mão detetada
+               
+                // Dedo indicador (8) e Polegar (4)
+                const indexTip = landmarks[8];
+                const thumbTip = landmarks[4];
+
+                // Calcular distância para detetar o gesto de "Pinça" (Agarrar)
+                const distance = Math.hypot(indexTip.x - thumbTip.x, indexTip.y - thumbTip.y);
+                const pinching = distance < 0.05; // Limiar de sensibilidade
+
+                // Usamos o ponto médio entre polegar e indicador como centro de controlo
+                const midX = (indexTip.x + thumbTip.x) / 2;
+                const midY = (indexTip.y + thumbTip.y) / 2;
+
+                updateInteraction(midX, midY, pinching);
+            } else {
+                // Se a mão for perdida, esconde o cursor e solta a peça
+                cursorElement.style.display = 'none';
+                if (heldPiece) updateInteraction(0, 0, false);
+            }
+        }
+
+        const hands = new Hands({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }});
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.7,
+            minTrackingConfidence: 0.7
+        });
+        hands.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({image: videoElement});
+            },
+            width: 320,
+            height: 240
+        });
+
+        // Iniciar câmara
+        camera.start().catch(err => {
+            loadingUI.innerHTML = `<h2>Erro de Magia!</h2><p>Não foi possível aceder à webcam.</p><p style="font-size:0.8em; color:red;">${err.message}</p>`;
+        });
+
+        // Adaptação caso a janela mude de tamanho
+        window.addEventListener('resize', () => {
+            if (pieces.length > 0 && !overlay.classList.contains('hidden') === false) {
+                // Para não quebrar o layout, reiniciamos o nível se redimensionarem drasticamente
+                loadLevel(currentLevelIndex);
+            }
+        });
+
+    </script>
+</body>
+</html>

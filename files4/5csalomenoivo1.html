@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Labirinto do País das Maravilhas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Quicksand:wght@300;500&display=swap');
+
+        :root {
+            --wonder-purple: #6b46c1;
+            --wonder-pink: #d53f8c;
+            --wonder-blue: #3182ce;
+        }
+
+        body {
+            font-family: 'Quicksand', sans-serif;
+            background: #1a1a2e;
+            color: #e2e8f0;
+            overflow: hidden;
+            height: 100vh;
+            margin: 0;
+        }
+
+        h1, h2, h3 {
+            font-family: 'Cinzel', serif;
+        }
+
+        .wonder-gradient {
+            background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
+            border: 2px solid var(--wonder-purple);
+        }
+
+        .scene-transition {
+            transition: all 0.5s ease-in-out;
+        }
+
+        .inventory-item {
+            transition: transform 0.2s;
+            cursor: help;
+        }
+
+        .inventory-item:hover {
+            transform: scale(1.1);
+        }
+
+        .choice-btn {
+            background: rgba(107, 70, 193, 0.2);
+            border: 1px solid var(--wonder-purple);
+            transition: all 0.3s;
+        }
+
+        .choice-btn:hover {
+            background: var(--wonder-purple);
+            color: white;
+            box-shadow: 0 0 15px var(--wonder-purple);
+        }
+
+        #game-canvas {
+            background: radial-gradient(circle at center, #2d3748, #1a1a2e);
+            position: relative;
+        }
+
+        .floating {
+            animation: float 3s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+            100% { transform: translateY(0px); }
+        }
+
+        /* Efeito de fumo/magia */
+        .magic-smoke {
+            position: absolute;
+            pointer-events: none;
+            opacity: 0.4;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center p-4">
+
+    <!-- Container Principal -->
+    <div id="main-container" class="w-full max-w-4xl h-[80vh] wonder-gradient rounded-xl shadow-2xl flex flex-col overflow-hidden relative">
+       
+        <!-- Cabeçalho / Status -->
+        <div class="p-4 border-b border-purple-900 flex justify-between items-center bg-black/30 z-10">
+            <div>
+                <h1 class="text-xl font-bold text-purple-400">País das Maravilhas</h1>
+                <p id="location-name" class="text-xs uppercase tracking-widest text-gray-400">A Toca do Coelho</p>
+            </div>
+            <div id="inventory-container" class="flex gap-2">
+                <!-- Itens do Inventário aparecerão aqui -->
+            </div>
+        </div>
+
+        <!-- Área Visual do Jogo -->
+        <div id="game-canvas" class="flex-grow flex flex-col items-center justify-center p-8 text-center relative">
+            <div id="scene-icon" class="text-8xl mb-6 floating">🕳️</div>
+            <div id="scene-content" class="z-10">
+                <h2 id="scene-title" class="text-3xl mb-4 font-bold text-pink-400">A Queda Infinita</h2>
+                <p id="scene-desc" class="text-lg leading-relaxed max-w-2xl mx-auto">
+                    Estás a cair num túnel repleto de prateleiras, relógios e espelhos.
+                    Tudo parece mover-se em câmara lenta. O que fazes?
+                </p>
+            </div>
+        </div>
+
+        <!-- Painel de Controlos -->
+        <div id="controls" class="p-6 bg-black/40 border-t border-purple-900 z-10">
+            <div id="choices-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Botões de escolha injetados via JS -->
+            </div>
+        </div>
+
+        <!-- Overlay de Mensagens (Custom Modal) -->
+        <div id="overlay" class="hidden absolute inset-0 bg-black/80 z-50 flex items-center justify-center p-8">
+            <div class="bg-gray-900 border-2 border-pink-500 p-8 rounded-lg max-w-md text-center">
+                <p id="overlay-text" class="text-xl mb-6"></p>
+                <button onclick="closeOverlay()" class="px-6 py-2 bg-pink-600 rounded-full hover:bg-pink-500 font-bold">Continuar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Estado do Jogo
+        const state = {
+            inventory: [],
+            visited: new Set(),
+            flags: {
+                drankPotion: false,
+                ateCake: false,
+                metCat: false,
+                hasKey: false
+            }
+        };
+
+        const scenes = {
+            falling: {
+                title: "A Queda Infinita",
+                location: "Túnel do Coelho",
+                icon: "🕳️",
+                desc: "Estás a cair num túnel repleto de prateleiras, relógios e espelhos. Ao teu lado, um frasco com o rótulo 'BEBE-ME' flutua no ar.",
+                choices: [
+                    { text: "Agarrar o frasco e beber", action: () => handleAction('drink_potion') },
+                    { text: "Tentar agarrar-se a uma prateleira", action: () => changeScene('shelves') }
+                ]
+            },
+            shelves: {
+                title: "As Prateleiras",
+                location: "Túnel do Coelho",
+                icon: "📚",
+                desc: "Conseguiste agarrar-te a uma prateleira. Há um mapa do País das Maravilhas e uma chave dourada pequena aqui.",
+                choices: [
+                    { text: "Apanhar a chave dourada", action: () => collectItem('Chave Dourada', '🗝️') },
+                    { text: "Deixar-se cair novamente", action: () => changeScene('hallway') }
+                ]
+            },
+            drink_potion: {
+                title: "Efeito Mágico",
+                location: "Espaço-Tempo",
+                icon: "🧪",
+                desc: "Bebeste o líquido azul. De repente, o mundo começa a crescer... ou serás tu a encolher? Estás agora no fundo do túnel, perante uma porta minúscula.",
+                choices: [
+                    { text: "Tentar abrir a porta", action: () => checkKey() },
+                    { text: "Explorar o jardim à volta", action: () => changeScene('garden') }
+                ]
+            },
+            hallway: {
+                title: "O Corredor de Portas",
+                location: "Cerca da Porta",
+                icon: "🚪",
+                desc: "Chegaste ao fundo. Um longo corredor com dezenas de portas, todas trancadas. No centro, uma mesa de cristal.",
+                choices: [
+                    { text: "Ver o que está na mesa", action: () => changeScene('table') },
+                    { text: "Chamar por ajuda", action: () => changeScene('cheshire_cat') }
+                ]
+            },
+            table: {
+                title: "A Mesa de Cristal",
+                location: "Corredor",
+                icon: "💎",
+                desc: "Na mesa, encontras um bolo pequeno com passas que diz 'COME-ME'.",
+                choices: [
+                    { text: "Comer o bolo", action: () => handleAction('eat_cake') },
+                    { text: "Voltar para o corredor", action: () => changeScene('hallway') }
+                ]
+            },
+            cheshire_cat: {
+                title: "O Gato de Cheshire",
+                location: "Bosque das Sombras",
+                icon: "😺",
+                desc: "Um sorriso surge no ar, seguido de um gato listado. 'Para onde queres ir?', pergunta ele, flutuando.",
+                choices: [
+                    { text: "Perguntar o caminho para o chá", action: () => changeScene('tea_party') },
+                    { text: "Perguntar pela Rainha", action: () => changeScene('court') }
+                ]
+            },
+            tea_party: {
+                title: "O Chá dos Loucos",
+                location: "Jardim do Chapeleiro",
+                icon: "☕",
+                desc: "O Chapeleiro e a Lebre de Março estão sentados a uma mesa enorme. 'Não há lugar!', gritam eles, embora a mesa esteja vazia.",
+                choices: [
+                    { text: "Sentar-se mesmo assim", action: () => showMessage("O Chapeleiro faz-te uma adivinha: Por que se parece um corvo com uma escrivaninha?") },
+                    { text: "Trocar de bule", action: () => showMessage("Bebes um chá de jasmim que te faz sentir muito calmo.") },
+                    { text: "Ir embora", action: () => changeScene('cheshire_cat') }
+                ]
+            },
+            court: {
+                title: "O Campo de Croquet",
+                location: "Corte de Copas",
+                icon: "👑",
+                desc: "A Rainha de Copas está a jogar croquet com flamingos. Ela olha para ti e grita: 'CORTEM-LHE A CABEÇA!'",
+                choices: [
+                    { text: "Correr para o labirinto", action: () => changeScene('maze') },
+                    { text: "Elogiar o seu vestido", action: () => showMessage("A Rainha fica lisonjeada e deixa-te passar por agora.") }
+                ]
+            },
+            maze: {
+                title: "O Labirinto de Rosas",
+                location: "Labirinto",
+                icon: "🌹",
+                desc: "As rosas brancas estão a ser pintadas de vermelho. Se encontrares a saída certa, poderás acordar deste sonho.",
+                choices: [
+                    { text: "Ir pela esquerda (Sombra)", action: () => showMessage("Ficaste perdido, mas o Gato de Cheshire ajuda-te a voltar.") },
+                    { text: "Ir pela direita (Luz)", action: () => winGame() }
+                ]
+            },
+            garden: {
+                title: "O Jardim de Flores Falantes",
+                location: "Jardim",
+                icon: "🌻",
+                desc: "As flores aqui têm rostos e discutem sobre quem tem as melhores pétalas.",
+                choices: [
+                    { text: "Falar com a Lagarta", action: () => showMessage("A Lagarta sopra fumo em forma de anéis e pergunta: 'Quem és TU?'") },
+                    { text: "Voltar à porta", action: () => changeScene('hallway') }
+                ]
+            }
+        };
+
+        function updateUI(sceneKey) {
+            const scene = scenes[sceneKey];
+            document.getElementById('scene-title').innerText = scene.title;
+            document.getElementById('scene-desc').innerText = scene.desc;
+            document.getElementById('scene-icon').innerText = scene.icon;
+            document.getElementById('location-name').innerText = scene.location;
+
+            const choicesGrid = document.getElementById('choices-grid');
+            choicesGrid.innerHTML = '';
+
+            scene.choices.forEach(choice => {
+                const btn = document.createElement('button');
+                btn.className = 'choice-btn p-4 rounded-lg text-left font-medium flex justify-between items-center';
+                btn.innerHTML = `<span>${choice.text}</span> <span class="text-xs opacity-50">➔</span>`;
+                btn.onclick = choice.action;
+                choicesGrid.appendChild(btn);
+            });
+
+            // Animação de entrada
+            const canvas = document.getElementById('game-canvas');
+            canvas.style.opacity = 0;
+            setTimeout(() => { canvas.style.opacity = 1; }, 50);
+        }
+
+        function changeScene(sceneKey) {
+            updateUI(sceneKey);
+        }
+
+        function handleAction(actionType) {
+            if (actionType === 'drink_potion') {
+                state.flags.drankPotion = true;
+                changeScene('drink_potion');
+            } else if (actionType === 'eat_cake') {
+                state.flags.ateCake = true;
+                showMessage("Ficaste gigante! A tua cabeça bate no teto do corredor!");
+                // Adiciona uma escolha extra dinâmica se quiseres
+            }
+        }
+
+        function collectItem(name, icon) {
+            if (!state.inventory.find(i => i.name === name)) {
+                state.inventory.push({ name, icon });
+                const invContainer = document.getElementById('inventory-container');
+                const itemEl = document.createElement('div');
+                itemEl.className = 'inventory-item w-10 h-10 bg-white/10 rounded-full flex items-center justify-center text-xl border border-white/20';
+                itemEl.title = name;
+                itemEl.innerText = icon;
+                invContainer.appendChild(itemEl);
+                showMessage(`Encontraste: ${name}!`);
+                state.flags.hasKey = true;
+            } else {
+                showMessage("Já tens esse item.");
+            }
+        }
+
+        function checkKey() {
+            if (state.flags.hasKey && state.flags.drankPotion) {
+                showMessage("A chave dourada encaixa perfeitamente! A porta abre-se para um jardim magnífico.");
+                changeScene('garden');
+            } else if (!state.flags.drankPotion) {
+                showMessage("És demasiado grande para passar por esta porta!");
+            } else {
+                showMessage("A porta está trancada. Precisas de uma chave.");
+            }
+        }
+
+        function showMessage(text) {
+            document.getElementById('overlay-text').innerText = text;
+            document.getElementById('overlay').classList.remove('hidden');
+        }
+
+        function closeOverlay() {
+            document.getElementById('overlay').classList.add('hidden');
+        }
+
+        function winGame() {
+            document.getElementById('main-container').innerHTML = `
+                <div class="flex flex-col items-center justify-center h-full text-center p-12 bg-white text-black">
+                    <h1 class="text-6xl mb-6">✨</h1>
+                    <h2 class="text-4xl font-bold mb-4">Acordaste!</h2>
+                    <p class="text-xl mb-8">Conseguiste sair do Labirinto e voltaste para a segurança do teu jardim. Ou terá sido tudo um sonho?</p>
+                    <button onclick="location.reload()" class="px-8 py-3 bg-purple-600 text-white rounded-full font-bold hover:bg-purple-700">Jogar Novamente</button>
+                </div>
+            `;
+        }
+
+        // Iniciar jogo
+        window.onload = () => {
+            updateUI('falling');
+        };
+    </script>
+</body>
+</html>

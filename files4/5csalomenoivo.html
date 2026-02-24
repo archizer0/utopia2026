@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="pt-pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice: Queda no Buraco do Coelho</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #1a0a2a; font-family: 'Georgia', serif; }
+        #game-container { position: relative; width: 100vw; height: 100vh; }
+        #ui {
+            position: absolute;
+            top: 20px; left: 20px;
+            color: #ffccff;
+            font-size: 24px;
+            text-shadow: 2px 2px #441144;
+            pointer-events: none;
+            z-index: 10;
+        }
+        #msg {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            text-align: center;
+            background: rgba(60, 20, 80, 0.8);
+            padding: 30px;
+            border: 3px double #ffccff;
+            display: none;
+            z-index: 100;
+        }
+        canvas { display: block; }
+        button {
+            background: #ffccff;
+            border: none;
+            padding: 10px 20px;
+            font-size: 18px;
+            cursor: pointer;
+            color: #441144;
+            margin-top: 15px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        PONTOS: <span id="score">0</span><br>
+        TAMANHO: <span id="size-label">Normal</span>
+    </div>
+
+    <div id="msg">
+        <h1 id="msg-title">Oh não!</h1>
+        <p id="msg-text">Bateste num relógio de bolso!</p>
+        <p>Pontuação final: <span id="final-score">0</span></p>
+        <button onclick="resetGame()">Tentar Novamente</button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        let scene, camera, renderer, alice;
+        let objects = [];
+        let score = 0;
+        let aliceSize = 1; // 1 = normal, 0.5 = pequena
+        let isGameOver = false;
+        let tunnel;
+        let clock = new THREE.Clock(); // Para animações
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x1a0a2a, 0.03);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 6;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.body.appendChild(renderer.domElement);
+
+            // Luzes surreais
+            const ambient = new THREE.AmbientLight(0x403050, 0.8);
+            scene.add(ambient);
+
+            const pointLight = new THREE.PointLight(0xff00ff, 1.5, 30);
+            pointLight.position.set(0, 2, 5);
+            scene.add(pointLight);
+
+            // Luz direcional para realçar os materiais PBR e criar sombras
+            const dirLight = new THREE.DirectionalLight(0xffddaa, 1.2);
+            dirLight.position.set(5, 10, 5);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 1024;
+            dirLight.shadow.mapSize.height = 1024;
+            scene.add(dirLight);
+
+            // Luz suave focada na Alice
+            const aliceLight = new THREE.PointLight(0x88ccff, 1, 10);
+            aliceLight.position.set(0, 0, 2);
+            scene.add(aliceLight);
+
+            // Gerar Textura Xadrez para o Túnel
+            const tunnelTex = createCheckerboardTexture();
+
+            // O Túnel (Buraco do Coelho)
+            const tunnelGeo = new THREE.CylinderGeometry(10, 10, 300, 32, 1, true);
+            const tunnelMat = new THREE.MeshStandardMaterial({
+                color: 0x664488,
+                side: THREE.BackSide,
+                map: tunnelTex,
+                roughness: 0.9,
+                bumpMap: tunnelTex,
+                bumpScale: 0.05
+            });
+            tunnel = new THREE.Mesh(tunnelGeo, tunnelMat);
+            tunnel.rotation.x = Math.PI / 2;
+            tunnel.receiveShadow = true;
+            scene.add(tunnel);
+
+            // Criar a modelo da Alice mais realista
+            alice = createAlice();
+            scene.add(alice);
+
+            // Input
+            window.addEventListener('mousemove', (e) => {
+                if(isGameOver) return;
+                const x = (e.clientX / window.innerWidth - 0.5) * 12;
+                const y = -(e.clientY / window.innerHeight - 0.5) * 8;
+                alice.position.x += (x - alice.position.x) * 0.1; // Movimento suave
+                alice.position.y += (y - alice.position.y) * 0.1;
+               
+                // Inclinação baseada no movimento
+                alice.rotation.z = (alice.position.x - x) * 0.2;
+                alice.rotation.x = (y - alice.position.y) * 0.2 + Math.PI / 8; // Inclinada a cair
+               
+                aliceLight.position.x = alice.position.x;
+                aliceLight.position.y = alice.position.y;
+            });
+
+            animate();
+        }
+
+        // --- GERADORES DE TEXTURAS DINÂMICAS ---
+
+        function createCheckerboardTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512; canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#11051a';
+            ctx.fillRect(0, 0, 512, 512);
+            ctx.fillStyle = '#2a1140';
+            for(let i=0; i<8; i++) {
+                for(let j=0; j<8; j++) {
+                    if((i+j)%2 === 0) ctx.fillRect(i*64, j*64, 64, 64);
+                }
+            }
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(10, 40);
+            return tex;
+        }
+
+        function createDialTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256; canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+           
+            // Fundo
+            ctx.fillStyle = '#fffdf0';
+            ctx.beginPath();
+            ctx.arc(128, 128, 128, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Marcadores e Números Romanos
+            ctx.translate(128, 128);
+            ctx.fillStyle = '#000';
+            ctx.font = '24px Georgia';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+           
+            const numerals = ['XII', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI'];
+            for(let i = 0; i < 12; i++) {
+                const angle = (i * Math.PI / 6) - (Math.PI / 2);
+                const x = Math.cos(angle) * 100;
+                const y = Math.sin(angle) * 100;
+                ctx.fillText(numerals[i], x, y);
+            }
+
+            // Ponteiros
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(0, 0); ctx.lineTo(40, -40); // Horas
+            ctx.stroke();
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, 0); ctx.lineTo(10, -70); // Minutos
+            ctx.stroke();
+           
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        function createLabelTexture(text, bgColor, textColor) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256; canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+           
+            // Fundo envelhecido
+            ctx.fillStyle = bgColor;
+            ctx.fillRect(0, 0, 256, 128);
+            ctx.strokeStyle = '#553311';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(2, 2, 252, 124);
+
+            // Texto
+            ctx.fillStyle = textColor;
+            ctx.font = 'bold 36px Georgia';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, 128, 64);
+           
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        // --- GERADORES DE OBJETOS REALISTAS ---
+
+        function createAlice() {
+            const group = new THREE.Group();
+           
+            // Materiais
+            const skinMat = new THREE.MeshStandardMaterial({ color: 0xffe0bd, roughness: 0.4 });
+            const dressMat = new THREE.MeshStandardMaterial({ color: 0x4488ff, roughness: 0.9, side: THREE.DoubleSide });
+            const apronMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 });
+            const hairMat = new THREE.MeshStandardMaterial({ color: 0xffdd44, roughness: 0.6 });
+
+            // Cabeça e Cabelo
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.25, 32, 32), skinMat);
+            head.position.y = 1.1;
+            head.castShadow = true;
+           
+            const hair = new THREE.Mesh(new THREE.SphereGeometry(0.27, 32, 16, 0, Math.PI * 2, 0, Math.PI / 1.5), hairMat);
+            hair.position.y = 1.12;
+            group.add(head, hair);
+
+            // Vestido (Saia tipo sino)
+            const skirtGeo = new THREE.CylinderGeometry(0.2, 0.7, 0.8, 32, 1, true);
+            const skirt = new THREE.Mesh(skirtGeo, dressMat);
+            skirt.position.y = 0.4;
+            skirt.castShadow = true;
+            group.add(skirt);
+
+            // Tronco
+            const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.2, 0.4, 16), dressMat);
+            torso.position.y = 0.8;
+            torso.castShadow = true;
+            group.add(torso);
+
+            // Avental
+            const apron = new THREE.Mesh(new THREE.PlaneGeometry(0.35, 0.6), apronMat);
+            apron.position.set(0, 0.6, 0.21);
+            apron.rotation.x = -0.1;
+            group.add(apron);
+
+            // Braços e Pernas
+            const limbGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.4, 8);
+            const armL = new THREE.Mesh(limbGeo, skinMat);
+            armL.position.set(-0.3, 0.8, 0); armL.rotation.z = Math.PI / 4;
+            const armR = new THREE.Mesh(limbGeo, skinMat);
+            armR.position.set(0.3, 0.8, 0); armR.rotation.z = -Math.PI / 4;
+            const legL = new THREE.Mesh(limbGeo, skinMat);
+            legL.position.set(-0.15, -0.1, 0);
+            const legR = new THREE.Mesh(limbGeo, skinMat);
+            legR.position.set(0.15, -0.1, 0);
+           
+            group.add(armL, armR, legL, legR);
+            return group;
+        }
+
+        function createWatch() {
+            const group = new THREE.Group();
+            // Caixa de Ouro
+            const caseGeo = new THREE.CylinderGeometry(0.6, 0.6, 0.15, 32);
+            const caseMat = new THREE.MeshStandardMaterial({ color: 0xffcc00, metalness: 1, roughness: 0.1 });
+            const watchCase = new THREE.Mesh(caseGeo, caseMat);
+            watchCase.rotation.x = Math.PI / 2;
+            watchCase.castShadow = true;
+
+            // Mostrador com textura
+            const dialTex = createDialTexture();
+            const faceGeo = new THREE.CylinderGeometry(0.52, 0.52, 0.16, 32);
+            const faceMat = new THREE.MeshStandardMaterial({ map: dialTex, roughness: 0.5 });
+            const face = new THREE.Mesh(faceGeo, faceMat);
+            face.rotation.x = -Math.PI / 2;
+            face.rotation.z = -Math.PI / 2; // Orientar números
+           
+            // Vidro
+            const glassGeo = new THREE.CylinderGeometry(0.52, 0.52, 0.18, 32);
+            const glassMat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, transmission: 0.9, opacity: 1, transparent: true, roughness: 0 });
+            const glass = new THREE.Mesh(glassGeo, glassMat);
+            glass.rotation.x = Math.PI / 2;
+
+            // Coroa e Argola
+            const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.1, 16), caseMat);
+            crown.position.set(0, 0.65, 0);
+            const ring = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.03, 16, 32), caseMat);
+            ring.position.set(0, 0.8, 0);
+
+            group.add(watchCase, face, glass, crown, ring);
+            return group;
+        }
+
+        function createBook() {
+            const group = new THREE.Group();
+            // Capa de cabedal com detalhes em ouro
+            const coverGeo = new THREE.BoxGeometry(1.05, 0.25, 1.35);
+            const coverMat = new THREE.MeshStandardMaterial({ color: 0x3a0f0f, roughness: 0.7, bumpScale: 0.02 });
+            const cover = new THREE.Mesh(coverGeo, coverMat);
+            cover.castShadow = true;
+           
+            // Páginas (textura estriada simulada com roughness alta)
+            const pagesGeo = new THREE.BoxGeometry(0.95, 0.2, 1.25);
+            const pagesMat = new THREE.MeshStandardMaterial({ color: 0xf5deb3, roughness: 1 });
+            const pages = new THREE.Mesh(pagesGeo, pagesMat);
+            pages.position.x = 0.02;
+
+            group.add(cover, pages);
+            return group;
+        }
+
+        function createCake() {
+            const group = new THREE.Group();
+           
+            // Prato de Porcelana
+            const plateGeo = new THREE.CylinderGeometry(0.6, 0.4, 0.05, 32);
+            const plateMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.1, metalness: 0.1 });
+            const plate = new THREE.Mesh(plateGeo, plateMat);
+            plate.position.y = -0.15;
+            plate.castShadow = true;
+
+            // Base do bolo
+            const baseGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 32);
+            const baseMat = new THREE.MeshStandardMaterial({ color: 0xd2b48c, roughness: 0.9 });
+            const base = new THREE.Mesh(baseGeo, baseMat);
+            base.castShadow = true;
+
+            // Cobertura com textura "COME-ME"
+            const labelTex = createLabelTexture('COME-ME', '#ff99cc', '#ffffff');
+            const icingGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.15, 32);
+            const icingMat = new THREE.MeshStandardMaterial({
+                color: 0xff69b4,
+                roughness: 0.3,
+                map: labelTex
+            });
+            const icing = new THREE.Mesh(icingGeo, icingMat);
+            icing.position.y = 0.15;
+
+            // Cereja
+            const cherry = new THREE.Mesh(
+                new THREE.SphereGeometry(0.08, 16, 16),
+                new THREE.MeshPhysicalMaterial({ color: 0xcc0000, roughness: 0.1, clearcoat: 1 })
+            );
+            cherry.position.y = 0.25;
+
+            group.add(plate, base, icing, cherry);
+            return group;
+        }
+
+        function createPotion() {
+            const group = new THREE.Group();
+            // Vidro do frasco
+            const glassGeo = new THREE.CylinderGeometry(0.15, 0.3, 0.5, 32);
+            const glassMat = new THREE.MeshPhysicalMaterial({
+                color: 0xe0ffff, metalness: 0.2, roughness: 0.05,
+                transmission: 0.95, transparent: true, opacity: 1, side: THREE.DoubleSide
+            });
+            const glass = new THREE.Mesh(glassGeo, glassMat);
+            glass.castShadow = true;
+
+            // Líquido mágico
+            const liquidGeo = new THREE.CylinderGeometry(0.13, 0.28, 0.3, 32);
+            const liquidMat = new THREE.MeshStandardMaterial({ color: 0x00ffcc, emissive: 0x00aa88, emissiveIntensity: 0.5, transparent: true, opacity: 0.9 });
+            const liquid = new THREE.Mesh(liquidGeo, liquidMat);
+            liquid.position.y = -0.08;
+
+            // Rolha
+            const cork = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.08, 0.12, 0.15, 16),
+                new THREE.MeshStandardMaterial({ color: 0x8b5a2b, roughness: 0.9 })
+            );
+            cork.position.y = 0.3;
+
+            // Etiqueta "BEBE-ME" pendurada
+            const tagTex = createLabelTexture('BEBE-ME', '#f0e6d2', '#331100');
+            const tagGeo = new THREE.PlaneGeometry(0.3, 0.15);
+            const tagMat = new THREE.MeshStandardMaterial({ map: tagTex, side: THREE.DoubleSide, roughness: 0.9 });
+            const tag = new THREE.Mesh(tagGeo, tagMat);
+            tag.position.set(0.2, 0.1, 0);
+            tag.rotation.z = -Math.PI / 6;
+
+            group.add(glass, liquid, cork, tag);
+            return group;
+        }
+
+        function spawnObject() {
+            if(isGameOver) return;
+
+            const type = Math.random();
+            let mesh, isBonus = false, isShrink = false;
+
+            if (type < 0.65) {
+                // Obstáculo
+                mesh = Math.random() > 0.5 ? createWatch() : createBook();
+            } else if (type < 0.85) {
+                // Bolo realista (Pontos)
+                mesh = createCake();
+                isBonus = true;
+            } else {
+                // Frasco de vidro (Encolher)
+                mesh = createPotion();
+                isShrink = true;
+            }
+
+            mesh.position.set((Math.random() - 0.5) * 15, (Math.random() - 0.5) * 10, -50);
+            mesh.rotation.set(Math.random(), Math.random(), Math.random());
+           
+            scene.add(mesh);
+            objects.push({
+                mesh,
+                isBonus,
+                isShrink,
+                rotSpeedX: Math.random() * 0.05,
+                rotSpeedY: Math.random() * 0.05
+            });
+        }
+
+        function resetGame() {
+            score = 0;
+            aliceSize = 1;
+            alice.scale.set(1, 1, 1);
+            isGameOver = false;
+            document.getElementById('msg').style.display = 'none';
+            document.getElementById('size-label').innerText = "Normal";
+            objects.forEach(o => scene.remove(o.mesh));
+            objects = [];
+            animate();
+        }
+
+        function animate() {
+            if(isGameOver) return;
+            requestAnimationFrame(animate);
+
+            const time = clock.getElapsedTime();
+
+            // Animação do túnel
+            tunnel.rotation.y += 0.002;
+            tunnel.position.z += 0.8;
+            if(tunnel.position.z > 50) tunnel.position.z = 0;
+
+            // Animação da Alice (flutuação e movimento dos membros)
+            alice.position.y += Math.sin(time * 3) * 0.02;
+           
+            // Spawn aleatório
+            if(Math.random() < 0.06) spawnObject();
+
+            // Lógica dos objetos
+            for(let i = objects.length - 1; i >= 0; i--) {
+                const obj = objects[i];
+                obj.mesh.position.z += 0.6; // Velocidade de queda
+                obj.mesh.rotation.x += obj.rotSpeedX;
+                obj.mesh.rotation.y += obj.rotSpeedY;
+
+                // Colisão
+                const dist = obj.mesh.position.distanceTo(alice.position);
+                const threshold = (aliceSize * 0.6) + 0.4;
+
+                if(dist < threshold) {
+                    if(obj.isBonus) {
+                        score += 150;
+                        scene.remove(obj.mesh);
+                        objects.splice(i, 1);
+                    } else if(obj.isShrink) {
+                        aliceSize = 0.5;
+                        alice.scale.set(0.5, 0.5, 0.5);
+                        document.getElementById('size-label').innerText = "Pequena";
+                        setTimeout(() => {
+                            aliceSize = 1;
+                            alice.scale.set(1, 1, 1);
+                            document.getElementById('size-label').innerText = "Normal";
+                        }, 5000);
+                        scene.remove(obj.mesh);
+                        objects.splice(i, 1);
+                    } else {
+                        // Bateu em obstáculo
+                        isGameOver = true;
+                        document.getElementById('msg').style.display = 'block';
+                        document.getElementById('final-score').innerText = score;
+                    }
+                    continue;
+                }
+
+                if(obj.mesh.position.z > 10) {
+                    scene.remove(obj.mesh);
+                    objects.splice(i, 1);
+                }
+            }
+
+            score += 1;
+            document.getElementById('score').innerText = score;
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        init();
+    </script>
+</body>
+</html>

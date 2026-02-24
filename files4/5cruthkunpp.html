@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Alice no País das Maravilhas - Fuga do Coelho</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700&family=Nunito:wght@400;700&display=swap');
+
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #1a1a2e;
+            font-family: 'Nunito', sans-serif;
+            touch-action: none; /* Previne scroll no mobile durante o jogo */
+        }
+
+        #gameCanvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            /* Padrão de xadrez estilo País das Maravilhas */
+            background-image:
+                linear-gradient(45deg, #a7d8ff 25%, transparent 25%, transparent 75%, #a7d8ff 75%, #a7d8ff),
+                linear-gradient(45deg, #a7d8ff 25%, transparent 25%, transparent 75%, #a7d8ff 75%, #a7d8ff);
+            background-size: 60px 60px;
+            background-position: 0 0, 30px 30px;
+            background-color: #e6f3ff;
+        }
+
+        .title-font {
+            font-family: 'Cinzel Decorative', cursive;
+        }
+
+        .ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .interactive {
+            pointer-events: auto;
+        }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+        }
+
+        #hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #1e3a8a;
+            background: rgba(255, 255, 255, 0.7);
+            padding: 10px 20px;
+            border-radius: 9999px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border: 2px solid #60a5fa;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- HUD (Heads Up Display) -->
+    <div id="hud" style="display: none;">
+        💎 <span id="scoreDisplay">0</span>
+    </div>
+
+    <!-- Canvas do Jogo -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Ecrã Inicial -->
+    <div id="startScreen" class="ui-layer interactive">
+        <div class="glass-panel p-8 rounded-3xl text-center max-w-md w-11/12 mx-auto">
+            <h1 class="title-font text-4xl md:text-5xl text-blue-900 mb-4 drop-shadow-sm">Fuga no País das Maravilhas</h1>
+            <p class="text-gray-700 mb-6 text-lg">
+                Ajuda a <strong>Alice</strong> (👱‍♀️) a apanhar os <strong>Diamantes</strong> (💎)!<br>
+                Mas tem cuidado, não deixes que o <strong>Coelho Branco</strong> (🐇) a apanhe, ele está sempre atrasado e com muita pressa!
+            </p>
+            <div class="mb-6 text-sm text-gray-500 bg-blue-50 p-4 rounded-xl">
+                <strong>Controlos:</strong><br>
+                💻 <em>Computador:</em> Usa as setas do teclado.<br>
+                📱 <em>Telemóvel:</em> Toca ou arrasta o dedo no ecrã.
+            </div>
+            <button id="startBtn" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-full text-xl transition transform hover:scale-105 shadow-lg">
+                Começar a Aventura
+            </button>
+        </div>
+    </div>
+
+    <!-- Ecrã de Fim de Jogo -->
+    <div id="gameOverScreen" class="ui-layer interactive" style="display: none;">
+        <div class="glass-panel p-8 rounded-3xl text-center max-w-md w-11/12 mx-auto">
+            <h2 class="title-font text-4xl text-red-600 mb-2">Fim do Jogo!</h2>
+            <p class="text-gray-800 text-xl mb-4">O Coelho Branco apanhou-te!</p>
+            <div class="text-6xl mb-4">🐇💨</div>
+            <p class="text-2xl font-bold text-blue-900 mb-6">
+                Diamantes Apanhados: <span id="finalScore" class="text-blue-600">0</span> 💎
+            </p>
+            <button id="restartBtn" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-full text-xl transition transform hover:scale-105 shadow-lg">
+                Tentar Novamente
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Elementos do DOM
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startScreen = document.getElementById('startScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const startBtn = document.getElementById('startBtn');
+        const restartBtn = document.getElementById('restartBtn');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const finalScore = document.getElementById('finalScore');
+        const hud = document.getElementById('hud');
+
+        // Variáveis do Jogo
+        let animationId;
+        let score = 0;
+        let isPlaying = false;
+       
+        // Teclas
+        const keys = {
+            ArrowUp: false,
+            ArrowDown: false,
+            ArrowLeft: false,
+            ArrowRight: false,
+            w: false, a: false, s: false, d: false
+        };
+
+        // Rato/Touch
+        let targetX = null;
+        let targetY = null;
+        let isTouching = false;
+
+        // Ajustar tamanho do Canvas
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas(); // Inicializar
+
+        // Classes das Entidades do Jogo
+        class Entity {
+            constructor(x, y, radius, emoji, speed) {
+                this.x = x;
+                this.y = y;
+                this.radius = radius;
+                this.emoji = emoji;
+                this.speed = speed;
+            }
+
+            draw() {
+                ctx.font = `${this.radius * 2}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.emoji, this.x, this.y);
+            }
+        }
+
+        class Player extends Entity {
+            constructor(x, y) {
+                super(x, y, 20, '👱‍♀️', 5);
+            }
+
+            update() {
+                // Movimento por Teclado
+                let movedByKeyboard = false;
+                if (keys.ArrowUp || keys.w) { this.y -= this.speed; movedByKeyboard = true; }
+                if (keys.ArrowDown || keys.s) { this.y += this.speed; movedByKeyboard = true; }
+                if (keys.ArrowLeft || keys.a) { this.x -= this.speed; movedByKeyboard = true; }
+                if (keys.ArrowRight || keys.d) { this.x += this.speed; movedByKeyboard = true; }
+
+                // Movimento por Touch/Rato (se não estiver a usar teclado)
+                if (!movedByKeyboard && isTouching && targetX !== null && targetY !== null) {
+                    const dx = targetX - this.x;
+                    const dy = targetY - this.y;
+                    const distance = Math.hypot(dx, dy);
+
+                    if (distance > this.speed) {
+                        this.x += (dx / distance) * this.speed;
+                        this.y += (dy / distance) * this.speed;
+                    } else {
+                        this.x = targetX;
+                        this.y = targetY;
+                    }
+                }
+
+                // Limites do ecrã
+                if (this.x < this.radius) this.x = this.radius;
+                if (this.x > canvas.width - this.radius) this.x = canvas.width - this.radius;
+                if (this.y < this.radius) this.y = this.radius;
+                if (this.y > canvas.height - this.radius) this.y = canvas.height - this.radius;
+
+                this.draw();
+            }
+        }
+
+        class Enemy extends Entity {
+            constructor(x, y) {
+                super(x, y, 24, '🐇', 1.5); // Velocidade inicial reduzida
+                this.baseSpeed = 1.5;
+            }
+
+            update(playerX, playerY) {
+                // Perseguir a Alice
+                const dx = playerX - this.x;
+                const dy = playerY - this.y;
+                const distance = Math.hypot(dx, dy);
+
+                if (distance > 0) {
+                    this.x += (dx / distance) * this.speed;
+                    this.y += (dy / distance) * this.speed;
+                }
+
+                this.draw();
+            }
+
+            // Aumentar velocidade ligeiramente conforme o score
+            updateSpeed(currentScore) {
+                this.speed = this.baseSpeed + (currentScore * 0.1); // Acelera menos por diamante
+                // Cap na velocidade para não ser impossível
+                if (this.speed > 3.5) this.speed = 3.5; // Velocidade máxima reduzida
+            }
+        }
+
+        class Diamond extends Entity {
+            constructor() {
+                const radius = 15;
+                // Gerar posição aleatória dentro do ecrã com margem de segurança
+                const x = Math.random() * (canvas.width - radius * 4) + radius * 2;
+                const y = Math.random() * (canvas.height - radius * 4) + radius * 2;
+                super(x, y, radius, '💎', 0);
+               
+                // Animação de flutuação
+                this.startY = y;
+                this.floatTimer = Math.random() * Math.PI * 2;
+            }
+
+            update() {
+                // Fazer o diamante flutuar ligeiramente
+                this.floatTimer += 0.05;
+                this.y = this.startY + Math.sin(this.floatTimer) * 5;
+                this.draw();
+            }
+        }
+
+        // Instâncias
+        let alice;
+        let rabbit;
+        let diamond;
+        let particles = [];
+
+        // Sistema de Partículas para quando apanha o diamante
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.velocity = {
+                    x: (Math.random() - 0.5) * 8,
+                    y: (Math.random() - 0.5) * 8
+                };
+                this.radius = Math.random() * 4 + 1;
+                this.color = color;
+                this.alpha = 1;
+            }
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                ctx.restore();
+            }
+            update() {
+                this.x += this.velocity.x;
+                this.y += this.velocity.y;
+                this.alpha -= 0.03;
+                this.draw();
+            }
+        }
+
+        function createParticles(x, y) {
+            const colors = ['#60a5fa', '#93c5fd', '#bfdbfe', '#ffffff'];
+            for (let i = 0; i < 15; i++) {
+                particles.push(new Particle(x, y, colors[Math.floor(Math.random() * colors.length)]));
+            }
+        }
+
+        // Função de Colisão (círculos)
+        function checkCollision(entity1, entity2) {
+            const dx = entity1.x - entity2.x;
+            const dy = entity1.y - entity2.y;
+            const distance = Math.hypot(dx, dy);
+            // Reduzir ligeiramente a hitbox para ser mais justo (80% do raio visual)
+            return distance < (entity1.radius * 0.8 + entity2.radius * 0.8);
+        }
+
+        // Spawn inicial seguro para o Coelho (longe da Alice)
+        function spawnRabbitSafe(aliceX, aliceY) {
+            let rx, ry, dist;
+            do {
+                rx = Math.random() * canvas.width;
+                ry = Math.random() * canvas.height;
+                dist = Math.hypot(rx - aliceX, ry - aliceY);
+            } while (dist < 300); // Garante que nasce longe
+            return new Enemy(rx, ry);
+        }
+
+        // Iniciar / Reiniciar Jogo
+        function initGame() {
+            score = 0;
+            scoreDisplay.innerText = score;
+           
+            alice = new Player(canvas.width / 2, canvas.height / 2);
+            rabbit = spawnRabbitSafe(alice.x, alice.y);
+            diamond = new Diamond();
+            particles = [];
+           
+            targetX = null;
+            targetY = null;
+            isTouching = false;
+
+            startScreen.style.display = 'none';
+            gameOverScreen.style.display = 'none';
+            hud.style.display = 'block';
+            isPlaying = true;
+
+            // Iniciar o loop se não estiver a correr
+            cancelAnimationFrame(animationId);
+            gameLoop();
+        }
+
+        // Fim de Jogo
+        function endGame() {
+            isPlaying = false;
+            cancelAnimationFrame(animationId);
+            finalScore.innerText = score;
+            hud.style.display = 'none';
+            gameOverScreen.style.display = 'flex';
+        }
+
+        // Loop Principal do Jogo
+        function gameLoop() {
+            if (!isPlaying) return;
+
+            animationId = requestAnimationFrame(gameLoop);
+
+            // Limpar canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Atualizar e desenhar entidades
+            diamond.update();
+            alice.update();
+            rabbit.update(alice.x, alice.y);
+
+            // Atualizar partículas
+            particles.forEach((particle, index) => {
+                if (particle.alpha <= 0) {
+                    particles.splice(index, 1);
+                } else {
+                    particle.update();
+                }
+            });
+
+            // Verificar colisão com Diamante
+            if (checkCollision(alice, diamond)) {
+                score++;
+                scoreDisplay.innerText = score;
+                createParticles(diamond.x, diamond.y);
+               
+                // Reposicionar diamante
+                diamond = new Diamond();
+               
+                // Aumentar dificuldade
+                rabbit.updateSpeed(score);
+            }
+
+            // Verificar colisão com o Coelho (Game Over)
+            if (checkCollision(alice, rabbit)) {
+                endGame();
+            }
+        }
+
+        // --- Controlos de Eventos ---
+
+        // Teclado
+        window.addEventListener('keydown', (e) => {
+            if (keys.hasOwnProperty(e.key)) keys[e.key] = true;
+            if (e.key === ' ' && !isPlaying && startScreen.style.display === 'none') {
+                initGame(); // Espaço para reiniciar se estiver no game over
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (keys.hasOwnProperty(e.key)) keys[e.key] = false;
+        });
+
+        // Rato (Touch simulado)
+        canvas.addEventListener('mousedown', (e) => {
+            isTouching = true;
+            targetX = e.clientX;
+            targetY = e.clientY;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (isTouching) {
+                targetX = e.clientX;
+                targetY = e.clientY;
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            isTouching = false;
+        });
+
+        // Touch (Dispositivos Móveis)
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault(); // Prevenir scroll/zoom
+            isTouching = true;
+            targetX = e.touches[0].clientX;
+            targetY = e.touches[0].clientY;
+        }, { passive: false });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (isTouching) {
+                targetX = e.touches[0].clientX;
+                targetY = e.touches[0].clientY;
+            }
+        }, { passive: false });
+
+        window.addEventListener('touchend', () => {
+            isTouching = false;
+        });
+
+        // Botões
+        startBtn.addEventListener('click', initGame);
+        restartBtn.addEventListener('click', initGame);
+
+    </script>
+</body>
+</html>
