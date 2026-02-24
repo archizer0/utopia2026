@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice na Toca: Queda Infinita</title>
+    <style>
+        :root {
+            --tunnel-dark: #1a0a2e;
+            --tunnel-light: #3d1a5e;
+            --accent: #ff4d6d;
+            --bonus: #ffd700;
+            --life: #ff0000;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: var(--tunnel-dark);
+            font-family: 'Georgia', serif;
+            color: white;
+        }
+
+        /* Fundo com efeito de túnel */
+        #game-viewport {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            background: radial-gradient(circle, var(--tunnel-light) 0%, var(--tunnel-dark) 70%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.3s;
+        }
+
+        .bg-detail {
+            position: absolute;
+            color: rgba(255, 255, 255, 0.1);
+            font-size: 20px;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        #alice {
+            position: absolute;
+            width: 80px;
+            height: 80px;
+            font-size: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            user-select: none;
+            cursor: none;
+            animation: float 2s infinite ease-in-out;
+            transition: opacity 0.2s;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0) rotate(0deg); }
+            50% { transform: translateY(-10px) rotate(5deg); }
+        }
+
+        /* Efeito de piscar quando invulnerável */
+        .invulnerable {
+            animation: blink 0.2s infinite !important;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        .item {
+            position: absolute;
+            font-size: 40px;
+            z-index: 5;
+            user-select: none;
+            will-change: transform;
+        }
+
+        .obstacle {
+            filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.3));
+        }
+
+        .bonus {
+            filter: drop-shadow(0 0 15px var(--bonus));
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #stats-bar {
+            margin-top: 20px;
+            display: flex;
+            gap: 40px;
+            align-items: center;
+        }
+
+        #score-container {
+            font-size: 28px;
+            font-weight: bold;
+            text-shadow: 0 0 10px var(--accent);
+            background: rgba(0,0,0,0.3);
+            padding: 5px 25px;
+            border-radius: 50px;
+            border: 2px solid var(--accent);
+        }
+
+        #lives-container {
+            font-size: 28px;
+            background: rgba(0,0,0,0.3);
+            padding: 5px 20px;
+            border-radius: 50px;
+            border: 2px solid var(--life);
+            display: flex;
+            gap: 5px;
+        }
+
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 5, 20, 0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            text-align: center;
+            pointer-events: auto;
+        }
+
+        #overlay h1 {
+            font-size: 60px;
+            color: var(--accent);
+            margin: 0;
+            text-transform: uppercase;
+            letter-spacing: 5px;
+        }
+
+        .btn {
+            padding: 20px 50px;
+            font-size: 24px;
+            background-color: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 30px;
+            box-shadow: 0 0 20px rgba(255, 77, 109, 0.5);
+        }
+
+        .btn:hover {
+            transform: scale(1.1);
+            background-color: #ff758f;
+        }
+
+        .hint {
+            margin-top: 20px;
+            color: #888;
+        }
+
+        /* Efeitos de Flash */
+        .flash-bonus {
+            animation: flash-bonus-anim 0.5s ease-out;
+        }
+        .flash-damage {
+            animation: flash-damage-anim 0.4s ease-out;
+        }
+
+        @keyframes flash-bonus-anim {
+            0% { box-shadow: inset 0 0 100px var(--bonus); }
+            100% { box-shadow: inset 0 0 0 var(--bonus); }
+        }
+        @keyframes flash-damage-anim {
+            0% { box-shadow: inset 0 0 100px var(--life); }
+            100% { box-shadow: inset 0 0 0 var(--life); }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-viewport">
+        <div id="ui-layer">
+            <div id="stats-bar">
+                <div id="lives-container">❤️❤️❤️</div>
+                <div id="score-container">0m</div>
+            </div>
+        </div>
+
+        <div id="alice">👧🏼</div>
+
+        <div id="overlay">
+            <h1 id="status-title">Alice na Toca</h1>
+            <p id="status-desc">A queda está mais calma. Tens 3 vidas!</p>
+            <button class="btn" onclick="startGame()">Começar Queda</button>
+            <p class="hint">Usa o rato ou setas. Apanha 🧪 e 🧁 para bónus!</p>
+        </div>
+    </div>
+
+    <script>
+        const viewport = document.getElementById('game-viewport');
+        const alice = document.getElementById('alice');
+        const scoreElement = document.getElementById('score-container');
+        const livesElement = document.getElementById('lives-container');
+        const overlay = document.getElementById('overlay');
+        const statusTitle = document.getElementById('status-title');
+        const statusDesc = document.getElementById('status-desc');
+
+        let isPlaying = false;
+        let score = 0;
+        let lives = 3;
+        let isInvulnerable = false;
+        let aliceX = window.innerWidth / 2;
+        let aliceY = window.innerHeight * 0.7;
+        let obstacles = [];
+        let bgDetails = [];
+        let gameLoopId;
+        let spawnInterval;
+        let speedMultiplier = 1;
+
+        const emojisBad = ['🃏', '🐇', '🎩', '🍵', '🍄', '🐱', '🕒', '🌹', '👑', '📖', '🗝️'];
+        const emojisGood = ['🧪', '🧁', '✨', '💎'];
+        const emojiLife = '❤️';
+        const bgIcons = ['.', '*', '◦', '°'];
+
+        // Inicializar posição
+        alice.style.left = `${aliceX}px`;
+        alice.style.top = `${aliceY}px`;
+
+        // Controlos
+        window.addEventListener('mousemove', (e) => {
+            if (!isPlaying) return;
+            aliceX = e.clientX;
+            aliceY = e.clientY;
+            updateAlicePosition();
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if (!isPlaying) return;
+            const step = 40;
+            if (e.key === 'ArrowLeft') aliceX -= step;
+            if (e.key === 'ArrowRight') aliceX += step;
+            if (e.key === 'ArrowUp') aliceY -= step;
+            if (e.key === 'ArrowDown') aliceY += step;
+            updateAlicePosition();
+        });
+
+        function updateAlicePosition() {
+            aliceX = Math.max(40, Math.min(window.innerWidth - 40, aliceX));
+            aliceY = Math.max(40, Math.min(window.innerHeight - 40, aliceY));
+           
+            alice.style.left = `${aliceX}px`;
+            alice.style.top = `${aliceY}px`;
+            alice.style.transform = `translate(-50%, -50%)`;
+        }
+
+        function createBackgroundDetail() {
+            const detail = document.createElement('div');
+            detail.className = 'bg-detail';
+            detail.innerText = bgIcons[Math.floor(Math.random() * bgIcons.length)];
+            const x = Math.random() * window.innerWidth;
+            detail.style.left = `${x}px`;
+            detail.style.top = `-20px`;
+            viewport.appendChild(detail);
+           
+            bgDetails.push({
+                element: detail,
+                y: -20,
+                speed: 1 + Math.random() * 3 // Velocidade do fundo reduzida
+            });
+        }
+
+        function spawnItem() {
+            if (!isPlaying) return;
+            const rand = Math.random();
+            let type = 'obstacle';
+            let emoji = emojisBad[Math.floor(Math.random() * emojisBad.length)];
+
+            if (rand > 0.96) { // 4% chance de vida extra
+                type = 'life';
+                emoji = emojiLife;
+            } else if (rand > 0.88) { // 8% chance de bónus
+                type = 'bonus';
+                emoji = emojisGood[Math.floor(Math.random() * emojisGood.length)];
+            }
+           
+            const item = document.createElement('div');
+            item.className = `item ${type}`;
+            item.innerHTML = emoji;
+           
+            const x = Math.random() * (window.innerWidth - 50) + 25;
+            item.style.left = `${x}px`;
+            item.style.top = `-60px`;
+           
+            viewport.appendChild(item);
+           
+            obstacles.push({
+                element: item,
+                x: x,
+                y: -60,
+                type: type,
+                speed: (2.5 + Math.random() * 3) * speedMultiplier, // Velocidade inicial reduzida
+                rotation: Math.random() * 360,
+                rotSpeed: (Math.random() - 0.5) * 6 // Rotação mais lenta
+            });
+        }
+
+        function updateUI() {
+            scoreElement.innerText = `${Math.floor(score)}m`;
+            livesElement.innerText = '❤️'.repeat(Math.max(0, lives));
+        }
+
+        function takeDamage() {
+            if (isInvulnerable) return;
+           
+            lives--;
+            updateUI();
+           
+            viewport.classList.add('flash-damage');
+            setTimeout(() => viewport.classList.remove('flash-damage'), 400);
+
+            if (lives <= 0) {
+                gameOver();
+            } else {
+                isInvulnerable = true;
+                alice.classList.add('invulnerable');
+                setTimeout(() => {
+                    isInvulnerable = false;
+                    alice.classList.remove('invulnerable');
+                }, 1500);
+            }
+        }
+
+        function collectBonus(points) {
+            score += points;
+            viewport.classList.add('flash-bonus');
+            setTimeout(() => viewport.classList.remove('flash-bonus'), 500);
+        }
+
+        function update() {
+            if (!isPlaying) return;
+
+            score += 0.08; // Pontuação sobe um pouco mais devagar
+            updateUI();
+            // Progressão de dificuldade mais lenta (divisor de 350 em vez de 200)
+            speedMultiplier = 1 + (score / 350);
+
+            if (Math.random() > 0.92) createBackgroundDetail();
+
+            for (let i = bgDetails.length - 1; i >= 0; i--) {
+                const d = bgDetails[i];
+                d.y += d.speed * speedMultiplier;
+                d.element.style.top = `${d.y}px`;
+                if (d.y > window.innerHeight) {
+                    d.element.remove();
+                    bgDetails.splice(i, 1);
+                }
+            }
+
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                const o = obstacles[i];
+                o.y += o.speed;
+                o.rotation += o.rotSpeed;
+               
+                o.element.style.top = `${o.y}px`;
+                o.element.style.transform = `rotate(${o.rotation}deg)`;
+
+                const dx = Math.abs(o.x - aliceX);
+                const dy = Math.abs(o.y - aliceY);
+
+                if (dx < 45 && dy < 45) {
+                    if (o.type === 'bonus') {
+                        collectBonus(50);
+                        o.element.remove();
+                        obstacles.splice(i, 1);
+                        continue;
+                    } else if (o.type === 'life') {
+                        if (lives < 5) lives++;
+                        updateUI();
+                        o.element.remove();
+                        obstacles.splice(i, 1);
+                        continue;
+                    } else if (o.type === 'obstacle') {
+                        takeDamage();
+                        if (!isInvulnerable || lives <= 0) {
+                             o.element.remove();
+                             obstacles.splice(i, 1);
+                        }
+                    }
+                }
+
+                if (o.y > window.innerHeight + 100) {
+                    o.element.remove();
+                    obstacles.splice(i, 1);
+                }
+            }
+
+            gameLoopId = requestAnimationFrame(update);
+        }
+
+        function startGame() {
+            isPlaying = true;
+            score = 0;
+            lives = 3;
+            isInvulnerable = false;
+            speedMultiplier = 1;
+            alice.classList.remove('invulnerable');
+           
+            obstacles.forEach(o => o.element.remove());
+            bgDetails.forEach(d => d.element.remove());
+            obstacles = [];
+            bgDetails = [];
+           
+            overlay.style.display = 'none';
+            aliceX = window.innerWidth / 2;
+            aliceY = window.innerHeight * 0.7;
+            updateAlicePosition();
+            updateUI();
+
+            update();
+           
+            if (spawnInterval) clearInterval(spawnInterval);
+            // Intervalo de spawn aumentado para 450ms (menos objetos ao mesmo tempo)
+            spawnInterval = setInterval(() => {
+                if (isPlaying) spawnItem();
+            }, 450);
+        }
+
+        function gameOver() {
+            isPlaying = false;
+            cancelAnimationFrame(gameLoopId);
+            clearInterval(spawnInterval);
+           
+            statusTitle.innerText = "Sem Vidas!";
+            statusDesc.innerText = `Ficaste tonta após ${Math.floor(score)} metros de queda.`;
+            overlay.style.display = 'flex';
+        }
+
+        window.addEventListener('resize', () => {
+            if (!isPlaying) {
+                aliceX = window.innerWidth / 2;
+                aliceY = window.innerHeight * 0.7;
+                updateAlicePosition();
+            }
+        });
+    </script>
+</body>
+</html>

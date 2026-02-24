@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Boca das Maravilhas - AR</title>
+    <!-- Importação das bibliotecas do MediaPipe para reconhecimento facial -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+   
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600&display=swap');
+
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #1a0b2e; /* Fundo roxo escuro (Wonderland) */
+            font-family: 'Cinzel', serif;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        /* O vídeo serve apenas para captar a câmara, fica escondido */
+        #input_video {
+            display: none;
+        }
+
+        /* O canvas onde desenhamos o vídeo e os emojis */
+        #output_canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+            /* Inverter horizontalmente para parecer um espelho */
+            transform: scaleX(-1);
+            z-index: 1;
+        }
+
+        #ui_layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            background: rgba(26, 11, 46, 0.85);
+            transition: opacity 0.5s ease;
+        }
+
+        h1 {
+            font-size: 3rem;
+            text-shadow: 0 0 10px #d896ff, 0 0 20px #d896ff;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        p {
+            font-size: 1.2rem;
+            margin-bottom: 30px;
+            text-align: center;
+            max-width: 80%;
+        }
+
+        button {
+            background: linear-gradient(45deg, #8a2be2, #ff00ff);
+            border: none;
+            border-radius: 50px;
+            color: white;
+            padding: 15px 40px;
+            font-size: 1.5rem;
+            font-family: 'Cinzel', serif;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(255, 0, 255, 0.4);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 8px 25px rgba(255, 0, 255, 0.6);
+        }
+
+        button:disabled {
+            background: #555;
+            box-shadow: none;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        #status_text {
+            position: absolute;
+            bottom: 20px;
+            font-size: 1rem;
+            color: #ccc;
+            z-index: 11;
+            text-align: center;
+            width: 100%;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <video id="input_video" autoplay playsinline></video>
+    <canvas id="output_canvas"></canvas>
+
+    <div id="ui_layer">
+        <h1>O País das Maravilhas</h1>
+        <p>Abre bem a tua boca para libertar a magia e os segredos da Alice!</p>
+        <button id="start_btn">Entrar na Toca do Coelho</button>
+    </div>
+
+    <div id="status_text">A aguardar início...</div>
+
+    <script>
+        // Elementos do DOM
+        const videoElement = document.getElementById('input_video');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const startBtn = document.getElementById('start_btn');
+        const uiLayer = document.getElementById('ui_layer');
+        const statusText = document.getElementById('status_text');
+
+        // Configurações do Jogo
+        const emojis = ['🃏', '☕', '🐇', '🐈', '🍄', '🔑', '🎩', '🐛', '♥️', '♠️'];
+        let particles = [];
+        let isMouthOpen = false;
+        let mouthPosition = { x: 0.5, y: 0.5 };
+        let faceMesh = null;
+        let camera = null;
+        let animationFrameId = null;
+
+        // Contexto de Áudio (para o som mágico)
+        let audioCtx;
+        let lastSoundTime = 0;
+
+        // --- SISTEMA DE ÁUDIO MÁGICO ---
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function playMagicSound() {
+            const now = Date.now();
+            // Tocar som no máximo a cada 300ms para não sobrecarregar
+            if (now - lastSoundTime < 300) return;
+            lastSoundTime = now;
+
+            if (!audioCtx) return;
+
+            const t = audioCtx.currentTime;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            // Um som tipo "plim" ou brilho ascendente
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(600 + Math.random() * 400, t);
+            osc.frequency.exponentialRampToValueAtTime(1500 + Math.random() * 500, t + 0.1);
+
+            gain.gain.setValueAtTime(0, t);
+            gain.gain.linearRampToValueAtTime(0.2, t + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+
+            osc.start(t);
+            osc.stop(t + 0.3);
+        }
+
+        // --- SISTEMA DE PARTÍCULAS ---
+        class Particle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                // Velocidade aleatória simulando uma fonte a jorrar
+                this.vx = (Math.random() - 0.5) * 8;
+                this.vy = (Math.random() * -10) - 5; // Para cima
+                this.emoji = emojis[Math.floor(Math.random() * emojis.length)];
+                this.life = 1.0;
+                this.decay = Math.random() * 0.015 + 0.01; // Quão rápido desaparece
+                this.size = Math.random() * 40 + 30; // Tamanho entre 30 e 70
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.2;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.4; // Gravidade puxando para baixo
+                this.life -= this.decay;
+                this.rotation += this.rotationSpeed;
+            }
+
+            draw(ctx) {
+                if (this.life <= 0) return;
+               
+                ctx.save();
+                ctx.globalAlpha = this.life;
+                ctx.font = `${this.size}px Arial`;
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                // Centralizar o emoji
+                ctx.fillText(this.emoji, -this.size / 2, this.size / 2);
+                ctx.restore();
+            }
+        }
+
+        // --- LÓGICA DO FACEMESH ---
+        function onResults(results) {
+            // Desenhar o vídeo da câmara no canvas
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.restore();
+
+            isMouthOpen = false;
+
+            if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                const landmarks = results.multiFaceLandmarks[0];
+
+                // Índices dos lábios baseados no FaceMesh
+                const upperLip = landmarks[13];
+                const lowerLip = landmarks[14];
+                const leftMouthCorner = landmarks[61];
+                const rightMouthCorner = landmarks[291];
+
+                // Calcular a distância entre os lábios (altura da boca)
+                const mouthHeight = Math.abs(upperLip.y - lowerLip.y);
+                // Calcular a largura da boca para normalizar a abertura
+                const mouthWidth = Math.abs(leftMouthCorner.x - rightMouthCorner.x);
+               
+                // Rácio de abertura
+                const openRatio = mouthHeight / mouthWidth;
+
+                // Definir a posição central da boca para ejetar partículas
+                // Como o canvas está espelhado em CSS, os emojis devem sair da posição exata.
+                // Mas os dados X do mediapipe vêm da imagem original. Não precisamos inverter aqui
+                // porque desenhamos os emojis no canvas original que depois é invertido por inteiro via CSS.
+                mouthPosition.x = (upperLip.x + lowerLip.x) / 2 * canvasElement.width;
+                mouthPosition.y = (upperLip.y + lowerLip.y) / 2 * canvasElement.height;
+
+                // Se o rácio for maior que um limiar, a boca está aberta
+                if (openRatio > 0.15) {
+                    isMouthOpen = true;
+                    playMagicSound();
+                   
+                    // Gerar partículas
+                    for(let i=0; i<3; i++) {
+                        particles.push(new Particle(mouthPosition.x, mouthPosition.y));
+                    }
+                }
+            }
+
+            // Atualizar e desenhar partículas
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.update();
+                p.draw(canvasCtx);
+                if (p.life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        // --- INICIALIZAÇÃO ---
+        async function startGame() {
+            startBtn.disabled = true;
+            startBtn.innerText = "A carregar magia...";
+            statusText.innerText = "A descarregar os modelos de Inteligência Artificial (pode demorar uns segundos)...";
+            initAudio();
+
+            // Ajustar tamanho do canvas
+            canvasElement.width = window.innerWidth;
+            canvasElement.height = window.innerHeight;
+            window.addEventListener('resize', () => {
+                canvasElement.width = window.innerWidth;
+                canvasElement.height = window.innerHeight;
+            });
+
+            try {
+                // Configurar FaceMesh
+                faceMesh = new FaceMesh({locateFile: (file) => {
+                    return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+                }});
+
+                faceMesh.setOptions({
+                    maxNumFaces: 1,
+                    refineLandmarks: true,
+                    minDetectionConfidence: 0.5,
+                    minTrackingConfidence: 0.5
+                });
+
+                faceMesh.onResults(onResults);
+
+                // Iniciar a câmara
+                statusText.innerText = "A solicitar permissão da câmara...";
+                camera = new Camera(videoElement, {
+                    onFrame: async () => {
+                        await faceMesh.send({image: videoElement});
+                    },
+                    width: 1280,
+                    height: 720,
+                    facingMode: 'user'
+                });
+
+                await camera.start();
+               
+                // Sucesso
+                uiLayer.style.opacity = '0';
+                setTimeout(() => { uiLayer.style.display = 'none'; }, 500);
+                statusText.innerText = "";
+
+            } catch (error) {
+                console.error(error);
+                statusText.innerText = "Erro ao aceder à câmara ou ao carregar a IA. Verifica as permissões do teu navegador.";
+                startBtn.disabled = false;
+                startBtn.innerText = "Tentar Novamente";
+            }
+        }
+
+        // Event Listeners
+        startBtn.addEventListener('click', startGame);
+
+    </script>
+</body>
+</html>

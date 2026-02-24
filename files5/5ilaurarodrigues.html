@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="pt-pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice: Queda no País das Maravilhas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&display=swap');
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #0f050f;
+            font-family: 'Cinzel', serif;
+        }
+        canvas {
+            display: block;
+            touch-action: none;
+            filter: drop-shadow(0 0 10px rgba(255, 0, 255, 0.2));
+        }
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+            color: white;
+            z-index: 10;
+        }
+        .menu-overlay {
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle, rgba(40,10,60,0.95) 0%, rgba(10,5,20,1) 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: auto;
+            z-index: 50;
+            text-align: center;
+        }
+        .btn {
+            background: linear-gradient(45deg, #e11d48, #be123c);
+            padding: 16px 48px;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 1.25rem;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            cursor: pointer;
+            pointer-events: auto;
+            border: 2px solid rgba(255,255,255,0.2);
+            box-shadow: 0 4px 15px rgba(225, 29, 72, 0.4);
+        }
+        .btn:hover {
+            transform: translateY(-5px) scale(1.05);
+            box-shadow: 0 8px 25px rgba(225, 29, 72, 0.6);
+            border-color: white;
+        }
+        .status-box {
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 1rem;
+            border-radius: 12px;
+        }
+        .floating {
+            animation: float 3s ease-in-out infinite;
+        }
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-20px); }
+        }
+        /* Efeito de confusão do Chapeleiro */
+        .confused {
+            filter: hue-rotate(90deg) invert(0.1);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <div class="flex justify-between items-start">
+            <div class="status-box">
+                <p class="text-xs uppercase tracking-widest opacity-70">Pontuação</p>
+                <p class="text-3xl font-bold text-pink-500" id="score">0</p>
+            </div>
+            <div class="status-box text-right">
+                <div id="status-text" class="text-xl font-bold text-cyan-400 italic">Curiosa...</div>
+                <div class="text-xs opacity-60 mt-1">Efeito: <span id="magic-effect">Nenhum</span></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="start-menu" class="menu-overlay px-6">
+        <h1 class="text-6xl md:text-8xl text-pink-600 font-bold mb-4 drop-shadow-lg floating">ALICE</h1>
+        <p class="text-2xl text-cyan-300 mb-2 uppercase tracking-tighter">Maravilhas Expandidas</p>
+        <div class="w-32 h-1 bg-gradient-to-r from-transparent via-pink-500 to-transparent mb-8"></div>
+        <p class="text-lg text-white/70 mb-10 max-w-lg">
+            "Estamos todos malucos aqui."<br>
+            Cuidado com o Chapeleiro e não percas o Coelho de vista!
+        </p>
+        <div class="btn" onclick="startGame()">Entrar no Buraco</div>
+    </div>
+
+    <div id="game-over" class="menu-overlay hidden px-6">
+        <h2 class="text-5xl text-red-500 font-bold mb-4">Acordaste!</h2>
+        <p id="final-score" class="text-2xl mb-10 text-white/80">O tempo esgotou-se para a Alice.</p>
+        <div class="btn" onclick="startGame()">Reiniciar Sonho</div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const statusEl = document.getElementById('status-text');
+        const effectEl = document.getElementById('magic-effect');
+        const startMenu = document.getElementById('start-menu');
+        const gameOverMenu = document.getElementById('game-over');
+        const finalScoreEl = document.getElementById('final-score');
+
+        let gameRunning = false;
+        let score = 0;
+        let isConfused = false;
+        let alice = {
+            x: 0,
+            y: 0,
+            width: 60,
+            height: 90,
+            targetX: 0,
+            lerpSpeed: 0.12,
+        };
+
+        let entities = [];
+        let particles = [];
+       
+        const types = {
+            CARD: 'card',
+            TEA: 'tea',
+            POISON: 'poison',
+            CAKE: 'cake',
+            CHESHIRE: 'cat',     // Bónus de pontos
+            RABBIT: 'rabbit',    // Bónus de velocidade/pontos
+            HATTER: 'hatter',    // Obstáculo de confusão (inverte controlos)
+            CATERPILLAR: 'cater' // Névoa (pontos extras)
+        };
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            alice.x = canvas.width / 2 - alice.width / 2;
+            alice.targetX = alice.x;
+            alice.y = canvas.height * 0.75;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Controlos (com lógica de confusão)
+        window.addEventListener('keydown', (e) => {
+            if (!gameRunning) return;
+            const step = canvas.width / 6;
+            let dir = 0;
+            if (e.key === 'ArrowLeft') dir = -1;
+            if (e.key === 'ArrowRight') dir = 1;
+           
+            if (isConfused) dir *= -1; // Inverte controlos
+           
+            alice.targetX += dir * step;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!gameRunning) return;
+            let target = e.clientX - alice.width / 2;
+            if (isConfused) {
+                // Inverte a posição relativa ao centro
+                let offset = e.clientX - canvas.width / 2;
+                target = (canvas.width / 2) - offset - alice.width / 2;
+            }
+            alice.targetX = target;
+        });
+
+        function createEntity() {
+            if (!gameRunning) return;
+           
+            const rand = Math.random();
+            let type;
+           
+            if (rand < 0.40) type = types.CARD;
+            else if (rand < 0.55) type = types.TEA;
+            else if (rand < 0.65) type = types.POISON;
+            else if (rand < 0.75) type = types.CAKE;
+            else if (rand < 0.82) type = types.RABBIT;
+            else if (rand < 0.88) type = types.HATTER;
+            else if (rand < 0.94) type = types.CATERPILLAR;
+            else type = types.CHESHIRE;
+
+            entities.push({
+                x: Math.random() * (canvas.width - 60),
+                y: -150,
+                width: 65,
+                height: 65,
+                speed: (type === types.RABBIT) ? 8 : 4 + (score / 300),
+                type: type,
+                rotation: 0,
+                rotSpeed: (Math.random() - 0.5) * 0.1,
+                phase: Math.random() * Math.PI * 2
+            });
+        }
+
+        function createParticles(x, y, color, count = 12) {
+            for(let i=0; i<count; i++) {
+                particles.push({
+                    x, y,
+                    vx: (Math.random() - 0.5) * 15,
+                    vy: (Math.random() - 0.5) * 15,
+                    life: 1.0,
+                    size: Math.random() * 5 + 2,
+                    color
+                });
+            }
+        }
+
+        function startGame() {
+            score = 0;
+            entities = [];
+            particles = [];
+            isConfused = false;
+            document.body.classList.remove('confused');
+            alice.width = 60;
+            alice.height = 90;
+            scoreEl.innerText = score;
+            statusEl.innerText = "Caindo...";
+            effectEl.innerText = "Nenhum";
+            gameRunning = true;
+            startMenu.classList.add('hidden');
+            gameOverMenu.classList.add('hidden');
+            requestAnimationFrame(update);
+        }
+
+        function drawAlice() {
+            ctx.save();
+            ctx.translate(alice.x + alice.width/2, alice.y + alice.height/2);
+            const tilt = (alice.targetX - alice.x) * 0.01;
+            ctx.rotate(tilt);
+           
+            // Desenho simplificado da Alice
+            ctx.fillStyle = '#4da6ff'; // Vestido
+            ctx.beginPath();
+            ctx.moveTo(-alice.width/2, alice.height/2);
+            ctx.lineTo(alice.width/2, alice.height/2);
+            ctx.lineTo(0, -alice.height/2);
+            ctx.fill();
+           
+            ctx.fillStyle = '#ffffff'; // Avental
+            ctx.fillRect(-alice.width/4, 0, alice.width/2, alice.height/2);
+
+            ctx.fillStyle = '#ffe0bd'; // Pele
+            ctx.beginPath();
+            ctx.arc(0, -alice.height/3, alice.width/3, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#ffd700'; // Cabelo
+            ctx.beginPath();
+            ctx.arc(0, -alice.height/3 - 5, alice.width/3, Math.PI, 0);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function update() {
+            if (!gameRunning) return;
+
+            ctx.fillStyle = '#0f050f';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Túnel
+            ctx.strokeStyle = isConfused ? 'rgba(0, 255, 100, 0.1)' : 'rgba(255, 100, 255, 0.1)';
+            ctx.beginPath();
+            ctx.arc(canvas.width/2, canvas.height/2, (Date.now()/10 % 500), 0, Math.PI*2);
+            ctx.stroke();
+
+            // Movimento Alice
+            alice.x += (alice.targetX - alice.x) * alice.lerpSpeed;
+            alice.x = Math.max(0, Math.min(canvas.width - alice.width, alice.x));
+
+            drawAlice();
+
+            if (Math.random() < 0.05) createEntity();
+
+            for (let i = entities.length - 1; i >= 0; i--) {
+                let e = entities[i];
+                e.y += e.speed;
+                e.rotation += e.rotSpeed;
+               
+                if(e.type !== types.CARD) e.x += Math.sin(Date.now()/400 + e.phase) * 3;
+
+                ctx.save();
+                ctx.translate(e.x + e.width/2, e.y + e.height/2);
+                ctx.rotate(e.rotation);
+                ctx.font = '50px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+
+                switch(e.type) {
+                    case types.CARD: ctx.fillText('🎴', 0, 0); break;
+                    case types.TEA: ctx.fillText('☕', 0, 0); break;
+                    case types.POISON: ctx.fillText('🧪', 0, 0); break;
+                    case types.CAKE: ctx.fillText('🧁', 0, 0); break;
+                    case types.CHESHIRE:
+                        ctx.globalAlpha = 0.4 + Math.abs(Math.sin(Date.now()/300));
+                        ctx.fillText('😸', 0, 0);
+                        break;
+                    case types.RABBIT: ctx.fillText('🐇', 0, 0); break;
+                    case types.HATTER: ctx.fillText('🎩', 0, 0); break;
+                    case types.CATERPILLAR: ctx.fillText('🐛', 0, 0); break;
+                }
+                ctx.restore();
+
+                // Colisão
+                if (e.x < alice.x + alice.width && e.x + e.width > alice.x &&
+                    e.y < alice.y + alice.height && e.y + e.height > alice.y) {
+                   
+                    if (e.type === types.CARD || e.type === types.TEA) {
+                        endGame(); return;
+                    }
+                   
+                    if (e.type === types.HATTER) {
+                        isConfused = true;
+                        document.body.classList.add('confused');
+                        effectEl.innerText = "Confusão!";
+                        setTimeout(() => {
+                            isConfused = false;
+                            document.body.classList.remove('confused');
+                            effectEl.innerText = "Nenhum";
+                        }, 5000);
+                        createParticles(e.x, e.y, '#ff0000');
+                    } else if (e.type === types.RABBIT) {
+                        score += 150;
+                        statusEl.innerText = "Atrasado!";
+                        createParticles(e.x, e.y, '#ffffff');
+                    } else if (e.type === types.CATERPILLAR) {
+                        score += 100;
+                        statusEl.innerText = "Quem és tu?";
+                        createParticles(e.x, e.y, '#00ffff');
+                    } else if (e.type === types.POISON) {
+                        alice.width = 30; alice.height = 45;
+                        createParticles(e.x, e.y, '#9b59b6');
+                    } else if (e.type === types.CAKE) {
+                        alice.width = 110; alice.height = 160;
+                        createParticles(e.x, e.y, '#e67e22');
+                    } else if (e.type === types.CHESHIRE) {
+                        score += 300;
+                        createParticles(e.x, e.y, '#ff00ff');
+                    }
+                   
+                    entities.splice(i, 1);
+                    scoreEl.innerText = score;
+                }
+
+                if (e.y > canvas.height + 100) entities.splice(i, 1);
+            }
+
+            // Partículas
+            for(let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.x += p.vx; p.y += p.vy; p.life -= 0.02;
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life;
+                ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
+                if(p.life <= 0) particles.splice(i, 1);
+            }
+            ctx.globalAlpha = 1.0;
+            requestAnimationFrame(update);
+        }
+
+        function endGame() {
+            gameRunning = false;
+            finalScoreEl.innerText = `Pontuaste ${score}. O Tempo não perdoa!`;
+            gameOverMenu.classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>

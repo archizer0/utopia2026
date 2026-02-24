@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Alice no País das Maravilhas - Realidade Mágica</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Georgia', serif;
+        }
+
+        #camera-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        #video-feed {
+            position: absolute;
+            min-width: 100%;
+            min-height: 100%;
+            object-fit: cover;
+            transition: all 1.5s ease-in-out;
+            transform-origin: center center;
+        }
+
+        #overlay-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Permite clicar através do canvas */
+            z-index: 10;
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 15px;
+            z-index: 20;
+            width: 90%;
+            max-width: 400px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .magic-btn {
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 30px;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px black;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        .magic-btn:hover {
+            background: rgba(255, 255, 255, 0.4);
+            transform: scale(1.05);
+        }
+
+        .magic-btn:active {
+            transform: scale(0.95);
+        }
+
+        #message-box {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 20px 40px;
+            border-radius: 15px;
+            text-align: center;
+            z-index: 30;
+            border: 2px solid #8b5cf6;
+            box-shadow: 0 0 20px #8b5cf6;
+        }
+
+        /* Efeitos Especiais da História */
+        .effect-shrink {
+            transform: scale(0.3) !important;
+            border-radius: 50%;
+            box-shadow: 0 0 50px rgba(139, 92, 246, 0.8);
+        }
+
+        .effect-grow {
+            transform: scale(2) !important;
+            filter: blur(2px);
+        }
+
+        .effect-mad-hatter {
+            animation: hueRotate 5s infinite linear, contrastPulse 2s infinite alternate;
+        }
+
+        @keyframes hueRotate {
+            from { filter: hue-rotate(0deg) saturate(200%); }
+            to { filter: hue-rotate(360deg) saturate(200%); }
+        }
+
+        @keyframes contrastPulse {
+            from { filter: contrast(100%); }
+            to { filter: contrast(150%); }
+        }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <div id="camera-container">
+        <!-- Feed de vídeo da câmara -->
+        <video id="video-feed" autoplay playsinline muted></video>
+       
+        <!-- Canvas para desenhar os elementos a cair -->
+        <canvas id="overlay-canvas"></canvas>
+
+        <!-- Mensagem Inicial / Erros -->
+        <div id="message-box">
+            <h1 class="text-2xl font-bold mb-4 text-purple-300">A Toca do Coelho</h1>
+            <p class="mb-4">Para entrares no País das Maravilhas, precisamos de acesso à tua câmara.</p>
+            <button id="start-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-6 rounded-full transition-colors">
+                Entrar
+            </button>
+        </div>
+
+        <!-- Controlos Interativos -->
+        <div id="ui-controls" class="controls hidden">
+            <button class="magic-btn" onclick="applyEffect('shrink')" title="Ficas pequenino!">🧪 Bebe-me</button>
+            <button class="magic-btn" onclick="applyEffect('grow')" title="Ficas gigante!">🍰 Come-me</button>
+            <button class="magic-btn" onclick="applyEffect('mad-hatter')" title="Cores malucas!">☕ Chá Louco</button>
+            <button class="magic-btn" onclick="applyEffect('reset')" title="Voltar ao normal">🐇 Normal</button>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('video-feed');
+        const canvas = document.getElementById('overlay-canvas');
+        const ctx = canvas.getContext('2d');
+        const messageBox = document.getElementById('message-box');
+        const uiControls = document.getElementById('ui-controls');
+        const startBtn = document.getElementById('start-btn');
+
+        // Ícones / Emojis temáticos do País das Maravilhas
+        const wonderlandEmojis = ['🐇', '🎩', '☕', '🍄', '⏱️', '🃏', '♠️', '♥️', '♣️', '♦️'];
+        let fallingObjects = [];
+        let animationFrameId;
+
+        // Ajustar tamanho do canvas
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Classe para os objetos a cair
+        class WonderlandObject {
+            constructor() {
+                this.reset();
+                this.y = Math.random() * canvas.height; // Começar espalhados no início
+            }
+
+            reset() {
+                this.emoji = wonderlandEmojis[Math.floor(Math.random() * wonderlandEmojis.length)];
+                this.x = Math.random() * canvas.width;
+                this.y = -50;
+                this.size = Math.random() * 30 + 20; // Tamanho entre 20 e 50
+                this.speedY = Math.random() * 2 + 1; // Velocidade de queda
+                this.speedX = (Math.random() - 0.5) * 1; // Balanço horizontal
+                this.rotation = Math.random() * 360;
+                this.rotationSpeed = (Math.random() - 0.5) * 2;
+                this.opacity = Math.random() * 0.5 + 0.5;
+            }
+
+            update() {
+                this.y += this.speedY;
+                this.x += Math.sin(this.y * 0.01) * this.speedX + this.speedX;
+                this.rotation += this.rotationSpeed;
+
+                // Repor no topo se sair do ecrã
+                if (this.y > canvas.height + 50) {
+                    this.reset();
+                }
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation * Math.PI / 180);
+                ctx.globalAlpha = this.opacity;
+                ctx.font = `${this.size}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                // Efeito de sombra para destacar em fundos claros
+                ctx.shadowColor = "rgba(0,0,0,0.5)";
+                ctx.shadowBlur = 5;
+                ctx.fillText(this.emoji, 0, 0);
+                ctx.restore();
+            }
+        }
+
+        // Criar objetos
+        for (let i = 0; i < 30; i++) {
+            fallingObjects.push(new WonderlandObject());
+        }
+
+        // Loop de animação
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+           
+            // Adicionar um leve sorriso do gato de Cheshire ocasionalmente no fundo
+            const time = Date.now() * 0.001;
+            const cheshireAlpha = (Math.sin(time * 0.5) + 1) / 2 * 0.15; // Opacidade flutuante muito suave
+            ctx.fillStyle = `rgba(200, 100, 255, ${cheshireAlpha})`;
+            ctx.font = "bold 150px Arial";
+            ctx.textAlign = "center";
+            ctx.fillText("😺", canvas.width/2, canvas.height/2);
+
+            // Atualizar e desenhar objetos
+            fallingObjects.forEach(obj => {
+                obj.update();
+                obj.draw(ctx);
+            });
+
+            animationFrameId = requestAnimationFrame(animate);
+        }
+
+        // Iniciar Câmara
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'user', // Tenta usar a câmara frontal por defeito
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
+                    audio: false
+                });
+               
+                video.srcObject = stream;
+               
+                // Esconder mensagem e mostrar controlos
+                messageBox.classList.add('hidden');
+                uiControls.classList.remove('hidden');
+               
+                // Iniciar animação do canvas
+                animate();
+
+            } catch (err) {
+                console.error("Erro ao aceder à câmara: ", err);
+                messageBox.innerHTML = `
+                    <h1 class="text-xl font-bold mb-4 text-red-400">Oh não!</h1>
+                    <p>A Rainha de Copas cortou o acesso à câmara.<br>Por favor, permite o acesso para continuares.</p>
+                    <p class="text-sm mt-4 text-gray-300">Erro: ${err.message}</p>
+                `;
+            }
+        }
+
+        startBtn.addEventListener('click', startCamera);
+
+        // Sistema de Efeitos Mágicos
+        window.applyEffect = function(effectType) {
+            // Remover todas as classes de efeito
+            video.className = '';
+           
+            // Adicionar transição suave sempre que muda
+            video.style.transition = 'all 1.5s ease-in-out';
+
+            switch(effectType) {
+                case 'shrink':
+                    // Poção "Bebe-me"
+                    video.classList.add('effect-shrink');
+                    break;
+                case 'grow':
+                    // Bolo "Come-me"
+                    video.classList.add('effect-grow');
+                    break;
+                case 'mad-hatter':
+                    // Chá do Chapeleiro Louco (Efeito de cores psicadélicas)
+                    video.classList.add('effect-mad-hatter');
+                    break;
+                case 'reset':
+                    // Voltar ao normal
+                    // Apenas limpa as classes
+                    break;
+            }
+        };
+
+        // Tratamento de erros de carregamento do vídeo
+        video.addEventListener('error', () => {
+             messageBox.innerHTML = `<p class="text-red-400 font-bold">Erro ao reproduzir o vídeo mágico.</p>`;
+             messageBox.classList.remove('hidden');
+        });
+    </script>
+</body>
+</html>

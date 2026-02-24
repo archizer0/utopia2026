@@ -1,0 +1,234 @@
+
+<html lang="pt-pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Alice 3D - Ultra Fast</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Scripts carregados de forma assíncrona para não travar o render -->
+    <script src="https://appstatic.jeeliz.com/faceFilter/jeelizFaceFilter.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700&display=swap');
+
+        body { 
+            margin: 0; padding: 0; overflow: hidden; 
+            background: #000; color: white;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        
+        #app-container { position: relative; width: 100vw; height: 100vh; visibility: hidden; }
+        
+        canvas#jeeFaceFilterCanvas {
+            position: absolute; top: 0; left: 0;
+            width: 100% !important; height: 100% !important;
+            object-fit: cover; z-index: 1;
+        }
+
+        #three-canvas {
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 5; pointer-events: none;
+        }
+
+        .alice-title { font-family: 'Cinzel', serif; }
+        
+        .glass-panel {
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 2rem 2rem 0 0;
+        }
+
+        #loader {
+            position: fixed; inset: 0;
+            background: #000; z-index: 100;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            transition: opacity 0.4s ease-out;
+        }
+
+        .spinner {
+            width: 40px; height: 40px;
+            border: 3px solid rgba(255,255,255,0.1);
+            border-top-color: #d4af37;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .vignette {
+            position: absolute; inset: 0;
+            background: radial-gradient(circle, transparent 50%, rgba(0,0,0,0.9) 100%);
+            z-index: 6; pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Loader Otimizado -->
+    <div id="loader">
+        <div class="spinner mb-4"></div>
+        <h1 class="alice-title text-xl tracking-widest text-yellow-500">ABRIR ESPELHO</h1>
+        <p id="load-status" class="text-[10px] mt-2 text-white/40 uppercase">A carregar visão 3D...</p>
+    </div>
+
+    <div id="app-container">
+        <canvas id="jeeFaceFilterCanvas"></canvas>
+        <canvas id="three-canvas"></canvas>
+        <div class="vignette"></div>
+
+        <!-- UI -->
+        <div class="absolute top-12 left-0 right-0 flex flex-col items-center z-20 pointer-events-none">
+            <h2 id="mode-title" class="alice-title text-lg tracking-widest text-yellow-100 opacity-80">Alice no País 3D</h2>
+        </div>
+
+        <div class="absolute bottom-0 left-0 right-0 z-20">
+            <div class="glass-panel p-8">
+                <div class="flex justify-around items-center max-w-md mx-auto">
+                    <button onclick="changeMode('cheshire')" class="flex flex-col items-center gap-1 opacity-60 hover:opacity-100 transition-opacity">
+                        <span class="text-3xl">🐱</span>
+                        <span class="text-[8px] font-bold">GATO</span>
+                    </button>
+                    <button onclick="changeMode('hatter')" class="flex flex-col items-center gap-1 opacity-60 hover:opacity-100 transition-opacity">
+                        <span class="text-3xl">🎩</span>
+                        <span class="text-[8px] font-bold">HATTER</span>
+                    </button>
+                    <button onclick="changeMode('queen')" class="flex flex-col items-center gap-1 opacity-60 hover:opacity-100 transition-opacity">
+                        <span class="text-3xl">👑</span>
+                        <span class="text-[8px] font-bold">RAINHA</span>
+                    </button>
+                    <button onclick="changeMode('none')" class="flex flex-col items-center gap-1 opacity-60 hover:opacity-100 transition-opacity">
+                        <span class="text-3xl">🔄</span>
+                        <span class="text-[8px] font-bold">RESET</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentMode = 'none';
+        let threeScene, threeCamera, threeRenderer, hatObject, crownObject, particles;
+
+        // Inicialização imediata paralela
+        function checkReady() {
+            if (typeof JEELIZFACEFILTER !== 'undefined' && typeof THREE !== 'undefined') {
+                startApp();
+            } else {
+                setTimeout(checkReady, 50);
+            }
+        }
+        checkReady();
+
+        function startApp() {
+            initThree();
+            initFaceFilter();
+        }
+
+        function initThree() {
+            const canvas = document.getElementById('three-canvas');
+            threeRenderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: false }); // Desativado antialias para performance
+            threeRenderer.setSize(window.innerWidth, window.innerHeight);
+            threeRenderer.setPixelRatio(1); // Forçado pixel ratio 1 para rapidez em telemóveis
+
+            threeScene = new THREE.Scene();
+            threeCamera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+
+            // Luz simplificada
+            const ambient = new THREE.AmbientLight(0xffffff, 2);
+            threeScene.add(ambient);
+
+            // Objetos 3D Low-Poly para carregar rápido
+            hatObject = new THREE.Group();
+            const hatMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.7, 12), new THREE.MeshBasicMaterial({ color: 0x111111 }));
+            const rimMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 0.05, 12), new THREE.MeshBasicMaterial({ color: 0x111111 }));
+            rimMesh.position.y = -0.35;
+            hatObject.add(hatMesh, rimMesh);
+            hatObject.visible = false;
+            threeScene.add(hatObject);
+
+            crownObject = new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.08, 8, 16), new THREE.MeshBasicMaterial({ color: 0xffd700 }));
+            crownObject.visible = false;
+            threeScene.add(crownObject);
+
+            // Partículas leves
+            const pGeom = new THREE.BufferGeometry();
+            const pPos = new Float32Array(150 * 3);
+            for(let i=0; i<450; i++) pPos[i] = (Math.random()-0.5) * 5;
+            pGeom.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+            particles = new THREE.Points(pGeom, new THREE.PointsMaterial({ color: 0xffffff, size: 0.03 }));
+            threeScene.add(particles);
+            
+            animate();
+        }
+
+        function initFaceFilter() {
+            JEELIZFACEFILTER.init({
+                canvasId: 'jeeFaceFilterCanvas',
+                NNCPath: 'https://appstatic.jeeliz.com/faceFilter/NN_DEFAULT.json',
+                callbackReady: (err) => {
+                    if (err) return;
+                    document.getElementById('loader').style.opacity = '0';
+                    document.getElementById('app-container').style.visibility = 'visible';
+                    setTimeout(() => document.getElementById('loader').remove(), 400);
+                },
+                callbackTrack: (state) => {
+                    if (state.detected > 0.6) {
+                        updateThree(state);
+                    } else {
+                        hatObject.visible = crownObject.visible = false;
+                    }
+                }
+            });
+        }
+
+        function updateThree(state) {
+            const s = state.s;
+            const x = -state.x * 2.5;
+            const y = state.y * 2.5;
+
+            if (currentMode === 'hatter') {
+                hatObject.visible = true;
+                hatObject.position.set(x, y + s*0.9, -1.5);
+                hatObject.scale.set(s, s, s);
+                hatObject.rotation.set(-state.rx, -state.ry, -state.rz);
+            } else if (currentMode === 'queen') {
+                crownObject.visible = true;
+                crownObject.position.set(x, y + s*0.7, -1.5);
+                crownObject.scale.set(s, s, s);
+                crownObject.rotation.set(-state.rx + 1.5, -state.ry, -state.rz);
+            }
+            particles.position.set(x, y, -1.5);
+            particles.rotation.y += 0.02;
+        }
+
+        function changeMode(mode) {
+            currentMode = mode;
+            hatObject.visible = crownObject.visible = false;
+            const canvas = document.getElementById('jeeFaceFilterCanvas');
+            
+            if(mode === 'cheshire') canvas.style.filter = 'hue-rotate(280deg) saturate(2)';
+            else if(mode === 'queen') canvas.style.filter = 'contrast(1.5) sepia(0.3)';
+            else if(mode === 'hatter') canvas.style.filter = 'hue-rotate(90deg) saturate(1.5)';
+            else canvas.style.filter = 'none';
+
+            document.getElementById('mode-title').innerText = mode.toUpperCase();
+        }
+
+        function animate() {
+            threeRenderer.render(threeScene, threeCamera);
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('resize', () => {
+            threeCamera.aspect = window.innerWidth / window.innerHeight;
+            threeCamera.updateProjectionMatrix();
+            threeRenderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

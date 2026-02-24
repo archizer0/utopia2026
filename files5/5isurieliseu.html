@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ecrã das Maravilhas</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #0b132b;
+            color: #eaf6ff;
+            font-family: 'Courier New', Courier, monospace;
+            margin: 0;
+            padding: 20px;
+        }
+       
+        h1 {
+            text-shadow: 2px 2px 5px #00f5d4;
+            text-align: center;
+        }
+
+        .camera-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            border: 4px dashed #00f5d4;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 0 20px rgba(0, 245, 212, 0.3);
+            margin-bottom: 20px;
+            background-color: #000;
+            min-height: 450px; /* Espaço reservado antes de partilhar */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: none; /* Escondido até partilhar o ecrã */
+            transition: filter 1s ease-in-out;
+        }
+
+        .mensagem-espera {
+            color: #00f5d4;
+            font-size: 1.2em;
+            text-align: center;
+        }
+
+        /* Classes dos Filtros Mágicos */
+        .filtro-normal { filter: none; }
+        .filtro-toca { filter: sepia(80%) contrast(150%) brightness(80%); }
+        .filtro-pocao { filter: hue-rotate(180deg) saturate(300%) brightness(120%); }
+        .filtro-gato { filter: invert(80%) hue-rotate(270deg) contrast(120%); }
+        .filtro-chapeleiro { filter: contrast(200%) hue-rotate(90deg) saturate(200%); }
+        .filtro-sonho { filter: blur(3px) brightness(150%) contrast(80%) drop-shadow(0 0 10px white); }
+
+        /* Estilo dos Botões */
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+            max-width: 800px;
+            margin-top: 10px;
+        }
+
+        button {
+            background-color: #1c2541;
+            color: #00f5d4;
+            border: 2px solid #00f5d4;
+            padding: 12px 20px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+
+        button:hover, button.ativo {
+            background-color: #00f5d4;
+            color: #0b132b;
+            box-shadow: 0 0 15px #00f5d4;
+        }
+
+        .btn-principal {
+            background-color: #f15bb5;
+            color: white;
+            border-color: #f15bb5;
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+
+        .btn-principal:hover {
+            background-color: white;
+            color: #f15bb5;
+            box-shadow: 0 0 20px #f15bb5;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>O Ecrã das Maravilhas</h1>
+   
+    <button id="btnPartilhar" class="btn-principal">🐇 Atravessar o Espelho (Partilhar Ecrã)</button>
+
+    <div class="camera-container">
+        <div id="mensagem" class="mensagem-espera">À espera de entrar no País das Maravilhas...</div>
+        <video id="videoElement" class="filtro-normal" autoplay playsinline></video>
+    </div>
+
+    <div class="controls" id="menuFiltros" style="display: none;">
+        <button onclick="mudarFiltro('filtro-normal', this)" class="ativo">Visão Clara</button>
+        <button onclick="mudarFiltro('filtro-toca', this)">Queda na Toca</button>
+        <button onclick="mudarFiltro('filtro-pocao', this)">Poção Psicadélica</button>
+        <button onclick="mudarFiltro('filtro-gato', this)">Visão do Gato</button>
+        <button onclick="mudarFiltro('filtro-chapeleiro', this)">Hora do Chá</button>
+        <button onclick="mudarFiltro('filtro-sonho', this)">Sonho da Alice</button>
+    </div>
+
+    <script>
+        const video = document.querySelector("#videoElement");
+        const mensagem = document.querySelector("#mensagem");
+        const btnPartilhar = document.querySelector("#btnPartilhar");
+        const menuFiltros = document.querySelector("#menuFiltros");
+        const botoes = menuFiltros.querySelectorAll("button");
+
+        // Função para pedir e mostrar o ecrã
+        btnPartilhar.addEventListener('click', async () => {
+            try {
+                // A magia acontece aqui: pedir o ecrã em vez da webcam!
+                const stream = await navigator.mediaDevices.getDisplayMedia({
+                    video: { cursor: "always" },
+                    audio: false
+                });
+               
+                video.srcObject = stream;
+               
+                // Mostrar o vídeo e os filtros, esconder a mensagem
+                mensagem.style.display = "none";
+                video.style.display = "block";
+                menuFiltros.style.display = "flex";
+                btnPartilhar.innerText = "Ecrã Capturado!";
+                btnPartilhar.disabled = true;
+
+                // Se o utilizador parar de partilhar o ecrã pelo botão do navegador
+                stream.getVideoTracks()[0].onended = () => {
+                    mensagem.style.display = "block";
+                    video.style.display = "none";
+                    menuFiltros.style.display = "none";
+                    btnPartilhar.innerText = "🐇 Atravessar o Espelho (Partilhar Ecrã)";
+                    btnPartilhar.disabled = false;
+                };
+
+            } catch (error) {
+                console.error("Erro ao partilhar o ecrã:", error);
+                alert("O Coelho Branco fugiu! Precisas de dar permissão para partilhar o ecrã.");
+            }
+        });
+
+        // Função para mudar o filtro
+        function mudarFiltro(nomeDoFiltro, botaoClicado) {
+            video.className = "";
+            video.classList.add(nomeDoFiltro);
+
+            botoes.forEach(btn => btn.classList.remove("ativo"));
+            botaoClicado.classList.add("ativo");
+        }
+    </script>
+</body>
+</html>

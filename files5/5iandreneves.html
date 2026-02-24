@@ -1,0 +1,1095 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>O Chá das Maravilhas</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@1,700&family=Cinzel:wght@400;700&display=swap');
+
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #111;
+            font-family: 'Cinzel', serif;
+            user-select: none;
+            touch-action: none;
+        }
+
+        /* Fundo Surreal do País das Maravilhas */
+        #bg-canvas {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 0;
+            background: radial-gradient(circle at center, #2a0845 0%, #6441A5 100%);
+        }
+
+        /* Xadrez distorcido no fundo */
+        .checkerboard {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            height: 40%;
+            background-image:
+                linear-gradient(45deg, #000 25%, transparent 25%),
+                linear-gradient(-45deg, #000 25%, transparent 25%),
+                linear-gradient(45deg, transparent 75%, #000 75%),
+                linear-gradient(-45deg, transparent 75%, #000 75%);
+            background-size: 80px 80px;
+            background-position: 0 0, 0 40px, 40px -40px, -40px 0px;
+            transform: perspective(500px) rotateX(60deg);
+            transform-origin: bottom;
+            opacity: 0.3;
+            z-index: 1;
+        }
+
+        #game-canvas {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 2;
+        }
+
+        /* Interface do Utilizador */
+        #ui-layer {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 3;
+        }
+
+        .hud {
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 1.8rem;
+            color: #fff;
+            text-shadow: 2px 2px 5px rgba(0,0,0,0.8);
+        }
+
+        #score-display { color: #ff3366; font-weight: bold; }
+        #lives-display { color: #ffcc00; }
+
+        /* Ecrãs (Menus) */
+        .screen {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            pointer-events: auto;
+            text-align: center;
+            backdrop-filter: blur(4px);
+        }
+
+        h1 {
+            font-family: 'Playfair Display', serif;
+            font-size: 4rem;
+            color: #ff3366;
+            margin: 0 0 20px 0;
+            text-shadow: 0 0 20px #ff3366;
+            font-style: italic;
+        }
+
+        p {
+            font-size: 1.2rem;
+            color: #eee;
+            max-width: 600px;
+            line-height: 1.6;
+            margin-bottom: 40px;
+            padding: 0 20px;
+        }
+
+        .btn {
+            background: transparent;
+            color: #fff;
+            border: 2px solid #fff;
+            padding: 15px 40px;
+            font-size: 1.5rem;
+            font-family: 'Cinzel', serif;
+            cursor: pointer;
+            transition: all 0.3s;
+            border-radius: 30px;
+            text-transform: uppercase;
+        }
+
+        .btn:hover {
+            background: #ff3366;
+            border-color: #ff3366;
+            box-shadow: 0 0 20px #ff3366;
+            transform: scale(1.05);
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="bg-canvas">
+        <div class="checkerboard"></div>
+    </div>
+   
+    <canvas id="game-canvas"></canvas>
+
+    <div id="ui-layer">
+        <div class="hud" id="hud" style="display: none;">
+            <div>Pontos: <span id="score-display">0</span></div>
+            <div>Vidas: <span id="lives-display">❤️❤️❤️</span></div>
+        </div>
+    </div>
+
+    <!-- Ecrã Inicial -->
+    <div id="start-screen" class="screen">
+        <h1>O Chá das Maravilhas</h1>
+        <p>
+            Estão a cair objetos no País das Maravilhas!<br><br>
+            Toca nas <strong>Rosas</strong> para ganhar pontos.<br>
+            As <strong>Cartas</strong> e as <strong>Chávenas</strong> são distrações e dão <strong>0 pontos</strong>.<br>
+            Não deixes as Rosas tocarem no chão, ou perdes uma vida!
+        </p>
+        <button class="btn" onclick="startGame()">Começar Aventura</button>
+    </div>
+
+    <!-- Ecrã Game Over -->
+    <div id="game-over-screen" class="screen" style="display: none;">
+        <h1 style="color: #ff0000; font-size: 3rem;">Fim do Chá!</h1>
+        <p>
+            Deixaste cair demasiadas rosas.<br>
+            Pontuação Final: <span id="final-score" style="color: #ff3366; font-size: 1.5em; font-weight: bold;">0</span>
+        </p>
+        <button class="btn" onclick="resetGame()">Tentar Novamente</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        let width, height;
+
+        // --- Estado do Jogo ---
+        let game = {
+            active: false,
+            score: 0,
+            lives: 3,
+            items: [],
+            particles: [],
+            floatingTexts: [],
+            spawnRate: 1500, // milissegundos
+            lastSpawn: 0,
+            baseSpeed: 2
+        };
+
+        // --- Áudio ---
+        let audioCtx;
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        function playSound(type) {
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            if (type === 'rose') {
+                // Som de campainha mágica (agudo)
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(880, now);
+                osc.frequency.exponentialRampToValueAtTime(1760, now + 0.2);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                osc.start(now);
+                osc.stop(now + 0.2);
+            } else if (type === 'distraction') {
+                // Som baço de madeira/cartão
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(200, now);
+                osc.frequency.linearRampToValueAtTime(100, now + 0.1);
+                gain.gain.setValueAtTime(0.4, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.1);
+                osc.start(now);
+                osc.stop(now + 0.1);
+            } else if (type === 'damage') {
+                // Som de erro/dano
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.linearRampToValueAtTime(50, now + 0.3);
+                gain.gain.setValueAtTime(0.5, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.3);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            }
+        }
+
+        // --- Redimensionamento ---
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // --- Classes ---
+        class Item {
+            constructor() {
+                // Probabilidades: 40% Rosa, 30% Carta, 30% Chávena
+                const rand = Math.random();
+                if (rand < 0.4) this.type = 'rose';
+                else if (rand < 0.7) this.type = 'card';
+                else this.type = 'teacup';
+
+                this.radius = 40; // Zona de clique
+                this.x = Math.random() * (width - this.radius * 2) + this.radius;
+                this.y = -50;
+               
+                // Variabilidade de velocidade
+                this.speed = game.baseSpeed + Math.random() * 2;
+               
+                // Animação de rotação e oscilação
+                this.angle = Math.random() * Math.PI * 2;
+                this.rotSpeed = (Math.random() - 0.5) * 0.05;
+                this.oscillationOffset = Math.random() * Math.PI * 2;
+            }
+
+            update(dt) {
+                this.y += this.speed * (dt / 16);
+                this.angle += this.rotSpeed;
+                // Movimento ligeiro em zig-zag (cair como uma folha)
+                this.x += Math.sin((Date.now() / 500) + this.oscillationOffset) * 1.5;
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+
+                if (this.type === 'rose') {
+                    // Desenhar Rosa Vermelha
+                    ctx.fillStyle = '#cc0000';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 25, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#ff3333';
+                    for(let i=0; i<5; i++) {
+                        ctx.beginPath();
+                        ctx.arc(Math.cos(i * Math.PI * 2 / 5) * 10, Math.sin(i * Math.PI * 2 / 5) * 10, 15, 0, Math.PI*2);
+                        ctx.fill();
+                    }
+                    ctx.fillStyle = '#660000';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 8, 0, Math.PI*2);
+                    ctx.fill();
+
+                } else if (this.type === 'card') {
+                    // Desenhar Carta (Ás de Copas)
+                    ctx.fillStyle = '#ffffff';
+                    ctx.strokeStyle = '#000000';
+                    ctx.lineWidth = 2;
+                    ctx.fillRect(-20, -30, 40, 60);
+                    ctx.strokeRect(-20, -30, 40, 60);
+                   
+                    // Coração no meio
+                    ctx.fillStyle = '#ff0000';
+                    ctx.beginPath();
+                    ctx.moveTo(0, 10);
+                    ctx.bezierCurveTo(-15, -5, -15, -15, 0, -5);
+                    ctx.bezierCurveTo(15, -15, 15, -5, 0, 10);
+                    ctx.fill();
+
+                } else if (this.type === 'teacup') {
+                    // Desenhar Chávena
+                    ctx.fillStyle = '#e6e6fa'; // Lavanda clara
+                    ctx.strokeStyle = '#333';
+                    ctx.lineWidth = 2;
+                   
+                    // Asa da chávena
+                    ctx.beginPath();
+                    ctx.arc(20, 0, 12, -Math.PI/2, Math.PI/2);
+                    ctx.stroke();
+
+                    // Corpo da chávena
+                    ctx.beginPath();
+                    ctx.arc(0, -10, 22, 0, Math.PI, false); // Fundo curvo
+                    ctx.lineTo(-22, 10);
+                    ctx.lineTo(22, 10);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+                   
+                    // Padrão
+                    ctx.fillStyle = '#9932cc';
+                    ctx.fillRect(-15, -5, 30, 5);
+                }
+
+                ctx.restore();
+               
+                // Debug Hitbox (Opcional)
+                // ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+                // ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2); ctx.stroke();
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x; this.y = y;
+                this.vx = (Math.random() - 0.5) * 8;
+                this.vy = (Math.random() - 0.5) * 8;
+                this.life = 1.0;
+                this.color = color;
+                this.size = Math.random() * 5 + 3;
+            }
+            update() {
+                this.x += this.vx; this.y += this.vy;
+                this.life -= 0.04;
+            }
+            draw(ctx) {
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = this.color;
+                ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI*2); ctx.fill();
+                ctx.globalAlpha = 1.0;
+            }
+        }
+
+        class FloatingText {
+            constructor(x, y, text, color) {
+                this.x = x; this.y = y;
+                this.text = text; this.color = color;
+                this.life = 1.0;
+            }
+            update() {
+                this.y -= 1; // Sobe lentamente
+                this.life -= 0.02;
+            }
+            draw(ctx) {
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = this.color;
+                ctx.font = 'bold 24px Cinzel';
+                ctx.textAlign = 'center';
+                ctx.shadowColor = 'black';
+                ctx.shadowBlur = 4;
+                ctx.fillText(this.text, this.x, this.y);
+                ctx.shadowBlur = 0; // Reset
+                ctx.globalAlpha = 1.0;
+            }
+        }
+
+        // --- Lógica Principal ---
+
+        let lastTime = 0;
+
+        function updateUI() {
+            document.getElementById('score-display').innerText = game.score;
+            let coracoes = '';
+            for(let i=0; i<game.lives; i++) coracoes += '❤️';
+            document.getElementById('lives-display').innerText = coracoes;
+        }
+
+        function spawnItem(timestamp) {
+            if (timestamp - game.lastSpawn > game.spawnRate) {
+                game.items.push(new Item());
+                game.lastSpawn = timestamp;
+               
+                // Aumentar a dificuldade aos poucos
+                if (game.spawnRate > 500) game.spawnRate -= 10;
+                game.baseSpeed += 0.02;
+            }
+        }
+
+        function createExplosion(x, y, type) {
+            let color = type === 'rose' ? '#ff3366' : '#ffffff';
+            for(let i=0; i<15; i++) {
+                game.particles.push(new Particle(x, y, color));
+            }
+        }
+
+        function gameLoop(timestamp) {
+            if (!game.active) return;
+            const dt = timestamp - lastTime;
+            lastTime = timestamp;
+
+            ctx.clearRect(0, 0, width, height);
+
+            spawnItem(timestamp);
+
+            // Atualizar e Desenhar Itens
+            for (let i = game.items.length - 1; i >= 0; i--) {
+                let item = game.items[i];
+                item.update(dt);
+                item.draw(ctx);
+
+                // Se o objeto sair do fundo do ecrã
+                if (item.y - item.radius > height) {
+                    if (item.type === 'rose') {
+                        // Deixou cair uma rosa! Penalização.
+                        game.lives--;
+                        playSound('damage');
+                       
+                        // Flash vermelho de dano no ecrã
+                        ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
+                        ctx.fillRect(0, 0, width, height);
+
+                        if (game.lives <= 0) {
+                            endGame();
+                        }
+                    }
+                    game.items.splice(i, 1);
+                }
+            }
+
+            // Atualizar e Desenhar Partículas
+            for (let i = game.particles.length - 1; i >= 0; i--) {
+                let p = game.particles[i];
+                p.update();
+                p.draw(ctx);
+                if (p.life <= 0) game.particles.splice(i, 1);
+            }
+
+            // Atualizar e Desenhar Textos Flutuantes
+            for (let i = game.floatingTexts.length - 1; i >= 0; i--) {
+                let txt = game.floatingTexts[i];
+                txt.update();
+                txt.draw(ctx);
+                if (txt.life <= 0) game.floatingTexts.splice(i, 1);
+            }
+
+            updateUI();
+
+            if (game.active) requestAnimationFrame(gameLoop);
+        }
+
+        // --- Interação (Cliques e Toques) ---
+        function handleInteraction(x, y) {
+            if (!game.active) return;
+
+            // Percorrer de trás para a frente (para clicar no objeto que está por cima)
+            for (let i = game.items.length - 1; i >= 0; i--) {
+                let item = game.items[i];
+                let dist = Math.hypot(item.x - x, item.y - y);
+
+                if (dist < item.radius + 10) { // +10 de margem para facilitar o toque no telemóvel
+                    if (item.type === 'rose') {
+                        // Rosa = +10 pontos
+                        game.score += 10;
+                        playSound('rose');
+                        createExplosion(item.x, item.y, 'rose');
+                        game.floatingTexts.push(new FloatingText(item.x, item.y, "+10", "#ff3366"));
+                    } else {
+                        // Carta ou Chávena = 0 pontos (distração)
+                        playSound('distraction');
+                        createExplosion(item.x, item.y, 'other');
+                        game.floatingTexts.push(new FloatingText(item.x, item.y, "0", "#cccccc"));
+                    }
+                    // Destruir o objeto clicado
+                    game.items.splice(i, 1);
+                    break; // Clicar num objeto de cada vez
+                }
+            }
+        }
+
+        // Eventos do Rato
+        canvas.addEventListener('mousedown', (e) => {
+            handleInteraction(e.clientX, e.clientY);
+        });
+
+        // Eventos de Toque (Telemóveis)
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault(); // Impede scroll
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                handleInteraction(e.changedTouches[i].clientX, e.changedTouches[i].clientY);
+            }
+        }, { passive: false });
+
+        // --- Controlo do Jogo ---
+        function startGame() {
+            initAudio();
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('game-over-screen').style.display = 'none';
+            document.getElementById('hud').style.display = 'flex';
+
+            game = {
+                active: true,
+                score: 0,
+                lives: 3,
+                items: [],
+                particles: [],
+                floatingTexts: [],
+                spawnRate: 1500,
+                lastSpawn: 0,
+                baseSpeed: 2
+            };
+
+            lastTime = performance.now();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function endGame() {
+            game.active = false;
+            document.getElementById('hud').style.display = 'none';
+            document.getElementById('game-over-screen').style.display = 'flex';
+            document.getElementById('final-score').innerText = game.score;
+        }
+
+        function resetGame() {
+            startGame();
+        }
+
+    </script>
+</body>
+</html><!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>O Chá das Maravilhas</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@1,700&family=Cinzel:wght@400;700&display=swap');
+
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #111;
+            font-family: 'Cinzel', serif;
+            user-select: none;
+            touch-action: none;
+        }
+
+        /* Fundo Surreal do País das Maravilhas */
+        #bg-canvas {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 0;
+            background: radial-gradient(circle at center, #2a0845 0%, #6441A5 100%);
+        }
+
+        /* Xadrez distorcido no fundo */
+        .checkerboard {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            height: 40%;
+            background-image:
+                linear-gradient(45deg, #000 25%, transparent 25%),
+                linear-gradient(-45deg, #000 25%, transparent 25%),
+                linear-gradient(45deg, transparent 75%, #000 75%),
+                linear-gradient(-45deg, transparent 75%, #000 75%);
+            background-size: 80px 80px;
+            background-position: 0 0, 0 40px, 40px -40px, -40px 0px;
+            transform: perspective(500px) rotateX(60deg);
+            transform-origin: bottom;
+            opacity: 0.3;
+            z-index: 1;
+        }
+
+        #game-canvas {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 2;
+        }
+
+        /* Interface do Utilizador */
+        #ui-layer {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 3;
+        }
+
+        .hud {
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 1.8rem;
+            color: #fff;
+            text-shadow: 2px 2px 5px rgba(0,0,0,0.8);
+        }
+
+        #score-display { color: #ff3366; font-weight: bold; }
+        #lives-display { color: #ffcc00; }
+
+        /* Ecrãs (Menus) */
+        .screen {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            pointer-events: auto;
+            text-align: center;
+            backdrop-filter: blur(4px);
+        }
+
+        h1 {
+            font-family: 'Playfair Display', serif;
+            font-size: 4rem;
+            color: #ff3366;
+            margin: 0 0 20px 0;
+            text-shadow: 0 0 20px #ff3366;
+            font-style: italic;
+        }
+
+        p {
+            font-size: 1.2rem;
+            color: #eee;
+            max-width: 600px;
+            line-height: 1.6;
+            margin-bottom: 40px;
+            padding: 0 20px;
+        }
+
+        .btn {
+            background: transparent;
+            color: #fff;
+            border: 2px solid #fff;
+            padding: 15px 40px;
+            font-size: 1.5rem;
+            font-family: 'Cinzel', serif;
+            cursor: pointer;
+            transition: all 0.3s;
+            border-radius: 30px;
+            text-transform: uppercase;
+        }
+
+        .btn:hover {
+            background: #ff3366;
+            border-color: #ff3366;
+            box-shadow: 0 0 20px #ff3366;
+            transform: scale(1.05);
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="bg-canvas">
+        <div class="checkerboard"></div>
+    </div>
+   
+    <canvas id="game-canvas"></canvas>
+
+    <div id="ui-layer">
+        <div class="hud" id="hud" style="display: none;">
+            <div>Pontos: <span id="score-display">0</span></div>
+            <div>Vidas: <span id="lives-display">❤️❤️❤️</span></div>
+        </div>
+    </div>
+
+    <!-- Ecrã Inicial -->
+    <div id="start-screen" class="screen">
+        <h1>O Chá das Maravilhas</h1>
+        <p>
+            Estão a cair objetos no País das Maravilhas!<br><br>
+            Toca nas <strong>Rosas</strong> para ganhar pontos.<br>
+            As <strong>Cartas</strong> e as <strong>Chávenas</strong> são distrações e dão <strong>0 pontos</strong>.<br>
+            Não deixes as Rosas tocarem no chão, ou perdes uma vida!
+        </p>
+        <button class="btn" onclick="startGame()">Começar Aventura</button>
+    </div>
+
+    <!-- Ecrã Game Over -->
+    <div id="game-over-screen" class="screen" style="display: none;">
+        <h1 style="color: #ff0000; font-size: 3rem;">Fim do Chá!</h1>
+        <p>
+            Deixaste cair demasiadas rosas.<br>
+            Pontuação Final: <span id="final-score" style="color: #ff3366; font-size: 1.5em; font-weight: bold;">0</span>
+        </p>
+        <button class="btn" onclick="resetGame()">Tentar Novamente</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        let width, height;
+
+        // --- Estado do Jogo ---
+        let game = {
+            active: false,
+            score: 0,
+            lives: 3,
+            items: [],
+            particles: [],
+            floatingTexts: [],
+            spawnRate: 1500, // milissegundos
+            lastSpawn: 0,
+            baseSpeed: 2
+        };
+
+        // --- Áudio ---
+        let audioCtx;
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        function playSound(type) {
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            if (type === 'rose') {
+                // Som de campainha mágica (agudo)
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(880, now);
+                osc.frequency.exponentialRampToValueAtTime(1760, now + 0.2);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                osc.start(now);
+                osc.stop(now + 0.2);
+            } else if (type === 'distraction') {
+                // Som baço de madeira/cartão
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(200, now);
+                osc.frequency.linearRampToValueAtTime(100, now + 0.1);
+                gain.gain.setValueAtTime(0.4, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.1);
+                osc.start(now);
+                osc.stop(now + 0.1);
+            } else if (type === 'damage') {
+                // Som de erro/dano
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.linearRampToValueAtTime(50, now + 0.3);
+                gain.gain.setValueAtTime(0.5, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.3);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            }
+        }
+
+        // --- Redimensionamento ---
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // --- Classes ---
+        class Item {
+            constructor() {
+                // Probabilidades: 40% Rosa, 30% Carta, 30% Chávena
+                const rand = Math.random();
+                if (rand < 0.4) this.type = 'rose';
+                else if (rand < 0.7) this.type = 'card';
+                else this.type = 'teacup';
+
+                this.radius = 40; // Zona de clique
+                this.x = Math.random() * (width - this.radius * 2) + this.radius;
+                this.y = -50;
+               
+                // Variabilidade de velocidade
+                this.speed = game.baseSpeed + Math.random() * 2;
+               
+                // Animação de rotação e oscilação
+                this.angle = Math.random() * Math.PI * 2;
+                this.rotSpeed = (Math.random() - 0.5) * 0.05;
+                this.oscillationOffset = Math.random() * Math.PI * 2;
+            }
+
+            update(dt) {
+                this.y += this.speed * (dt / 16);
+                this.angle += this.rotSpeed;
+                // Movimento ligeiro em zig-zag (cair como uma folha)
+                this.x += Math.sin((Date.now() / 500) + this.oscillationOffset) * 1.5;
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+
+                if (this.type === 'rose') {
+                    // Desenhar Rosa Vermelha
+                    ctx.fillStyle = '#cc0000';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 25, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#ff3333';
+                    for(let i=0; i<5; i++) {
+                        ctx.beginPath();
+                        ctx.arc(Math.cos(i * Math.PI * 2 / 5) * 10, Math.sin(i * Math.PI * 2 / 5) * 10, 15, 0, Math.PI*2);
+                        ctx.fill();
+                    }
+                    ctx.fillStyle = '#660000';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 8, 0, Math.PI*2);
+                    ctx.fill();
+
+                } else if (this.type === 'card') {
+                    // Desenhar Carta (Ás de Copas)
+                    ctx.fillStyle = '#ffffff';
+                    ctx.strokeStyle = '#000000';
+                    ctx.lineWidth = 2;
+                    ctx.fillRect(-20, -30, 40, 60);
+                    ctx.strokeRect(-20, -30, 40, 60);
+                   
+                    // Coração no meio
+                    ctx.fillStyle = '#ff0000';
+                    ctx.beginPath();
+                    ctx.moveTo(0, 10);
+                    ctx.bezierCurveTo(-15, -5, -15, -15, 0, -5);
+                    ctx.bezierCurveTo(15, -15, 15, -5, 0, 10);
+                    ctx.fill();
+
+                } else if (this.type === 'teacup') {
+                    // Desenhar Chávena
+                    ctx.fillStyle = '#e6e6fa'; // Lavanda clara
+                    ctx.strokeStyle = '#333';
+                    ctx.lineWidth = 2;
+                   
+                    // Asa da chávena
+                    ctx.beginPath();
+                    ctx.arc(20, 0, 12, -Math.PI/2, Math.PI/2);
+                    ctx.stroke();
+
+                    // Corpo da chávena
+                    ctx.beginPath();
+                    ctx.arc(0, -10, 22, 0, Math.PI, false); // Fundo curvo
+                    ctx.lineTo(-22, 10);
+                    ctx.lineTo(22, 10);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+                   
+                    // Padrão
+                    ctx.fillStyle = '#9932cc';
+                    ctx.fillRect(-15, -5, 30, 5);
+                }
+
+                ctx.restore();
+               
+                // Debug Hitbox (Opcional)
+                // ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+                // ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2); ctx.stroke();
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x; this.y = y;
+                this.vx = (Math.random() - 0.5) * 8;
+                this.vy = (Math.random() - 0.5) * 8;
+                this.life = 1.0;
+                this.color = color;
+                this.size = Math.random() * 5 + 3;
+            }
+            update() {
+                this.x += this.vx; this.y += this.vy;
+                this.life -= 0.04;
+            }
+            draw(ctx) {
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = this.color;
+                ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI*2); ctx.fill();
+                ctx.globalAlpha = 1.0;
+            }
+        }
+
+        class FloatingText {
+            constructor(x, y, text, color) {
+                this.x = x; this.y = y;
+                this.text = text; this.color = color;
+                this.life = 1.0;
+            }
+            update() {
+                this.y -= 1; // Sobe lentamente
+                this.life -= 0.02;
+            }
+            draw(ctx) {
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = this.color;
+                ctx.font = 'bold 24px Cinzel';
+                ctx.textAlign = 'center';
+                ctx.shadowColor = 'black';
+                ctx.shadowBlur = 4;
+                ctx.fillText(this.text, this.x, this.y);
+                ctx.shadowBlur = 0; // Reset
+                ctx.globalAlpha = 1.0;
+            }
+        }
+
+        // --- Lógica Principal ---
+
+        let lastTime = 0;
+
+        function updateUI() {
+            document.getElementById('score-display').innerText = game.score;
+            let coracoes = '';
+            for(let i=0; i<game.lives; i++) coracoes += '❤️';
+            document.getElementById('lives-display').innerText = coracoes;
+        }
+
+        function spawnItem(timestamp) {
+            if (timestamp - game.lastSpawn > game.spawnRate) {
+                game.items.push(new Item());
+                game.lastSpawn = timestamp;
+               
+                // Aumentar a dificuldade aos poucos
+                if (game.spawnRate > 500) game.spawnRate -= 10;
+                game.baseSpeed += 0.02;
+            }
+        }
+
+        function createExplosion(x, y, type) {
+            let color = type === 'rose' ? '#ff3366' : '#ffffff';
+            for(let i=0; i<15; i++) {
+                game.particles.push(new Particle(x, y, color));
+            }
+        }
+
+        function gameLoop(timestamp) {
+            if (!game.active) return;
+            const dt = timestamp - lastTime;
+            lastTime = timestamp;
+
+            ctx.clearRect(0, 0, width, height);
+
+            spawnItem(timestamp);
+
+            // Atualizar e Desenhar Itens
+            for (let i = game.items.length - 1; i >= 0; i--) {
+                let item = game.items[i];
+                item.update(dt);
+                item.draw(ctx);
+
+                // Se o objeto sair do fundo do ecrã
+                if (item.y - item.radius > height) {
+                    if (item.type === 'rose') {
+                        // Deixou cair uma rosa! Penalização.
+                        game.lives--;
+                        playSound('damage');
+                       
+                        // Flash vermelho de dano no ecrã
+                        ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
+                        ctx.fillRect(0, 0, width, height);
+
+                        if (game.lives <= 0) {
+                            endGame();
+                        }
+                    }
+                    game.items.splice(i, 1);
+                }
+            }
+
+            // Atualizar e Desenhar Partículas
+            for (let i = game.particles.length - 1; i >= 0; i--) {
+                let p = game.particles[i];
+                p.update();
+                p.draw(ctx);
+                if (p.life <= 0) game.particles.splice(i, 1);
+            }
+
+            // Atualizar e Desenhar Textos Flutuantes
+            for (let i = game.floatingTexts.length - 1; i >= 0; i--) {
+                let txt = game.floatingTexts[i];
+                txt.update();
+                txt.draw(ctx);
+                if (txt.life <= 0) game.floatingTexts.splice(i, 1);
+            }
+
+            updateUI();
+
+            if (game.active) requestAnimationFrame(gameLoop);
+        }
+
+        // --- Interação (Cliques e Toques) ---
+        function handleInteraction(x, y) {
+            if (!game.active) return;
+
+            // Percorrer de trás para a frente (para clicar no objeto que está por cima)
+            for (let i = game.items.length - 1; i >= 0; i--) {
+                let item = game.items[i];
+                let dist = Math.hypot(item.x - x, item.y - y);
+
+                if (dist < item.radius + 10) { // +10 de margem para facilitar o toque no telemóvel
+                    if (item.type === 'rose') {
+                        // Rosa = +10 pontos
+                        game.score += 10;
+                        playSound('rose');
+                        createExplosion(item.x, item.y, 'rose');
+                        game.floatingTexts.push(new FloatingText(item.x, item.y, "+10", "#ff3366"));
+                    } else {
+                        // Carta ou Chávena = 0 pontos (distração)
+                        playSound('distraction');
+                        createExplosion(item.x, item.y, 'other');
+                        game.floatingTexts.push(new FloatingText(item.x, item.y, "0", "#cccccc"));
+                    }
+                    // Destruir o objeto clicado
+                    game.items.splice(i, 1);
+                    break; // Clicar num objeto de cada vez
+                }
+            }
+        }
+
+        // Eventos do Rato
+        canvas.addEventListener('mousedown', (e) => {
+            handleInteraction(e.clientX, e.clientY);
+        });
+
+        // Eventos de Toque (Telemóveis)
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault(); // Impede scroll
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                handleInteraction(e.changedTouches[i].clientX, e.changedTouches[i].clientY);
+            }
+        }, { passive: false });
+
+        // --- Controlo do Jogo ---
+        function startGame() {
+            initAudio();
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('game-over-screen').style.display = 'none';
+            document.getElementById('hud').style.display = 'flex';
+
+            game = {
+                active: true,
+                score: 0,
+                lives: 3,
+                items: [],
+                particles: [],
+                floatingTexts: [],
+                spawnRate: 1500,
+                lastSpawn: 0,
+                baseSpeed: 2
+            };
+
+            lastTime = performance.now();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function endGame() {
+            game.active = false;
+            document.getElementById('hud').style.display = 'none';
+            document.getElementById('game-over-screen').style.display = 'flex';
+            document.getElementById('final-score').innerText = game.score;
+        }
+
+        function resetGame() {
+            startGame();
+        }
+
+    </script>
+</body>
+</html>

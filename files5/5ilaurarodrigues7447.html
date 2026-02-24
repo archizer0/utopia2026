@@ -1,0 +1,315 @@
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  Camera, Monitor, Zap, Heart, Cloud, Clock, Download, Ghost,
+  Droplets, Sun, Layers, Hourglass, Box, Square, Coffee, Eye,
+  Columns, Sparkles, Brush, Star, Trees, Target, Wind, Moon,
+  Palette, Wand2
+} from 'lucide-react';
+
+/**
+ * Wonderland Vision Pro 25
+ * Uma aplicação de processamento de vídeo em tempo real com 25 filtros temáticos.
+ */
+const App = () => {
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const requestRef = useRef(null);
+  const [stream, setStream] = useState(null);
+  const [error, setError] = useState(null);
+  const [sourceType, setSourceType] = useState(null);
+  const [activeFilter, setActiveFilter] = useState('normal');
+
+  // Lista completa de 25 filtros inspirados no País das Maravilhas
+  const filters = [
+    { id: 'normal', name: 'Mundo Real', icon: <Zap size={18} />, color: 'bg-slate-500' },
+    { id: 'queen', name: 'Rainha de Copas', icon: <Heart size={18} />, color: 'bg-red-600' },
+    { id: 'cheshire', name: 'Gato de Cheshire', icon: <Ghost size={18} />, color: 'bg-purple-600' },
+    { id: 'hatter', name: 'Chapeleiro Louco', icon: <Clock size={18} />, color: 'bg-emerald-600' },
+    { id: 'rabbit', name: 'Toca do Coelho', icon: <Cloud size={18} />, color: 'bg-blue-900' },
+    { id: 'absolem', name: 'Absolem', icon: <Droplets size={18} />, color: 'bg-cyan-500' },
+    { id: 'flowers', name: 'Jardim Dourado', icon: <Sun size={18} />, color: 'bg-amber-400' },
+    { id: 'cards', name: 'Exército de Cartas', icon: <Layers size={18} />, color: 'bg-zinc-800' },
+    { id: 'time', name: 'Tempo Parado', icon: <Hourglass size={18} />, color: 'bg-orange-800' },
+    { id: 'shrink', name: 'Beba-me (Pixel)', icon: <Box size={18} />, color: 'bg-pink-500' },
+    { id: 'unbirthday', name: 'Desaniversário', icon: <Coffee size={18} />, color: 'bg-indigo-500' },
+    { id: 'tulgey', name: 'Floresta Tulgey', icon: <Eye size={18} />, color: 'bg-lime-700' },
+    { id: 'mirror', name: 'Espelho', icon: <Columns size={18} />, color: 'bg-sky-400' },
+    { id: 'dream', name: 'Sonho da Alice', icon: <Sparkles size={18} />, color: 'bg-fuchsia-400' },
+    { id: 'paint', name: 'Pintar as Rosas', icon: <Brush size={18} />, color: 'bg-rose-700' },
+    { id: 'goldhat', name: 'Ouro do Chapeleiro', icon: <Wand2 size={18} />, color: 'bg-yellow-600' },
+    { id: 'maze', name: 'Labirinto', icon: <Trees size={18} />, color: 'bg-green-900' },
+    { id: 'stars', name: 'Feitiço de Estrelas', icon: <Star size={18} />, color: 'bg-blue-400' },
+    { id: 'flamingo', name: 'Tinta Flamingo', icon: <Palette size={18} />, color: 'bg-pink-600' },
+    { id: 'pocketwatch', name: 'Relógio de Bolso', icon: <Target size={18} />, color: 'bg-stone-500' },
+    { id: 'mushroom', name: 'Cogumelos', icon: <Wind size={18} />, color: 'bg-teal-600' },
+    { id: 'jabberwocky', name: 'Jabberwocky', icon: <Moon size={18} />, color: 'bg-black' },
+    { id: 'crystal', name: 'Palácio Cristal', icon: <Sparkles size={18} />, color: 'bg-violet-300' },
+    { id: 'lucid', name: 'Sonho Lúcido', icon: <Zap size={18} />, color: 'bg-orange-500' },
+    { id: 'waltz', name: 'Valsa Floral', icon: <Sun size={18} />, color: 'bg-rose-300' },
+  ];
+
+  const stopStream = () => {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      setStream(null);
+    }
+    if (requestRef.current) cancelAnimationFrame(requestRef.current);
+    setSourceType(null);
+  };
+
+  const handleSourceStart = async (type) => {
+    stopStream();
+    try {
+      const mediaStream = type === 'camera'
+        ? await navigator.mediaDevices.getUserMedia({ video: true })
+        : await navigator.mediaDevices.getDisplayMedia({ video: true });
+     
+      setStream(mediaStream);
+      setSourceType(type);
+      if (videoRef.current) videoRef.current.srcObject = mediaStream;
+      setError(null);
+    } catch (err) {
+      setError("Acesso negado ou cancelado pelo utilizador.");
+    }
+  };
+
+  useEffect(() => {
+    if (!stream) return;
+
+    const processFrame = () => {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      if (!video || !canvas || video.readyState !== 4) {
+        requestRef.current = requestAnimationFrame(processFrame);
+        return;
+      }
+
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+
+      // --- TRATAMENTO GEOMÉTRICO ---
+      ctx.save();
+      if (activeFilter === 'mirror') {
+        ctx.drawImage(video, 0, 0, canvas.width / 2, canvas.height, 0, 0, canvas.width / 2, canvas.height);
+        ctx.scale(-1, 1);
+        ctx.drawImage(video, 0, 0, canvas.width / 2, canvas.height, -canvas.width, 0, canvas.width / 2, canvas.height);
+      } else if (activeFilter === 'mushroom') {
+        const offset = Math.sin(Date.now() * 0.005) * 15;
+        ctx.drawImage(video, offset, 0, canvas.width, canvas.height);
+      } else if (activeFilter === 'shrink') {
+        const size = 0.08;
+        const w = canvas.width * size;
+        const h = canvas.height * size;
+        ctx.drawImage(video, 0, 0, w, h);
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(canvas, 0, 0, w, h, 0, 0, canvas.width, canvas.height);
+      } else {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      }
+      ctx.restore();
+
+      // --- PROCESSAMENTO DE CORES (PIXELS) ---
+      const complexFilters = ['queen', 'hatter', 'cheshire', 'absolem', 'flowers', 'cards', 'time', 'unbirthday', 'tulgey', 'dream', 'paint', 'goldhat', 'maze', 'stars', 'flamingo', 'jabberwocky', 'crystal', 'lucid', 'waltz'];
+     
+      if (complexFilters.includes(activeFilter)) {
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+        const time = Date.now() * 0.002;
+
+        for (let i = 0; i < data.length; i += 4) {
+          let r = data[i];
+          let g = data[i + 1];
+          let b = data[i + 2];
+
+          switch (activeFilter) {
+            case 'goldhat':
+              data[i] = Math.min(r + 100, 255);
+              data[i+1] = Math.min(g + 80, 255);
+              data[i+2] = b * 0.5;
+              break;
+            case 'maze':
+              data[i] = r * 0.2; data[i+1] = g * 0.8; data[i+2] = b * 0.3;
+              break;
+            case 'stars':
+              if (r > 200 && g > 200) {
+                data[i] = 255; data[i+1] = 255; data[i+2] = 200;
+              } else {
+                data[i] *= 0.8; data[i+2] *= 1.2;
+              }
+              break;
+            case 'flamingo':
+              data[i] = Math.min(r + 150, 255); data[i+1] = g * 0.6; data[i+2] = Math.min(b + 100, 255);
+              break;
+            case 'jabberwocky':
+              const jlum = (r + g + b) / 3;
+              data[i] = jlum * 0.2; data[i+1] = jlum * 0.3; data[i+2] = jlum * 0.7;
+              break;
+            case 'crystal':
+              data[i] = (r + b) / 2; data[i+1] = (g + 200) / 2; data[i+2] = 255;
+              break;
+            case 'lucid':
+              data[i] = 255 - g; data[i+1] = 255 - b; data[i+2] = 255 - r;
+              break;
+            case 'waltz':
+              data[i] = Math.min(r + 40, 255); data[i+1] = Math.min(g + 20, 255); data[i+2] = Math.min(b + 60, 255);
+              break;
+            case 'unbirthday':
+              data[i] = r * Math.sin(time) * 0.5 + 128;
+              data[i+1] = g * Math.cos(time) * 0.5 + 128;
+              data[i+2] = b * Math.sin(time + 2) * 0.5 + 128;
+              break;
+            case 'queen':
+              if (!(r > g * 1.4 && r > b * 1.4)) {
+                const gray = (r + g + b) / 3;
+                data[i] = data[i+1] = data[i+2] = gray * 0.4;
+              }
+              break;
+            case 'hatter':
+              data[i] = 255 - r; data[i+1] = b; data[i+2] = g;
+              break;
+            case 'cheshire':
+              data[i] = Math.min(r + 50, 255); data[i+2] = Math.min(b + 100, 255);
+              break;
+            case 'time':
+              data[i] = (r * .393) + (g *.769) + (b * .189);
+              data[i+1] = (r * .349) + (g *.686) + (b * .168);
+              data[i+2] = (r * .272) + (g *.534) + (b * .131);
+              break;
+            case 'tulgey':
+              data[i] = 0; data[i+1] = Math.min(g * 1.5, 255); data[i+2] = 0;
+              break;
+            case 'dream':
+              data[i] = Math.min(r * 0.8 + 80, 255);
+              data[i+1] = Math.min(g * 0.8 + 80, 255);
+              data[i+2] = Math.min(b * 0.9 + 40, 255);
+              break;
+            case 'paint':
+              if ((r + g + b) / 3 > 170) {
+                data[i] = 255; data[i+1] = 40; data[i+2] = 130;
+              }
+              break;
+          }
+        }
+        ctx.putImageData(imageData, 0, 0);
+      }
+
+      // --- SOBREPOSIÇÕES RADIAIS ---
+      if (activeFilter === 'rabbit' || activeFilter === 'pocketwatch') {
+        const radius = activeFilter === 'pocketwatch' ? canvas.height / 3 : canvas.height / 4;
+        const grad = ctx.createRadialGradient(
+          canvas.width / 2, canvas.height / 2, radius,
+          canvas.width / 2, canvas.height / 2, canvas.height / 1.1
+        );
+        grad.addColorStop(0, 'rgba(0,0,0,0)');
+        grad.addColorStop(1, 'rgba(0,0,0,0.95)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+
+      requestRef.current = requestAnimationFrame(processFrame);
+    };
+
+    requestRef.current = requestAnimationFrame(processFrame);
+    return () => cancelAnimationFrame(requestRef.current);
+  }, [stream, activeFilter]);
+
+  const downloadSnap = () => {
+    const link = document.createElement('a');
+    link.download = `wonderland-${activeFilter}.png`;
+    link.href = canvasRef.current.toDataURL();
+    link.click();
+  };
+
+  return (
+    <div className="min-h-screen bg-neutral-950 text-slate-200 p-2 md:p-6 flex flex-col items-center font-sans selection:bg-purple-500/30">
+      <header className="mb-4 text-center">
+        <h1 className="text-2xl md:text-4xl font-bold bg-gradient-to-r from-purple-400 via-pink-500 to-amber-400 bg-clip-text text-transparent mb-1">
+          Wonderland Vision Pro 25
+        </h1>
+        <p className="text-[10px] text-slate-500 tracking-[0.3em] uppercase font-light">Efeitos Mágicos em Tempo Real</p>
+      </header>
+
+      <div className="w-full max-w-6xl bg-neutral-900 rounded-[2.5rem] overflow-hidden shadow-[0_0_80px_rgba(0,0,0,0.6)] border border-neutral-800 flex flex-col transition-all duration-500">
+       
+        {/* Janela de Pré-visualização */}
+        <div className="relative aspect-video bg-black flex items-center justify-center overflow-hidden">
+          <video ref={videoRef} autoPlay playsInline className="hidden" />
+          <canvas ref={canvasRef} className="w-full h-full object-contain" />
+         
+          {!stream && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center space-y-6 bg-neutral-900/95 backdrop-blur-2xl z-10 p-8 text-center">
+              <div className="w-24 h-24 bg-gradient-to-br from-purple-600/30 to-pink-600/30 rounded-full flex items-center justify-center animate-pulse mb-2 border border-white/5">
+                <Wand2 className="text-purple-400" size={44} />
+              </div>
+              <div className="max-w-md">
+                <h2 className="text-2xl font-semibold text-white mb-2">Inicia a Tua Viagem</h2>
+                <p className="text-slate-400 text-sm mb-8">Escolhe uma fonte de vídeo para começar a aplicar os filtros do País das Maravilhas.</p>
+              </div>
+              <div className="flex flex-wrap justify-center gap-4">
+                <button onClick={() => handleSourceStart('camera')} className="flex items-center gap-3 bg-white text-black hover:bg-slate-200 px-10 py-5 rounded-2xl font-black transition-all active:scale-95 shadow-xl">
+                  <Camera size={22} /> Câmara
+                </button>
+                <button onClick={() => handleSourceStart('screen')} className="flex items-center gap-3 bg-neutral-800 hover:bg-neutral-700 px-10 py-5 rounded-2xl font-black transition-all active:scale-95 border border-neutral-700">
+                  <Monitor size={22} /> Ecrã
+                </button>
+              </div>
+              {error && <p className="text-red-400 text-xs bg-red-400/10 px-4 py-2 rounded-full border border-red-400/20">{error}</p>}
+            </div>
+          )}
+
+          {stream && (
+            <div className="absolute top-6 right-6 flex gap-3 z-20">
+              <button onClick={downloadSnap} className="bg-white/10 hover:bg-white/20 p-5 rounded-3xl backdrop-blur-2xl transition-all active:scale-90 border border-white/10 group">
+                <Download size={24} className="group-hover:translate-y-0.5 transition-transform" />
+              </button>
+              <button onClick={stopStream} className="bg-red-500/90 hover:bg-red-500 p-5 rounded-3xl backdrop-blur-2xl transition-all active:scale-90 shadow-xl shadow-red-500/20 border border-red-400/30">
+                <Square size={24} fill="currentColor" />
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Menu de Filtros Inferior */}
+        <div className="p-6 bg-neutral-950/90 border-t border-neutral-800">
+          <div className="flex overflow-x-auto gap-4 pb-6 no-scrollbar scroll-smooth snap-x snap-mandatory">
+            {filters.map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setActiveFilter(f.id)}
+                disabled={!stream}
+                className={`
+                  snap-start flex-shrink-0 flex flex-col items-center p-4 rounded-[2rem] transition-all w-28 border-2
+                  ${!stream ? 'opacity-20 grayscale cursor-not-allowed' : 'cursor-pointer'}
+                  ${activeFilter === f.id
+                    ? `border-white ${f.color} scale-105 shadow-[0_15px_30px_rgba(0,0,0,0.4)]`
+                    : 'border-transparent bg-neutral-900/40 hover:bg-neutral-800/80'}
+                `}
+              >
+                <div className={`mb-3 p-3 rounded-2xl ${activeFilter === f.id ? 'bg-white/20' : 'bg-neutral-800/50'}`}>
+                  {f.icon}
+                </div>
+                <span className="text-[10px] uppercase font-black text-center tracking-tighter leading-[1.1] h-8 flex items-center overflow-hidden">
+                  {f.name}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <footer className="mt-8 flex items-center gap-5 text-[10px] text-neutral-600 uppercase tracking-[0.3em] font-bold">
+        <span className="flex items-center gap-1.5"><Sparkles size={12} /> 25 Filtros</span>
+        <span className="w-1 h-1 bg-neutral-800 rounded-full"></span>
+        <span>Wonderland Engine v4.0</span>
+      </footer>
+
+      <style>{`
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      `}</style>
+    </div>
+  );
+};
+
+export default App;
