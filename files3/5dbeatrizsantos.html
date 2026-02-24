@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Alice no País dos Bolos de Chocolate</title>
+<style>
+  body {
+    margin: 0;
+    background-color: #aee;
+    overflow: hidden;
+    font-family: sans-serif;
+  }
+  #gameArea {
+    width: 800px;
+    height: 600px;
+    background: linear-gradient(#c3f1ff, #7eeaa6);
+    position: relative;
+    margin: 30px auto;
+    border: 4px solid #444;
+    border-radius: 10px;
+  }
+  .character {
+    width: 50px;
+    height: 50px;
+    position: absolute;
+    background-size: cover;
+  }
+  #alice {
+    background-image: url('https://i.imgur.com/9b9o4eT.png'); /* exemplo */
+    left: 100px;
+    top: 100px;
+  }
+  #coelho {
+    background-image: url('https://i.imgur.com/mSSdRrM.png');
+    left: 500px;
+    top: 200px;
+  }
+  #bolo {
+    background-image: url('https://i.imgur.com/Ngz5EW6.png');
+    width: 40px;
+    height: 40px;
+    position: absolute;
+  }
+  #score {
+    text-align: center;
+    font-size: 24px;
+    color: #222;
+    margin-top: 10px;
+  }
+</style>
+</head>
+<body>
+<div id="score">🍰 Bolos apanhados: <span id="points">0</span></div>
+<div id="gameArea">
+  <div id="alice" class="character"></div>
+  <div id="coelho" class="character"></div>
+  <div id="bolo"></div>
+</div>
+
+<script>
+  const alice = document.getElementById('alice');
+  const coelho = document.getElementById('coelho');
+  const bolo = document.getElementById('bolo');
+  const pointsEl = document.getElementById('points');
+  const gameArea = document.getElementById('gameArea');
+
+  let pontos = 0;
+  let alicePos = {x: 100, y: 100};
+  let coelhoPos = {x: 500, y: 200};
+  let boloPos = {x: 300, y: 300};
+
+  const speedAlice = 10;
+  const speedCoelho = 3;
+
+  // Posição inicial do bolo
+  function reposicionarBolo() {
+    boloPos.x = Math.random() * (gameArea.clientWidth - 40);
+    boloPos.y = Math.random() * (gameArea.clientHeight - 40);
+    bolo.style.left = boloPos.x + 'px';
+    bolo.style.top = boloPos.y + 'px';
+  }
+  reposicionarBolo();
+
+  // Movimento Alice
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowUp') alicePos.y -= speedAlice;
+    if (e.key === 'ArrowDown') alicePos.y += speedAlice;
+    if (e.key === 'ArrowLeft') alicePos.x -= speedAlice;
+    if (e.key === 'ArrowRight') alicePos.x += speedAlice;
+
+    alicePos.x = Math.max(0, Math.min(750, alicePos.x));
+    alicePos.y = Math.max(0, Math.min(550, alicePos.y));
+
+    alice.style.left = alicePos.x + 'px';
+    alice.style.top = alicePos.y + 'px';
+  });
+
+  // Movimento Coelho (segue Alice)
+  function moverCoelho() {
+    if (coelhoPos.x < alicePos.x) coelhoPos.x += speedCoelho;
+    if (coelhoPos.x > alicePos.x) coelhoPos.x -= speedCoelho;
+    if (coelhoPos.y < alicePos.y) coelhoPos.y += speedCoelho;
+    if (coelhoPos.y > alicePos.y) coelhoPos.y -= speedCoelho;
+
+    coelho.style.left = coelhoPos.x + 'px';
+    coelho.style.top = coelhoPos.y + 'px';
+  }
+
+  // Verifica colisões
+  function distancia(a, b) {
+    return Math.hypot(a.x - b.x, a.y - b.y);
+  }
+
+  function verificarColisoes() {
+    // Alice come bolo
+    if (distancia(alicePos, boloPos) < 40) {
+      pontos++;
+      pointsEl.textContent = pontos;
+      reposicionarBolo();
+    }
+    // Coelho apanha Alice
+    if (distancia(alicePos, coelhoPos) < 40) {
+      alert('🐇 O Coelho apanhou a Alice! Pontuação: ' + pontos);
+      pontos = 0;
+      pointsEl.textContent = '0';
+      alicePos = {x: 100, y: 100};
+      coelhoPos = {x: 500, y: 200};
+    }
+  }
+
+  function jogo() {
+    moverCoelho();
+    verificarColisoes();
+    requestAnimationFrame(jogo);
+  }
+  jogo();
+</script>
+</body>
+</html>
