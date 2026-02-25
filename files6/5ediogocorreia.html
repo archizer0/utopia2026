@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Filtro Alice no País das Maravilhas</title>
+   
+    <!-- Tailwind CSS para estilização rápida e bonita -->
+    <script src="https://cdn.tailwindcss.com"></script>
+   
+    <!-- Importar bibliotecas do MediaPipe para deteção de mãos -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        /* Assegura que o vídeo se esconde corretamente e o canvas é responsivo */
+        .video-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin: 0 auto;
+            border-radius: 1rem;
+            overflow: hidden;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.3);
+            border: 4px solid #4a044e; /* Roxo escuro para o tema */
+        }
+       
+        #output_canvas {
+            width: 100%;
+            height: auto;
+            display: block;
+            background-color: #000; /* Fundo preto enquanto carrega */
+        }
+
+        #input_video {
+            display: none; /* Escondemos o vídeo original pois vamos desenhá-lo no canvas (espelhado) */
+        }
+
+        /* Animação do ecrã de carregamento */
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #d946ef;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex flex-col items-center py-8 font-sans">
+
+    <!-- Cabeçalho -->
+    <div class="text-center mb-8 px-4">
+        <h1 class="text-4xl md:text-5xl font-bold text-fuchsia-400 mb-3 flex items-center justify-center gap-3">
+            <span>🎩</span> Filtro da Alice <span>🐰</span>
+        </h1>
+        <p class="text-gray-300 text-lg">
+            Levanta e mostra a tua mão para a câmara para espalhar a magia do País das Maravilhas!
+        </p>
+    </div>
+
+    <!-- Contentor Principal -->
+    <div class="video-container bg-gray-800">
+        <!-- Ecrã de Loading que desaparece quando a câmara estiver pronta -->
+        <div id="loading_screen" class="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 bg-opacity-90 z-10 transition-opacity duration-500">
+            <div class="loader mb-4"></div>
+            <p class="text-fuchsia-300 font-medium animate-pulse text-center px-4">
+                A preparar a magia e a ligar a câmara...<br>
+                <span class="text-sm text-gray-400">(Por favor, permite o acesso à câmara)</span>
+            </p>
+        </div>
+
+        <video id="input_video" autoplay playsinline></video>
+        <!-- O canvas onde desenhamos o vídeo e as partículas mágicas -->
+        <canvas id="output_canvas" width="640" height="480"></canvas>
+    </div>
+
+    <div class="mt-8 flex gap-4">
+        <button id="start_btn" class="bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold py-2 px-6 rounded-full shadow-lg transition-all transform hover:scale-105 hidden">
+            Iniciar Câmara
+        </button>
+    </div>
+
+    <script>
+        // Referências aos elementos do DOM
+        const videoElement = document.getElementById('input_video');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const loadingScreen = document.getElementById('loading_screen');
+        const startBtn = document.getElementById('start_btn');
+
+        let camera = null;
+        let isLoaded = false;
+
+        // ==========================================
+        // SISTEMA DE PARTÍCULAS (A Magia da Alice)
+        // ==========================================
+        const emojisAlice = [
+            '🎩', // Chapeleiro Louco
+            '🐰', // Coelho Branco
+            '⏱️', // Relógio de bolso
+            '☕', // Chá
+            '🫖', // Bule
+            '🍄', // Cogumelo
+            '🐈', // Gato de Cheshire
+            '🃏', // Carta Joker
+            '♥️', // Copas
+            '♠️', // Espadas
+            '👑', // Rainha de Copas
+            '🧪', // Poção "Beba-me"
+            '🗝️'  // Chave
+        ];
+
+        class ParticulaAlice {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                // Velocidade inicial: Explosão para cima e lados
+                this.vx = (Math.random() - 0.5) * 15;
+                this.vy = (Math.random() - 1) * 15 - 5;
+                // Gravidade e tempo de vida
+                this.gravity = 0.5;
+                this.life = 1.0;
+                this.decay = Math.random() * 0.015 + 0.01; // Quão rápido desaparece
+               
+                // Aparência
+                this.emoji = emojisAlice[Math.floor(Math.random() * emojisAlice.length)];
+                this.size = Math.random() * 40 + 20; // Tamanho entre 20 e 60
+               
+                // Rotação
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.3;
+            }
+
+            atualizar() {
+                this.vy += this.gravity; // Aplica gravidade para cair
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= this.decay;
+                this.rotation += this.rotationSpeed;
+            }
+
+            desenhar(ctx) {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                ctx.globalAlpha = Math.max(0, this.life); // Desvanece
+                ctx.font = `${this.size}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                // Adiciona um brilho subtil à volta dos emojis
+                ctx.shadowColor = 'rgba(255, 255, 255, 0.5)';
+                ctx.shadowBlur = 10;
+                ctx.fillText(this.emoji, 0, 0);
+                ctx.restore();
+            }
+        }
+
+        let arrayParticulas = [];
+
+        // ==========================================
+        // PROCESSAMENTO DE IMAGEM & DETEÇÃO DE MÃOS
+        // ==========================================
+        function onResults(results) {
+            // Esconder o ecrã de loading no primeiro frame processado
+            if (!isLoaded) {
+                loadingScreen.classList.add('opacity-0', 'pointer-events-none');
+                isLoaded = true;
+               
+                // Ajustar resolução do canvas para coincidir com o vídeo
+                canvasElement.width = videoElement.videoWidth;
+                canvasElement.height = videoElement.videoHeight;
+            }
+
+            // 1. Limpar canvas
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+            // 2. Desenhar o feed de vídeo (ESPELHADO para parecer mais natural ao utilizador)
+            canvasCtx.translate(canvasElement.width, 0);
+            canvasCtx.scale(-1, 1);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.restore();
+
+            // 3. Detetar mãos e criar magia
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                for (const landmarks of results.multiHandLandmarks) {
+                   
+                    // Usar a base dos dedos (palma) como ponto de origem. O Landmark 9 é o Dedo Médio (MCP)
+                    const centroDaPalma = landmarks[9];
+                   
+                    // Converter as coordenadas normalizadas (0 a 1) para pixels do canvas.
+                    // Como espelhamos o vídeo, invertemos o eixo X (1 - x)
+                    const origemX = (1 - centroDaPalma.x) * canvasElement.width;
+                    const origemY = centroDaPalma.y * canvasElement.height;
+
+                    // Criar novas partículas a cada frame em que a mão é detetada (2 partículas por frame = chafariz)
+                    for(let i=0; i<2; i++){
+                        arrayParticulas.push(new ParticulaAlice(origemX, origemY));
+                    }
+                }
+            }
+
+            // 4. Atualizar e desenhar as partículas
+            for (let i = arrayParticulas.length - 1; i >= 0; i--) {
+                const p = arrayParticulas[i];
+                p.atualizar();
+                p.desenhar(canvasCtx);
+               
+                // Remover se a vida útil acabar
+                if (p.life <= 0) {
+                    arrayParticulas.splice(i, 1);
+                }
+            }
+        }
+
+        // ==========================================
+        // INICIALIZAÇÃO MEDIAPIPE E CÂMARA
+        // ==========================================
+        const hands = new Hands({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }});
+       
+        hands.setOptions({
+            maxNumHands: 2, // Permite as duas mãos
+            modelComplexity: 1, // 0 para mais rápido, 1 para melhor precisão
+            minDetectionConfidence: 0.6,
+            minTrackingConfidence: 0.5
+        });
+        hands.onResults(onResults);
+
+        // Configurar a utilidade da Câmara
+        camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({image: videoElement});
+            },
+            width: 640,
+            height: 480
+        });
+
+        // Iniciar câmara (alguns browsers precisam de interação do utilizador)
+        camera.start().catch(err => {
+            console.error("Erro a iniciar câmara, mostrando botão de inicio manual:", err);
+            loadingScreen.innerHTML = `<p class="text-red-400 font-bold px-4 text-center">Não foi possível iniciar a câmara automaticamente.<br>Clica no botão em baixo para tentar de novo.</p>`;
+            startBtn.classList.remove('hidden');
+        });
+
+        startBtn.addEventListener('click', () => {
+            loadingScreen.innerHTML = `<div class="loader mb-4"></div><p class="text-fuchsia-300 font-medium animate-pulse text-center">A tentar ligar a câmara...</p>`;
+            camera.start();
+            startBtn.classList.add('hidden');
+        });
+
+    </script>
+</body>
+</html>
