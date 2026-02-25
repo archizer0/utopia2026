@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fuga do País das Maravilhas - 3D</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700&family=Raleway:wght@300;400;700&display=swap');
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #05010a;
+            font-family: 'Raleway', sans-serif;
+            color: #fff;
+            user-select: none;
+        }
+
+        #game-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        /* Interface (Mira no centro) */
+        #hud {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 6px;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 5;
+            pointer-events: none;
+            box-shadow: 0 0 5px rgba(0, 255, 255, 0.8);
+            display: none; /* Escondido até o jogo começar */
+        }
+
+        /* Ecrã de Menu e Pausa */
+        #menu-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(5, 1, 10, 0.85);
+            backdrop-filter: blur(8px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+            transition: opacity 0.3s;
+        }
+
+        h1 {
+            font-family: 'Cinzel Decorative', cursive;
+            font-size: 3.5rem;
+            color: #d4af37; /* Dourado */
+            text-shadow: 0 0 20px rgba(212, 175, 55, 0.5);
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .subtitle {
+            font-size: 1.2rem;
+            color: #a980d4;
+            margin-bottom: 40px;
+            text-align: center;
+            max-width: 600px;
+            line-height: 1.6;
+        }
+
+        .controls {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px 40px;
+            border-radius: 10px;
+            border: 1px solid rgba(212, 175, 55, 0.2);
+            margin-bottom: 40px;
+            text-align: center;
+        }
+
+        .controls strong { color: #00ffff; }
+
+        .btn-group {
+            display: flex;
+            gap: 20px;
+        }
+
+        button {
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            font-family: 'Raleway', sans-serif;
+            font-weight: bold;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+        }
+
+        #btn-play {
+            background-color: #d4af37;
+            color: #05010a;
+            box-shadow: 0 0 15px rgba(212, 175, 55, 0.4);
+        }
+
+        #btn-play:hover {
+            background-color: #fff;
+            transform: scale(1.05);
+            box-shadow: 0 0 25px rgba(255, 255, 255, 0.6);
+        }
+
+        #btn-quit {
+            background-color: transparent;
+            color: #ff4d4d;
+            border: 2px solid #ff4d4d;
+        }
+
+        #btn-quit:hover {
+            background-color: #ff4d4d;
+            color: #fff;
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(255, 77, 77, 0.4);
+        }
+
+        /* Ecrã de Fim de Jogo (Saída) */
+        #exit-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+
+        #exit-screen h1 {
+            color: #fff;
+            text-shadow: none;
+        }
+    </style>
+    <!-- Incluir a biblioteca Three.js para os gráficos 3D -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+    <!-- Onde o jogo 3D vai ser renderizado -->
+    <div id="game-canvas"></div>
+   
+    <!-- Ponto central de mira -->
+    <div id="hud"></div>
+
+    <!-- Menu Principal e Pausa -->
+    <div id="menu-screen">
+        <h1 id="menu-title">O País das Maravilhas</h1>
+        <p class="subtitle" id="menu-desc">Estás perdido na floresta sombria da Rainha de Copas.<br>Explora o ambiente e encontra o <strong>Portal Mágico (Anel Brilhante)</strong> para conseguires escapar.</p>
+       
+        <div class="controls">
+            Movimento: <strong>W A S D</strong><br>
+            Olhar: <strong>Rato</strong><br>
+            Pausar / Mostrar Rato: <strong>ESC</strong>
+        </div>
+
+        <div class="btn-group">
+            <button id="btn-play">Entrar na Floresta</button>
+            <button id="btn-quit" style="display: none;">Sair do Jogo</button>
+        </div>
+    </div>
+
+    <!-- Ecrã mostrado quando sais do jogo -->
+    <div id="exit-screen">
+        <h1>Acordaste.</h1>
+        <p class="subtitle">Conseguiste sair da Toca do Coelho e voltaste à realidade.</p>
+        <p style="color: #666; margin-top: 30px;">(Podes fechar esta janela agora)</p>
+    </div>
+
+    <script>
+        // --- 1. CONFIGURAÇÃO BASE DO 3D ---
+        const container = document.getElementById('game-canvas');
+        const scene = new THREE.Scene();
+       
+        // Adicionar um nevoeiro denso e realista para criar mistério
+        scene.background = new THREE.Color(0x0a0314);
+        scene.fog = new THREE.FogExp2(0x0a0314, 0.035);
+
+        const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
+       
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        container.appendChild(renderer.domElement);
+
+        // --- 2. ILUMINAÇÃO ---
+        const ambientLight = new THREE.AmbientLight(0x201533, 1.2); // Luz roxa muito fraca
+        scene.add(ambientLight);
+
+        const moonLight = new THREE.DirectionalLight(0xaaccff, 0.6); // Luz da lua azulada
+        moonLight.position.set(20, 50, -20);
+        moonLight.castShadow = true;
+        moonLight.shadow.mapSize.width = 2048;
+        moonLight.shadow.mapSize.height = 2048;
+        moonLight.shadow.camera.near = 0.5;
+        moonLight.shadow.camera.far = 150;
+        moonLight.shadow.camera.left = -50;
+        moonLight.shadow.camera.right = 50;
+        moonLight.shadow.camera.top = 50;
+        moonLight.shadow.camera.bottom = -50;
+        scene.add(moonLight);
+
+        // --- 3. CRIAÇÃO DO MUNDO (País das Maravilhas) ---
+       
+        // Chão de Xadrez Distorcido (Criado proceduralmente)
+        function createCheckerboardTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024; canvas.height = 1024;
+            const ctx = canvas.getContext('2d');
+           
+            // Fundo escuro
+            ctx.fillStyle = '#0a0a0a';
+            ctx.fillRect(0, 0, 1024, 1024);
+           
+            // Quadrados cor de vinho escuro
+            ctx.fillStyle = '#2a0812';
+            ctx.fillRect(0, 0, 512, 512);
+            ctx.fillRect(512, 512, 512, 512);
+           
+            // Adicionar sujidade/ruído ao chão
+            for(let i=0; i<5000; i++) {
+                ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.5})`;
+                ctx.fillRect(Math.random()*1024, Math.random()*1024, 4, 4);
+            }
+
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(40, 40);
+            return tex;
+        }
+
+        const floorMat = new THREE.MeshStandardMaterial({
+            map: createCheckerboardTexture(),
+            roughness: 0.8,
+            metalness: 0.1
+        });
+        const floorGeo = new THREE.PlaneGeometry(300, 300);
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        floor.receiveShadow = true;
+        scene.add(floor);
+
+        // Arrays para guardar objetos interativos/animados
+        const mushrooms = [];
+        const floatingCards = [];
+        let portal;
+
+        // Função para criar Cogumelos Mágicos
+        function spawnMushroom(x, z, scale) {
+            const group = new THREE.Group();
+
+            // Tronco
+            const stemGeo = new THREE.CylinderGeometry(0.3*scale, 0.6*scale, 3*scale, 16);
+            const stemMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 1.0 });
+            const stem = new THREE.Mesh(stemGeo, stemMat);
+            stem.position.y = 1.5 * scale;
+            stem.castShadow = true;
+            group.add(stem);
+
+            // Chapéu do Cogumelo
+            const capGeo = new THREE.SphereGeometry(2*scale, 32, 16, 0, Math.PI*2, 0, Math.PI/2);
+            // Cores néon para os cogumelos
+            const colors = [0xff0055, 0x00ffff, 0xaa00ff, 0x33ff33];
+            const capColor = colors[Math.floor(Math.random() * colors.length)];
+           
+            const capMat = new THREE.MeshStandardMaterial({
+                color: capColor,
+                emissive: capColor,
+                emissiveIntensity: 0.6, // Faz o cogumelo brilhar no escuro
+                roughness: 0.3
+            });
+            const cap = new THREE.Mesh(capGeo, capMat);
+            cap.position.y = 3 * scale;
+            cap.castShadow = true;
+            group.add(cap);
+
+            // Luz pontual por baixo do chapéu do cogumelo
+            const light = new THREE.PointLight(capColor, 1.5, 15 * scale);
+            light.position.y = 2.5 * scale;
+            group.add(light);
+
+            group.position.set(x, 0, z);
+           
+            // Torcer o cogumelo um pouco para parecer natural
+            group.rotation.z = (Math.random() - 0.5) * 0.4;
+            group.rotation.x = (Math.random() - 0.5) * 0.4;
+
+            scene.add(group);
+            mushrooms.push(group);
+        }
+
+        // Função para criar Cartas Voadoras
+        function spawnCard(x, y, z) {
+            const cardGeo = new THREE.PlaneGeometry(1, 1.5);
+            // Frente branca, verso vermelho escuro
+            const cardMat = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+            const card = new THREE.Mesh(cardGeo, cardMat);
+           
+            card.position.set(x, y, z);
+            card.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, 0);
+           
+            scene.add(card);
+            floatingCards.push({
+                mesh: card,
+                speedY: (Math.random() * 0.02) + 0.01,
+                speedRot: (Math.random() * 0.05) + 0.01,
+                startY: y
+            });
+        }
+
+        // Criar o PORTAL DE SAÍDA (Objetivo do jogo)
+        function createExitPortal() {
+            const portalGroup = new THREE.Group();
+
+            // Anel Brilhante
+            const ringGeo = new THREE.TorusGeometry(3, 0.4, 16, 100);
+            const ringMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.8 });
+            const ring = new THREE.Mesh(ringGeo, ringMat);
+            portalGroup.add(ring);
+
+            // Luz do Portal
+            const portalLight = new THREE.PointLight(0x00ffff, 3, 30);
+            portalGroup.add(portalLight);
+
+            // Colocar o portal algures na floresta (longe do centro)
+            const angle = Math.random() * Math.PI * 2;
+            const distance = 40 + Math.random() * 20; // Entre 40 e 60 metros de distância
+            portalGroup.position.set(Math.cos(angle) * distance, 3, Math.sin(angle) * distance);
+           
+            // O portal aponta para o centro
+            portalGroup.lookAt(0, 3, 0);
+
+            scene.add(portalGroup);
+            return portalGroup;
+        }
+
+        // Gerar a Floresta
+        for(let i=0; i<150; i++) {
+            const x = (Math.random() - 0.5) * 160;
+            const z = (Math.random() - 0.5) * 160;
+            // Deixar espaço livre no meio onde o jogador nasce
+            if(Math.abs(x) < 8 && Math.abs(z) < 8) continue;
+           
+            spawnMushroom(x, z, 0.5 + Math.random() * 2);
+        }
+
+        for(let i=0; i<40; i++) {
+            spawnCard(
+                (Math.random() - 0.5) * 80,
+                2 + Math.random() * 10,
+                (Math.random() - 0.5) * 80
+            );
+        }
+
+        portal = createExitPortal();
+
+        // --- 4. SISTEMA DE JOGADOR E CONTROLOS ---
+       
+        camera.position.set(0, 1.7, 0); // Altura de uma pessoa
+        camera.rotation.order = 'YXZ';
+       
+        let pitch = 0; // Olhar para cima/baixo
+        let yaw = 0;   // Olhar para os lados
+        let isPlaying = false;
+
+        // UI Elements
+        const menuScreen = document.getElementById('menu-screen');
+        const btnPlay = document.getElementById('btn-play');
+        const btnQuit = document.getElementById('btn-quit');
+        const hud = document.getElementById('hud');
+        const exitScreen = document.getElementById('exit-screen');
+        const menuTitle = document.getElementById('menu-title');
+
+        // Ligar o modo de Bloqueio do Rato (Pointer Lock) quando clica em Jogar
+        btnPlay.addEventListener('click', () => {
+            document.body.requestPointerLock();
+        });
+
+        // O que acontece quando clica em Sair no Menu
+        btnQuit.addEventListener('click', () => {
+            quitGame();
+        });
+
+        // Ouve as mudanças de estado do Pointer Lock (Rato preso = Jogar, Rato solto = Pausa)
+        document.addEventListener('pointerlockchange', () => {
+            if (document.pointerLockElement === document.body) {
+                // Entrou no Jogo
+                isPlaying = true;
+                menuScreen.style.opacity = '0';
+                setTimeout(() => menuScreen.style.display = 'none', 300);
+                hud.style.display = 'block';
+               
+                // Alterar botões para quando fizer pausa
+                btnPlay.innerText = "Retomar Jogo";
+                btnQuit.style.display = 'block';
+                menuTitle.innerText = "Jogo em Pausa";
+            } else {
+                // Rato solto (Pausa)
+                if (exitScreen.style.display !== 'flex') { // Só mostra o menu se não tiver saído
+                    isPlaying = false;
+                    menuScreen.style.display = 'flex';
+                    // Pequeno delay para a animação de opacidade funcionar
+                    setTimeout(() => menuScreen.style.opacity = '1', 10);
+                    hud.style.display = 'none';
+                }
+            }
+        });
+
+        // Movimento do Rato para olhar em redor
+        document.addEventListener('mousemove', (event) => {
+            if (!isPlaying) return;
+
+            const sensibilidade = 0.002;
+            yaw -= event.movementX * sensibilidade;
+            pitch -= event.movementY * sensibilidade;
+           
+            // Limitar o pescoço para não dar cambalhotas (máximo 90 graus cima/baixo)
+            pitch = Math.max(-Math.PI / 2.1, Math.min(Math.PI / 2.1, pitch));
+           
+            camera.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ'));
+        });
+
+        // Teclado (WASD)
+        const keys = { w: false, a: false, s: false, d: false };
+        document.addEventListener('keydown', (e) => {
+            if (keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key.toLowerCase()] = true;
+        });
+        document.addEventListener('keyup', (e) => {
+            if (keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key.toLowerCase()] = false;
+        });
+
+        // Variáveis de física
+        const velocity = new THREE.Vector3();
+        const direction = new THREE.Vector3();
+        const moveSpeed = 8.0; // Velocidade de caminhada
+        const clock = new THREE.Clock();
+        let walkTime = 0;
+
+        function updatePlayer(delta) {
+            if (!isPlaying) return;
+
+            // Calcular a direção baseada nas teclas pressionadas
+            direction.set(0, 0, 0);
+            if (keys.w) direction.z -= 1;
+            if (keys.s) direction.z += 1;
+            if (keys.a) direction.x -= 1;
+            if (keys.d) direction.x += 1;
+            direction.normalize(); // Impede andar mais rápido na diagonal
+
+            // Inércia suave (aceleração/desaceleração)
+            if (direction.length() > 0) {
+                velocity.x += direction.x * moveSpeed * delta * 5;
+                velocity.z += direction.z * moveSpeed * delta * 5;
+                walkTime += delta * 10;
+            } else {
+                walkTime = 0;
+            }
+
+            // Fricção para parar quando se larga as teclas
+            velocity.x -= velocity.x * 10.0 * delta;
+            velocity.z -= velocity.z * 10.0 * delta;
+
+            // Converter o movimento para a direção para onde a câmara está a olhar
+            const forward = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(0, yaw, 0));
+            const right = new THREE.Vector3(1, 0, 0).applyEuler(new THREE.Euler(0, yaw, 0));
+
+            // Aplicar o movimento à câmara
+            camera.position.addScaledVector(forward, -velocity.z * delta);
+            camera.position.addScaledVector(right, velocity.x * delta);
+
+            // Efeito de passos (Head bobbing - câmara sobe e desce ao andar)
+            if (direction.length() > 0) {
+                camera.position.y = 1.7 + Math.sin(walkTime) * 0.08;
+            } else {
+                // Voltar suavemente à altura normal
+                camera.position.y += (1.7 - camera.position.y) * 0.1;
+            }
+
+            // Limites do mundo (não deixar sair do chão infinito)
+            camera.position.x = Math.max(-100, Math.min(100, camera.position.x));
+            camera.position.z = Math.max(-100, Math.min(100, camera.position.z));
+        }
+
+        // --- 5. LÓGICA DE SAÍDA DO JOGO ---
+
+        // Função que encerra o mundo e mostra o ecrã preto
+        function quitGame() {
+            isPlaying = false;
+            if (document.pointerLockElement) {
+                document.exitPointerLock();
+            }
+           
+            // Esconder tudo e mostrar o ecrã de saída
+            container.style.display = 'none';
+            menuScreen.style.display = 'none';
+            hud.style.display = 'none';
+            exitScreen.style.display = 'flex';
+        }
+
+        function checkPortalCollision() {
+            if (!isPlaying) return;
+
+            // Calcular a distância do jogador (câmara) ao portal
+            const distance = camera.position.distanceTo(portal.position);
+           
+            // Se estiver a menos de 2.5 metros, atravessou o portal!
+            if (distance < 2.5) {
+                // Ganhou o jogo
+                exitScreen.querySelector('h1').innerText = "Escapaste do País das Maravilhas!";
+                exitScreen.querySelector('.subtitle').innerText = "Atravessaste o Portal Mágico em segurança.";
+                quitGame();
+            }
+        }
+
+
+        // --- 6. CICLO DE ANIMAÇÃO PRINCIPAL ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+
+            // Animações do ambiente (Cartas flutuantes e Portal a rodar)
+            floatingCards.forEach(item => {
+                item.mesh.rotation.y += item.speedRot;
+                item.mesh.rotation.z += item.speedRot * 0.5;
+                item.mesh.position.y = item.startY + Math.sin(Date.now() * 0.001 * item.speedY * 100) * 1.5;
+            });
+
+            if (portal) {
+                portal.rotation.y -= 0.5 * delta;
+                portal.children[0].scale.set(1 + Math.sin(Date.now()*0.002)*0.05, 1 + Math.sin(Date.now()*0.002)*0.05, 1);
+            }
+
+            // Atualizar o Jogador
+            updatePlayer(delta);
+            checkPortalCollision();
+
+            // Renderizar a cena
+            renderer.render(scene, camera);
+        }
+
+        // Adaptar ao redimensionamento da janela do navegador
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Iniciar ciclo de renderização
+        animate();
+    </script>
+</body>
+</html>
+
+
+

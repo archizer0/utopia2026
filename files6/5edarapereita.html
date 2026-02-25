@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice na Boca das Maravilhas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #1a1025;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .hidden {
+            display: none !important;
+        }
+        /* Fundo mágico animado para a tela de carregamento */
+        .magic-bg {
+            background: linear-gradient(-45deg, #2b1055, #7597de, #b56576, #350159);
+            background-size: 400% 400%;
+            animation: gradientBG 10s ease infinite;
+        }
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Vídeo oculto usado pelo MediaPipe -->
+    <video id="input_video" class="hidden" autoplay playsinline></video>
+   
+    <!-- Canvas onde o jogo acontece -->
+    <canvas id="output_canvas"></canvas>
+
+    <!-- Overlay de UI -->
+    <div id="ui_container" class="absolute inset-0 flex flex-col items-center justify-center magic-bg z-10 text-white p-6 text-center">
+        <h1 class="text-5xl md:text-7xl font-bold mb-4 drop-shadow-lg" style="font-family: serif;">País das Maravilhas</h1>
+        <p class="text-xl md:text-2xl mb-8 max-w-lg drop-shadow-md">Abra bem a boca para trazer a magia da Alice para o mundo real!</p>
+       
+        <button id="start_btn" class="bg-purple-600 hover:bg-purple-500 text-white font-bold py-4 px-8 rounded-full text-xl transition-all transform hover:scale-105 shadow-[0_0_20px_rgba(168,85,247,0.6)]">
+            Entrar na Toca do Coelho
+        </button>
+
+        <div id="loading_state" class="hidden flex-col items-center mt-6">
+            <svg class="animate-spin -ml-1 mr-3 h-10 w-10 text-white mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p class="text-lg animate-pulse">Carregando a magia e a câmera...</p>
+        </div>
+    </div>
+
+    <!-- Instruções rápidas durante o jogo -->
+    <div id="game_ui" class="absolute top-4 left-0 w-full text-center hidden pointer-events-none z-20">
+        <span class="bg-black/50 text-white px-6 py-2 rounded-full backdrop-blur-sm text-lg border border-purple-500/50">
+            Abra a boca! 👄
+        </span>
+    </div>
+
+<script>
+    // --- Configurações Iniciais ---
+    const videoElement = document.getElementById('input_video');
+    const canvasElement = document.getElementById('output_canvas');
+    const canvasCtx = canvasElement.getContext('2d');
+    const uiContainer = document.getElementById('ui_container');
+    const startBtn = document.getElementById('start_btn');
+    const loadingState = document.getElementById('loading_state');
+    const gameUi = document.getElementById('game_ui');
+
+    let isPlaying = false;
+    let particles = [];
+    let audioCtx = null;
+    let lastSoundTime = 0;
+
+    // Emojis inspirados em Alice
+    const wonderlandEmojis = ["🐇", "🎩", "😸", "☕", "🍄", "🐛", "⏱️", "👑", "🫖", "❤️", "♠️", "♦️", "♣️", "🌹"];
+
+    // --- Sistema de Partículas ---
+    class Particle {
+        constructor(x, y) {
+            this.x = x;
+            this.y = y;
+            // Explosão aleatória para fora da boca
+            this.vx = (Math.random() - 0.5) * 15;
+            this.vy = (Math.random() - 0.5) * 10 - 5; // Tendência a ir para cima inicialmente
+            this.emoji = wonderlandEmojis[Math.floor(Math.random() * wonderlandEmojis.length)];
+            this.size = Math.random() * 40 + 30; // 30px a 70px
+            this.gravity = 0.6; // Peso da partícula
+            this.life = 1.0;
+            this.decay = Math.random() * 0.015 + 0.005; // Velocidade em que desaparece
+            this.rotation = Math.random() * Math.PI * 2;
+            this.rotationSpeed = (Math.random() - 0.5) * 0.3;
+        }
+
+        update() {
+            this.x += this.vx;
+            this.y += this.vy;
+            this.vy += this.gravity; // Efeito da gravidade puxando pra baixo
+            this.rotation += this.rotationSpeed;
+            this.life -= this.decay;
+        }
+
+        draw(ctx) {
+            if (this.life <= 0) return;
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            ctx.rotate(this.rotation);
+            ctx.globalAlpha = this.life;
+            ctx.font = `${this.size}px Arial`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(this.emoji, 0, 0);
+            ctx.restore();
+        }
+    }
+
+    // --- Áudio de Efeito ---
+    function playMagicSound() {
+        if (!audioCtx) {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext();
+        }
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+
+        const now = audioCtx.currentTime;
+        if (now - lastSoundTime < 0.1) return; // Limita os sons para não bugar o ouvido
+        lastSoundTime = now;
+
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+       
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+       
+        // Som borbulhante/mágico
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(300 + Math.random() * 400, now);
+        osc.frequency.exponentialRampToValueAtTime(800 + Math.random() * 200, now + 0.1);
+       
+        gain.gain.setValueAtTime(0.05, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+       
+        osc.start(now);
+        osc.stop(now + 0.1);
+    }
+
+    // --- Redimensionamento do Canvas ---
+    function resizeCanvas() {
+        canvasElement.width = window.innerWidth;
+        canvasElement.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // --- Lógica Principal do MediaPipe ---
+    function onResults(results) {
+        if (!isPlaying) return;
+
+        // Desenhar o vídeo preenchendo a tela (efeito cover)
+        canvasCtx.save();
+        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+        let drawWidth, drawHeight, offsetX, offsetY;
+        if (results.image) {
+            const videoRatio = results.image.width / results.image.height;
+            const canvasRatio = canvasElement.width / canvasElement.height;
+
+            if (canvasRatio > videoRatio) {
+                drawWidth = canvasElement.width;
+                drawHeight = canvasElement.width / videoRatio;
+                offsetX = 0;
+                offsetY = (canvasElement.height - drawHeight) / 2;
+            } else {
+                drawWidth = canvasElement.height * videoRatio;
+                drawHeight = canvasElement.height;
+                offsetX = (canvasElement.width - drawWidth) / 2;
+                offsetY = 0;
+            }
+
+            // Espelhar horizontalmente para funcionar como um espelho
+            canvasCtx.translate(canvasElement.width, 0);
+            canvasCtx.scale(-1, 1);
+           
+            // Note que estamos desenhando com cordenadas invertidas por causa do scale(-1, 1)
+            canvasCtx.drawImage(results.image, -offsetX, offsetY, drawWidth, drawHeight);
+        }
+        canvasCtx.restore();
+
+        // Detectar boca aberta
+        if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+            const landmarks = results.multiFaceLandmarks[0];
+           
+            // Pontos 13 (Lábio Superior Interno) e 14 (Lábio Inferior Interno)
+            const topLip = landmarks[13];
+            const bottomLip = landmarks[14];
+           
+            // Distância vertical entre os lábios
+            const mouthOpenness = bottomLip.y - topLip.y;
+
+            // Limite para considerar "boca aberta" (geralmente > 0.03 funciona bem)
+            if (mouthOpenness > 0.035) {
+                // Calcular posição da boca na tela
+                const rawX = (topLip.x + bottomLip.x) / 2;
+                const rawY = (topLip.y + bottomLip.y) / 2;
+
+                // Mapear coordenadas brutas [0, 1] para o tamanho desenhado
+                const mappedX = offsetX + rawX * drawWidth;
+                const mappedY = offsetY + rawY * drawHeight;
+
+                // O X real precisa ser invertido porque o vídeo está espelhado!
+                const finalX = canvasElement.width - mappedX;
+                const finalY = mappedY;
+
+                // Spawnar partículas
+                for(let i=0; i<3; i++) {
+                    particles.push(new Particle(finalX, finalY));
+                }
+                playMagicSound();
+            }
+        }
+
+        // Atualizar e desenhar partículas
+        for (let i = particles.length - 1; i >= 0; i--) {
+            particles[i].update();
+            particles[i].draw(canvasCtx);
+            // Remover partículas mortas ou fora da tela
+            if (particles[i].life <= 0 || particles[i].y > canvasElement.height + 100) {
+                particles.splice(i, 1);
+            }
+        }
+    }
+
+    const faceMesh = new FaceMesh({locateFile: (file) => {
+        return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+    }});
+   
+    faceMesh.setOptions({
+        maxNumFaces: 1,
+        refineLandmarks: true,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+    });
+    faceMesh.onResults(onResults);
+
+    // --- Iniciar Jogo ---
+    startBtn.addEventListener('click', async () => {
+        startBtn.classList.add('hidden');
+        loadingState.classList.remove('hidden');
+        loadingState.classList.add('flex');
+
+        try {
+            // Inicia o contexto de áudio em resposta à interação do usuário
+            if (!audioCtx) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContext();
+            }
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const camera = new Camera(videoElement, {
+                onFrame: async () => {
+                    await faceMesh.send({image: videoElement});
+                },
+                width: 1280,
+                height: 720
+            });
+           
+            await camera.start();
+           
+            // Sucesso! Esconder UI inicial e mostrar o jogo
+            uiContainer.classList.add('hidden');
+            gameUi.classList.remove('hidden');
+            isPlaying = true;
+
+        } catch (error) {
+            console.error(error);
+            alert("Não foi possível acessar a câmera. Verifique as permissões do seu navegador.");
+            startBtn.classList.remove('hidden');
+            loadingState.classList.add('hidden');
+            loadingState.classList.remove('flex');
+        }
+    });
+
+</script>
+</body>
+</html>

@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice no País das Notas Musicais</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #1a002a;
+            font-family: 'Palatino', serif;
+            color: white;
+            text-align: center;
+        }
+
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* Vídeo da Webcam */
+        #webcam {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); /* Efeito espelho */
+            opacity: 0.6;
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none; /* Deixa cliques passarem para elementos abaixo se necessário */
+        }
+
+        #ui {
+            position: relative;
+            z-index: 10;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.5);
+        }
+
+        button {
+            padding: 15px 30px;
+            font-size: 1.2rem;
+            background: #ff00ff;
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 0 15px #ff00ff;
+        }
+
+        button:hover {
+            background: #00ffff;
+            box-shadow: 0 0 15px #00ffff;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <h1>Alice no País das Notas</h1>
+        <p>Permita a câmera e clique em iniciar para tocar as xícaras mágicas!</p>
+        <button id="startBtn">Começar o Chá Musical</button>
+    </div>
+
+    <div id="container">
+        <video id="webcam" autoplay playsinline></video>
+        <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <script>
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+       
+        let cups = [];
+        let gameActive = false;
+        let audioCtx;
+
+        // Configuração do Canvas
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Acesso à Webcam
+        async function setupWebcam() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+            } catch (err) {
+                alert("Ops! Precisamos da câmera para a magia acontecer.");
+            }
+        }
+
+        // Sistema de Som Simples (Beep Musical)
+        function playNote(freq) {
+            if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+           
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+           
+            gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1);
+           
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+           
+            osc.start();
+            osc.stop(audioCtx.currentTime + 1);
+        }
+
+        class Cup {
+            constructor() {
+                this.x = Math.random() * canvas.width;
+                this.y = -50;
+                this.speed = 2 + Math.random() * 3;
+                this.size = 40;
+                this.freq = [261.63, 293.66, 329.63, 349.23, 392.00][Math.floor(Math.random() * 5)];
+                this.color = `hsl(${Math.random() * 360}, 70%, 60%)`;
+            }
+
+            update() {
+                this.y += this.speed;
+            }
+
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                // "Asa" da xícara
+                ctx.strokeStyle = "white";
+                ctx.lineWidth = 5;
+                ctx.stroke();
+            }
+        }
+
+        function gameLoop() {
+            if(!gameActive) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if(Math.random() < 0.03) cups.push(new Cup());
+
+            cups.forEach((cup, index) => {
+                cup.update();
+                cup.draw();
+
+                // Detecção de colisão simples com o mouse (simulando movimento detectado)
+                // Em uma versão avançada, usaríamos bibliotecas como o MediaPipe para detecção de mãos
+                canvas.onmousemove = (e) => {
+                    const dist = Math.hypot(cup.x - e.clientX, cup.y - e.clientY);
+                    if(dist < cup.size) {
+                        playNote(cup.freq);
+                        cups.splice(index, 1);
+                    }
+                };
+
+                if(cup.y > canvas.height) cups.splice(index, 1);
+            });
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        startBtn.onclick = () => {
+            setupWebcam();
+            gameActive = true;
+            startBtn.parentElement.style.display = 'none';
+            gameLoop();
+        };
+    </script>
+</body>
+</html>

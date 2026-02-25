@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webcam Studio - Alice Mágica</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- MediaPipe para detecção facial -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
+
+    <style>
+        .video-container {
+            position: relative;
+            overflow: hidden;
+            border-radius: 1rem;
+            background: #1a1a1a;
+            aspect-ratio: 16 / 9;
+        }
+        video {
+            display: none; /* O vídeo real fica oculto, usamos o canvas para desenhar tudo */
+        }
+        canvas#output_canvas {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); /* Espelhado */
+        }
+        .filter-alice {
+            filter: hue-rotate(90deg) saturate(150%) contrast(110%);
+        }
+        .snapshot-anim {
+            animation: flash 0.15s ease-out;
+        }
+        @keyframes flash {
+            0% { opacity: 1; background: white; }
+            100% { opacity: 0; }
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-white min-h-screen flex flex-col items-center p-4 md:p-8">
+
+    <div class="max-w-4xl w-full space-y-6">
+        <div class="text-center">
+            <h1 class="text-3xl font-bold tracking-tight">Webcam Studio: Alice Mágica</h1>
+            <p class="text-slate-400 mt-2">Abra a boca para soltar a magia do País das Maravilhas! ✨</p>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            <div class="lg:col-span-1 space-y-4 order-2 lg:order-1">
+                <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-xl">
+                    <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-3">Filtros</h2>
+                    <div class="grid grid-cols-2 lg:grid-cols-1 gap-2">
+                        <button onclick="currentFilter='none'" class="bg-slate-700 hover:bg-blue-600 px-3 py-2 rounded-lg text-sm transition">Normal</button>
+                        <button onclick="currentFilter='alice'" class="bg-purple-700 hover:bg-purple-600 px-3 py-2 rounded-lg text-sm font-bold transition">Alice ✨</button>
+                    </div>
+                </div>
+
+                <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 text-center">
+                    <p id="status-text" class="text-xs text-yellow-500 font-medium italic">Carregando IA Facial...</p>
+                </div>
+            </div>
+
+            <div class="lg:col-span-3 order-1 lg:order-2 space-y-4">
+                <div class="video-container shadow-2xl border-4 border-slate-800 relative">
+                    <canvas id="output_canvas"></canvas>
+                    <video id="webcam" autoplay playsinline></video>
+                    <div id="flash-overlay" class="absolute inset-0 pointer-events-none opacity-0"></div>
+                </div>
+
+                <div class="flex justify-center gap-4">
+                    <button id="snap-btn" disabled onclick="takeSnapshot()" class="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold py-3 px-8 rounded-full flex items-center gap-2 transition-all shadow-lg">
+                        Tirar Foto
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-12 space-y-4">
+            <h2 class="text-xl font-bold">Galeria</h2>
+            <div id="gallery" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                <p id="empty-msg" class="col-span-full text-center text-slate-600 py-8 italic border-2 border-dashed border-slate-800 rounded-xl">Suas fotos mágicas aparecerão aqui</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const videoElement = document.getElementById('webcam');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const statusText = document.getElementById('status-text');
+        const snapBtn = document.getElementById('snap-btn');
+        const flashOverlay = document.getElementById('flash-overlay');
+
+        let currentFilter = 'none';
+        let particles = [];
+        const ALICE_ICONS = ['🃏', '☕', '🧁', '🐇', '🎩', '🍄', '🗝️', '🕒', '🌹'];
+
+        class Particle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.char = ALICE_ICONS[Math.floor(Math.random() * ALICE_ICONS.length)];
+                this.size = Math.random() * 20 + 20;
+                this.speedY = Math.random() * -5 - 2;
+                this.speedX = (Math.random() - 0.5) * 8;
+                this.rotation = Math.random() * 360;
+                this.opacity = 1;
+                this.life = 1.0;
+            }
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.rotation += 5;
+                this.life -= 0.02;
+                this.opacity = this.life;
+            }
+            draw(ctx) {
+                ctx.save();
+                ctx.globalAlpha = this.opacity;
+                ctx.font = `${this.size}px serif`;
+                ctx.translate(this.x, this.y);
+                ctx.rotate((this.rotation * Math.PI) / 180);
+                ctx.fillText(this.char, -this.size/2, this.size/2);
+                ctx.restore();
+            }
+        }
+
+        const faceMesh = new FaceMesh({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+        });
+
+        faceMesh.setOptions({
+            maxNumFaces: 2,
+            refineLandmarks: true,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        faceMesh.onResults(onResults);
+
+        function onResults(results) {
+            // Ajustar tamanho do canvas
+            if (canvasElement.width !== videoElement.videoWidth) {
+                canvasElement.width = videoElement.videoWidth;
+                canvasElement.height = videoElement.videoHeight;
+            }
+
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+           
+            // Aplicar Filtro Visual
+            if (currentFilter === 'alice') {
+                canvasCtx.filter = 'hue-rotate(90deg) saturate(150%) contrast(110%)';
+            } else {
+                canvasCtx.filter = 'none';
+            }
+
+            // Desenhar o vídeo
+            if (results.image) {
+                canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            }
+           
+            canvasCtx.filter = 'none'; // Resetar filtro para os ícones
+
+            if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                for (const landmarks of results.multiFaceLandmarks) {
+                    // Verificação de segurança para garantir que os pontos existem
+                    if (landmarks && landmarks[13] && landmarks[14]) {
+                        // Pontos da boca (superior e inferior interno)
+                        const upperLip = landmarks[13];
+                        const lowerLip = landmarks[14];
+                       
+                        // Calcular distância entre os lábios
+                        const mouthDist = Math.abs(upperLip.y - lowerLip.y);
+                       
+                        // Se a boca estiver aberta (limiar empírico)
+                        if (mouthDist > 0.05) {
+                            const centerX = upperLip.x * canvasElement.width;
+                            const centerY = upperLip.y * canvasElement.height;
+                           
+                            // Gerar partículas
+                            if (Math.random() > 0.5) {
+                                particles.push(new Particle(centerX, centerY));
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Atualizar e desenhar partículas
+            particles = particles.filter(p => p.life > 0);
+            particles.forEach(p => {
+                p.update();
+                p.draw(canvasCtx);
+            });
+
+            canvasCtx.restore();
+        }
+
+        async function init() {
+            try {
+                const camera = new Camera(videoElement, {
+                    onFrame: async () => {
+                        await faceMesh.send({image: videoElement});
+                    },
+                    width: 1280,
+                    height: 720
+                });
+                camera.start().then(() => {
+                    statusText.innerText = "Câmera e IA Ativas";
+                    statusText.className = "text-xs text-green-500 font-medium";
+                    snapBtn.disabled = false;
+                }).catch(err => {
+                    statusText.innerText = "Erro ao carregar câmera";
+                    statusText.className = "text-xs text-red-500 font-medium";
+                });
+            } catch (e) {
+                statusText.innerText = "Erro na inicialização";
+                statusText.className = "text-xs text-red-500 font-medium";
+            }
+        }
+
+        function takeSnapshot() {
+            flashOverlay.classList.remove('snapshot-anim');
+            void flashOverlay.offsetWidth;
+            flashOverlay.classList.add('snapshot-anim');
+
+            const imageData = canvasElement.toDataURL('image/png');
+            addToGallery(imageData);
+        }
+
+        function addToGallery(dataUrl) {
+            const existingEmpty = document.getElementById('empty-msg');
+            if (existingEmpty) existingEmpty.remove();
+           
+            const wrapper = document.createElement('div');
+            wrapper.className = "group relative bg-slate-800 rounded-lg overflow-hidden border border-slate-700 shadow-lg animate-in fade-in zoom-in duration-300";
+           
+            const img = document.createElement('img');
+            img.src = dataUrl;
+            img.className = "w-full h-auto block";
+
+            const downloadBtn = document.createElement('a');
+            downloadBtn.href = dataUrl;
+            downloadBtn.download = `alice-magic-${Date.now()}.png`;
+            downloadBtn.innerHTML = `
+                <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity cursor-pointer">
+                    <span class="bg-blue-600 p-2 rounded-full text-white text-xs font-bold">SALVAR</span>
+                </div>
+            `;
+
+            wrapper.appendChild(img);
+            wrapper.appendChild(downloadBtn);
+            document.getElementById('gallery').prepend(wrapper);
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>

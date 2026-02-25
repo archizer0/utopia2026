@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice: Batalha no País das Maravilhas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #1a202c; /* tailwind gray-900 */
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        #gameCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+            z-index: 10;
+        }
+        #uiLayer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 20;
+            pointer-events: none; /* Let clicks pass through if needed */
+        }
+        .hud-text {
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+        }
+        #startScreen, #gameOverScreen {
+            pointer-events: auto;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+        }
+        .interactive-btn {
+            pointer-events: auto;
+            transition: transform 0.1s, background-color 0.2s;
+        }
+        .interactive-btn:hover {
+            transform: scale(1.05);
+        }
+        .interactive-btn:active {
+            transform: scale(0.95);
+        }
+       
+        /* Flash effect for taking damage */
+        #damageOverlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: red;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 15;
+            transition: opacity 0.2s;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Video feed (hidden, used as source) -->
+    <video id="webcam" autoplay playsinline style="display: none;"></video>
+   
+    <!-- Motion detection canvas (hidden, low res for performance) -->
+    <canvas id="motionCanvas" width="100" height="75" style="display: none;"></canvas>
+
+    <!-- Main Game Canvas -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Damage overlay -->
+    <div id="damageOverlay"></div>
+
+    <!-- UI Layer -->
+    <div id="uiLayer" class="flex flex-col justify-between p-4">
+       
+        <!-- HUD -->
+        <div id="hud" class="hidden flex justify-between items-start w-full max-w-4xl mx-auto">
+            <div class="flex flex-col">
+                <span class="text-xl font-bold text-red-400 hud-text">Vida: <span id="healthDisplay">100</span>%</span>
+                <div class="w-48 h-4 bg-gray-700 rounded-full mt-1 border-2 border-gray-900 overflow-hidden">
+                    <div id="healthBar" class="h-full bg-red-500 transition-all duration-300 w-full"></div>
+                </div>
+            </div>
+           
+            <div class="flex flex-col items-end">
+                <span class="text-3xl font-bold text-yellow-300 hud-text">Pontos: <span id="scoreDisplay">0</span></span>
+                <span class="text-lg font-bold text-blue-300 hud-text" id="waveDisplay">Vaga: 1</span>
+            </div>
+        </div>
+
+        <!-- Start Screen -->
+        <div id="startScreen" class="absolute inset-0 flex flex-col items-center justify-center text-center p-6">
+            <h1 class="text-5xl md:text-7xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600 mb-4 filter drop-shadow-lg">
+                País das Maravilhas
+            </h1>
+            <p class="text-xl md:text-2xl mb-8 max-w-2xl text-gray-200 drop-shadow-md">
+                Usa a tua câmara para lutar! <br>
+                <strong>Move as mãos</strong> no ecrã sobre os inimigos para os derrotares.<br><br>
+                <span class="text-blue-300">👱‍♀️ Protege a Alice (não lhe batas!) para ganhares vida.</span><br>
+                <span class="text-yellow-300">🐇 Apanha o Coelho Branco para pontos extra.</span>
+            </p>
+            <div class="flex gap-4">
+                <button id="startBtn" class="interactive-btn px-8 py-4 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-full shadow-[0_0_15px_rgba(168,85,247,0.5)] text-xl border-2 border-purple-400">
+                    Iniciar Aventura
+                </button>
+            </div>
+            <p id="camStatus" class="mt-4 text-sm text-gray-400"></p>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="gameOverScreen" class="hidden absolute inset-0 flex flex-col items-center justify-center text-center p-6">
+            <h1 class="text-6xl font-extrabold text-red-500 mb-2 drop-shadow-[0_0_10px_rgba(239,68,68,0.8)]">Fim de Jogo!</h1>
+            <h2 class="text-2xl text-gray-200 mb-6">A Rainha cortou-te a cabeça!</h2>
+            <p class="text-3xl font-bold text-yellow-300 mb-8">Pontuação Final: <span id="finalScore">0</span></p>
+            <button id="restartBtn" class="interactive-btn px-8 py-4 bg-red-600 hover:bg-red-500 text-white font-bold rounded-full shadow-[0_0_15px_rgba(239,68,68,0.5)] text-xl border-2 border-red-400">
+                Tentar Novamente
+            </button>
+        </div>
+
+    </div>
+
+    <script>
+        // --- System & Constants ---
+        const video = document.getElementById('webcam');
+        const gameCanvas = document.getElementById('gameCanvas');
+        const ctx = gameCanvas.getContext('2d');
+        const motionCanvas = document.getElementById('motionCanvas');
+        const motionCtx = motionCanvas.getContext('2d', { willReadFrequently: true });
+       
+        // UI Elements
+        const startScreen = document.getElementById('startScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const hud = document.getElementById('hud');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const healthDisplay = document.getElementById('healthDisplay');
+        const healthBar = document.getElementById('healthBar');
+        const waveDisplay = document.getElementById('waveDisplay');
+        const finalScoreDisplay = document.getElementById('finalScore');
+        const camStatus = document.getElementById('camStatus');
+        const damageOverlay = document.getElementById('damageOverlay');
+
+        // Game State
+        let isPlaying = false;
+        let score = 0;
+        let health = 100;
+        let wave = 1;
+        let enemies = [];
+        let particles = [];
+        let lastFrameTime = 0;
+        let spawnTimer = 0;
+        let previousImageData = null;
+        let motionPoints = []; // Stores recent motion to draw feedback
+        let floatingTexts = []; // NOVO: Guarda os textos flutuantes de pontuação e impacto
+
+        // Enemy Types (Alice in Wonderland Theme)
+        const ENEMY_TYPES = {
+            CARD: { emoji: '🃏', hp: 30, speed: 1.5, size: 60, score: 10, name: 'Soldado de Carta', color: '#EF4444' },
+            HATTER: { emoji: '🎩', hp: 50, speed: 2.5, size: 70, score: 25, name: 'Chapeleiro', color: '#10B981', erratic: true },
+            CAT: { emoji: '😸', hp: 40, speed: 1.5, size: 80, score: 30, name: 'Gato Cheshire', color: '#8B5CF6', teleports: true },
+            QUEEN: { emoji: '👑', hp: 150, speed: 0.8, size: 100, score: 100, name: 'Rainha de Copas', color: '#F59E0B', boss: true },
+            RABBIT: { emoji: '🐇', hp: 1, speed: 6, size: 60, score: 50, name: 'Coelho Branco', color: '#FFFFFF', runaway: true },
+            ALICE: { emoji: '👱‍♀️', hp: 10, speed: 1, size: 70, score: -50, name: 'Alice', color: '#60A5FA', friendly: true }
+        };
+
+        // Resize Canvas to fill screen
+        function resize() {
+            gameCanvas.width = window.innerWidth;
+            gameCanvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // --- Camera Setup ---
+        async function initCamera() {
+            try {
+                camStatus.innerText = "A pedir acesso à câmara...";
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }
+                });
+                video.srcObject = stream;
+               
+                return new Promise((resolve) => {
+                    video.onloadedmetadata = () => {
+                        video.play();
+                        camStatus.innerText = "Câmara pronta! Clica no botão acima.";
+                        resolve(true);
+                    };
+                });
+            } catch (err) {
+                console.error("Erro ao aceder à câmara: ", err);
+                camStatus.innerHTML = "<span class='text-red-400'>Erro: Câmara não encontrada ou permissão negada. O jogo requer uma webcam.</span>";
+                return false;
+            }
+        }
+
+        // --- Core Classes ---
+        class Enemy {
+            constructor(type, canvasWidth, canvasHeight) {
+                this.type = type;
+                this.size = type.size * (window.innerWidth / 800); // Scale with screen
+                this.hp = type.hp;
+                this.maxHp = type.hp;
+               
+                // Spawn randomly on edges
+                if (Math.random() > 0.5) {
+                    this.x = Math.random() > 0.5 ? -this.size : canvasWidth + this.size;
+                    this.y = Math.random() * canvasHeight;
+                } else {
+                    this.x = Math.random() * canvasWidth;
+                    this.y = Math.random() > 0.5 ? -this.size : canvasHeight + this.size;
+                }
+
+                this.targetX = canvasWidth / 2 + (Math.random() * 200 - 100);
+                this.targetY = canvasHeight / 2 + (Math.random() * 200 - 100);
+               
+                this.state = 'spawning'; // spawning, attacking, dying
+                this.timer = 0;
+                this.opacity = this.type.fades ? 0 : 1;
+                this.hitCooldown = 0;
+               
+                // Wobble effect
+                this.wobbleOffset = Math.random() * Math.PI * 2;
+            }
+
+            update(dt) {
+                if (this.hitCooldown > 0) this.hitCooldown -= dt;
+
+                // Lógica de fuga rápida (Coelho Branco)
+                if (this.type.runaway) {
+                    this.x += (this.targetX > gameCanvas.width/2 ? this.type.speed : -this.type.speed);
+                    this.y += Math.sin(Date.now() * 0.01) * 5; // Salta enquanto corre
+                    if (this.x < -100 || this.x > gameCanvas.width + 100) this.hp = 0; // Foge e desaparece
+                    return;
+                }
+
+                // Move towards target
+                const dx = this.targetX - this.x;
+                const dy = this.targetY - this.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+
+                let currentSpeed = this.type.speed * (1 + wave * 0.1); // Gets harder
+
+                if (dist > 10) {
+                    this.x += (dx / dist) * currentSpeed;
+                    this.y += (dy / dist) * currentSpeed;
+                } else {
+                    // Reached target, prepare to attack
+                    this.timer += dt;
+                    if (this.timer > 2000) { // 2 seconds to hit player
+                        if (this.type.friendly) {
+                            // Alice chegou ao centro e cura o jogador
+                            health = Math.min(100, health + 15);
+                            floatingTexts.push(new FloatingText(this.x, this.y - 20, "+15 Vida!", "#4ade80"));
+                            updateHUD();
+                        } else {
+                            takeDamage(this.type.boss ? 20 : 10);
+                        }
+                        this.hp = 0; // Die/Disappear after action
+                    }
+                   
+                    // Erratic movement (Hatter)
+                    if (this.type.erratic && Math.random() < 0.05) {
+                         this.targetX = gameCanvas.width / 2 + (Math.random() * 400 - 200);
+                         this.targetY = gameCanvas.height / 2 + (Math.random() * 400 - 200);
+                    }
+                }
+
+                // Cheshire cat teleportation
+                if (this.type.teleports && Math.random() < 0.02) {
+                    this.x += (Math.random() - 0.5) * 300;
+                    this.y += (Math.random() - 0.5) * 300;
+                    createParticles(this.x, this.y, this.type.color); // Deixa partículas onde aparece
+                }
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+               
+                // Add wobble
+                const wobble = Math.sin(Date.now() * 0.005 + this.wobbleOffset) * 0.1;
+                ctx.rotate(wobble);
+
+                // Hit effect
+                if (this.hitCooldown > 0) {
+                    ctx.filter = 'brightness(200%) hue-rotate(-50deg)';
+                    ctx.scale(1.1, 1.1);
+                }
+
+                ctx.globalAlpha = this.opacity;
+                ctx.font = `${this.size}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.type.emoji, 0, 0);
+
+                // HP Bar
+                if (this.hp < this.maxHp) {
+                    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+                    ctx.fillRect(-this.size/2, this.size/2 + 10, this.size, 8);
+                    ctx.fillStyle = this.type.color;
+                    const hpWidth = (this.hp / this.maxHp) * this.size;
+                    ctx.fillRect(-this.size/2, this.size/2 + 10, hpWidth, 8);
+                }
+
+                ctx.restore();
+            }
+
+            takeHit(damage) {
+                if (this.hitCooldown > 0) return;
+               
+                this.hp -= damage;
+                this.hitCooldown = 200; // ms invulnerability
+               
+                // Create particles and floating text feedback
+                createParticles(this.x, this.y, this.type.color);
+               
+                // Só mostra 'Pow!' para inimigos
+                if (!this.type.friendly) {
+                    floatingTexts.push(new FloatingText(this.x, this.y - 40, "Pow!", "#fbbf24"));
+                }
+               
+                if (this.hp <= 0) {
+                    score += this.type.score;
+                   
+                    if (this.type.friendly) {
+                        floatingTexts.push(new FloatingText(this.x, this.y, `NÃO BATAS NA ALICE! (${this.type.score})`, "#EF4444"));
+                    } else {
+                        floatingTexts.push(new FloatingText(this.x, this.y, `+${this.type.score}`, "#4ade80"));
+                    }
+                   
+                    updateHUD();
+                }
+            }
+        }
+
+        class FloatingText {
+            constructor(x, y, text, color) {
+                this.x = x;
+                this.y = y;
+                this.text = text;
+                this.color = color;
+                this.life = 1.0;
+                this.vy = -2;
+            }
+            update(dt) {
+                this.y += this.vy;
+                this.life -= dt * 0.002;
+            }
+            draw(ctx) {
+                const currentLife = Math.max(0, this.life);
+                ctx.globalAlpha = currentLife;
+                ctx.fillStyle = this.color;
+                ctx.font = 'bold 30px Arial';
+                ctx.textAlign = 'center';
+                // Contorno negro para ler melhor sobre o vídeo
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 4;
+                ctx.strokeText(this.text, this.x, this.y);
+                ctx.fillText(this.text, this.x, this.y);
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 10;
+                this.vy = (Math.random() - 0.5) * 10;
+                this.life = 1.0;
+                this.color = color;
+                this.size = Math.random() * 10 + 5;
+            }
+            update(dt) {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= dt * 0.002;
+            }
+            draw(ctx) {
+                const currentLife = Math.max(0, this.life);
+                ctx.globalAlpha = currentLife;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * currentLife, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        // --- Game Logic ---
+        function createParticles(x, y, color) {
+            for(let i=0; i<8; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        function takeDamage(amount) {
+            health -= amount;
+            if (health < 0) health = 0;
+            updateHUD();
+           
+            // Visual flash
+            damageOverlay.style.opacity = '0.5';
+            setTimeout(() => damageOverlay.style.opacity = '0', 200);
+
+            if (health <= 0) {
+                endGame();
+            }
+        }
+
+        function updateHUD() {
+            scoreDisplay.innerText = score;
+            healthDisplay.innerText = health;
+            healthBar.style.width = `${health}%`;
+           
+            if(health < 30) healthBar.classList.replace('bg-red-500', 'bg-red-600');
+            else healthBar.classList.replace('bg-red-600', 'bg-red-500');
+           
+            waveDisplay.innerText = `Vaga: ${wave}`;
+        }
+
+        function spawnEnemy() {
+            let type = ENEMY_TYPES.CARD;
+            const r = Math.random();
+           
+            if (wave >= 5 && r > 0.9) type = ENEMY_TYPES.QUEEN;
+            else if (r > 0.80 && r <= 0.90) type = ENEMY_TYPES.RABBIT; // 10% chance
+            else if (r > 0.70 && r <= 0.80) type = ENEMY_TYPES.ALICE;  // 10% chance
+            else if (wave >= 3 && r > 0.50 && r <= 0.70) type = ENEMY_TYPES.CAT;
+            else if (wave >= 2 && r > 0.25 && r <= 0.50) type = ENEMY_TYPES.HATTER;
+
+            enemies.push(new Enemy(type, gameCanvas.width, gameCanvas.height));
+        }
+
+        // --- Motion Detection ---
+        function processMotion() {
+            if (!video.videoWidth) return;
+
+            // Draw video to hidden low-res canvas
+            motionCtx.save();
+            // Mirror horizontal so motion aligns with mirrored main canvas
+            motionCtx.translate(motionCanvas.width, 0);
+            motionCtx.scale(-1, 1);
+            motionCtx.drawImage(video, 0, 0, motionCanvas.width, motionCanvas.height);
+            motionCtx.restore();
+
+            const frameData = motionCtx.getImageData(0, 0, motionCanvas.width, motionCanvas.height);
+            const currentPixels = frameData.data;
+           
+            if (!previousImageData) {
+                previousImageData = new Uint8ClampedArray(currentPixels);
+                return;
+            }
+
+            const previousPixels = previousImageData;
+            const threshold = 40; // Sensitivity
+            motionPoints = [];
+
+            // Ratios to map low-res coordinates to main canvas
+            const scaleX = gameCanvas.width / motionCanvas.width;
+            const scaleY = gameCanvas.height / motionCanvas.height;
+
+            // Check pixels for differences (motion)
+            // Step by 4 (RGBA) and step by extra to optimize
+            const step = 4 * 2;
+            for (let i = 0; i < currentPixels.length; i += step) {
+                const rDiff = Math.abs(currentPixels[i] - previousPixels[i]);
+                const gDiff = Math.abs(currentPixels[i+1] - previousPixels[i+1]);
+                const bDiff = Math.abs(currentPixels[i+2] - previousPixels[i+2]);
+
+                if (rDiff + gDiff + bDiff > threshold * 3) {
+                    // Motion detected at this pixel
+                    const pixelIndex = i / 4;
+                    const mx = pixelIndex % motionCanvas.width;
+                    const my = Math.floor(pixelIndex / motionCanvas.width);
+                   
+                    const screenX = mx * scaleX;
+                    const screenY = my * scaleY;
+
+                    motionPoints.push({x: screenX, y: screenY});
+
+                    // Check collisions with enemies
+                    for (let e of enemies) {
+                        if (e.hp > 0 && e.hitCooldown <= 0) {
+                            // Simple bounding box collision
+                            if (Math.abs(screenX - e.x) < e.size/2 && Math.abs(screenY - e.y) < e.size/2) {
+                                e.takeHit(10); // Damage per motion tick
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Save current frame for next time
+            previousImageData.set(currentPixels);
+        }
+
+        // --- Main Game Loop ---
+        function gameLoop(timestamp) {
+            if (!isPlaying) return;
+           
+            const dt = timestamp - lastFrameTime;
+            lastFrameTime = timestamp;
+
+            // 1. Draw Camera Feed (Mirrored)
+            ctx.save();
+            ctx.translate(gameCanvas.width, 0);
+            ctx.scale(-1, 1);
+            // Calculate cover sizing
+            const videoRatio = video.videoWidth / video.videoHeight;
+            const canvasRatio = gameCanvas.width / gameCanvas.height;
+            let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
+
+            if (canvasRatio > videoRatio) {
+                drawWidth = gameCanvas.width;
+                drawHeight = gameCanvas.width / videoRatio;
+                offsetY = (gameCanvas.height - drawHeight) / 2;
+            } else {
+                drawHeight = gameCanvas.height;
+                drawWidth = gameCanvas.height * videoRatio;
+                offsetX = (gameCanvas.width - drawWidth) / 2;
+            }
+           
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                ctx.drawImage(video, offsetX, offsetY, drawWidth, drawHeight);
+            }
+            ctx.restore();
+
+            // 2. Process Motion & Collisions
+            processMotion();
+
+            // 3. Draw Motion Debug (Magical Sparkles)
+            for(let p of motionPoints) {
+                if(Math.random() > 0.7) {
+                    ctx.fillStyle = `hsl(${Math.random() * 360}, 100%, 70%)`;
+                    ctx.font = '24px Arial';
+                    ctx.fillText('✨', p.x, p.y);
+                }
+            }
+
+            // 4. Wave Management
+            spawnTimer += dt;
+            const spawnRate = Math.max(1000, 3000 - (wave * 200)); // Gets faster
+            if (spawnTimer > spawnRate) {
+                spawnTimer = 0;
+                spawnEnemy();
+               
+                // Increase wave every 10 enemies roughly
+                if (Math.random() < 0.1) wave++;
+            }
+
+            // 5. Update and Draw Enemies
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const e = enemies[i];
+                e.update(dt);
+                e.draw(ctx);
+               
+                if (e.hp <= 0) {
+                    enemies.splice(i, 1); // Remove dead enemy
+                }
+            }
+
+            // 6. Update and Draw Particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.update(dt);
+                p.draw(ctx);
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+
+            // 7. Update and Draw Floating Texts
+            for (let i = floatingTexts.length - 1; i >= 0; i--) {
+                const ft = floatingTexts[i];
+                ft.update(dt);
+                ft.draw(ctx);
+                if (ft.life <= 0) floatingTexts.splice(i, 1);
+            }
+
+            // Loop
+            if (isPlaying) {
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        // --- Game Controls ---
+        function startGame() {
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+            hud.classList.remove('hidden');
+           
+            score = 0;
+            health = 100;
+            wave = 1;
+            enemies = [];
+            particles = [];
+            floatingTexts = [];
+            updateHUD();
+           
+            isPlaying = true;
+            lastFrameTime = performance.now();
+            previousImageData = null; // Reset motion baseline
+           
+            requestAnimationFrame(gameLoop);
+        }
+
+        function endGame() {
+            isPlaying = false;
+            hud.classList.add('hidden');
+            gameOverScreen.classList.remove('hidden');
+            finalScoreDisplay.innerText = score;
+        }
+
+        // --- Event Listeners ---
+        document.getElementById('startBtn').addEventListener('click', async () => {
+            document.getElementById('startBtn').innerText = "A carregar...";
+            const camReady = await initCamera();
+            if (camReady) {
+                startGame();
+            }
+        });
+
+        document.getElementById('restartBtn').addEventListener('click', () => {
+            startGame();
+        });
+
+        // Initialize background (before cam)
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, gameCanvas.width, gameCanvas.height);
+        ctx.fillStyle = '#fff';
+        ctx.font = '20px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('À espera de Alice...', gameCanvas.width/2, gameCanvas.height/2);
+
+    </script>
+</body>
+</html>

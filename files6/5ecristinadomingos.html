@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webcam Explorer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .video-container {
+            position: relative;
+            overflow: hidden;
+            border-radius: 1rem;
+            background: #1a1a1a;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+        }
+        video {
+            transform: scaleX(-1); /* Mirror effect for natural feel */
+        }
+        .filter-none { filter: none; }
+        .filter-grayscale { filter: grayscale(100%); }
+        .filter-sepia { filter: sepia(100%); }
+        .filter-invert { filter: invert(100%); }
+        .filter-blur { filter: blur(5px); }
+        .filter-hue { filter: hue-rotate(90deg); }
+       
+        canvas { display: none; }
+       
+        .snapshot-card {
+            transition: transform 0.2s;
+        }
+        .snapshot-card:hover {
+            transform: translateY(-4px);
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-white min-h-screen p-4 md:p-8">
+    <div class="max-w-4xl mx-auto">
+        <header class="mb-8 text-center">
+            <h1 class="text-4xl font-bold mb-2 bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
+                Webcam Explorer
+            </h1>
+            <p class="text-slate-400">Capture moments and apply live filters</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Left: Video Feed -->
+            <div class="lg:col-span-2 space-y-6">
+                <div class="video-container aspect-video flex items-center justify-center">
+                    <div id="setup-message" class="text-center p-6">
+                        <div class="mb-4 text-64px">📷</div>
+                        <p class="text-lg mb-4">Camera access is required</p>
+                        <button id="start-btn" class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded-full font-semibold transition">
+                            Enable Camera
+                        </button>
+                    </div>
+                    <video id="video" class="w-full h-full object-cover hidden" autoplay playsinline></video>
+                   
+                    <!-- Overlay Controls -->
+                    <div id="video-overlay" class="absolute bottom-4 left-0 right-0 flex justify-center gap-4 opacity-0 transition-opacity">
+                        <button id="capture-btn" class="bg-white text-slate-900 p-4 rounded-full shadow-lg hover:scale-110 active:scale-95 transition">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Filters -->
+                <div class="bg-slate-800 p-6 rounded-2xl">
+                    <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-4">Live Filters</h2>
+                    <div class="flex flex-wrap gap-3">
+                        <button onclick="setFilter('none')" class="filter-btn bg-slate-700 px-4 py-2 rounded-lg hover:bg-slate-600 transition border-2 border-transparent active-filter">Normal</button>
+                        <button onclick="setFilter('grayscale')" class="filter-btn bg-slate-700 px-4 py-2 rounded-lg hover:bg-slate-600 transition border-2 border-transparent">Grayscale</button>
+                        <button onclick="setFilter('sepia')" class="filter-btn bg-slate-700 px-4 py-2 rounded-lg hover:bg-slate-600 transition border-2 border-transparent">Sepia</button>
+                        <button onclick="setFilter('invert')" class="filter-btn bg-slate-700 px-4 py-2 rounded-lg hover:bg-slate-600 transition border-2 border-transparent">Invert</button>
+                        <button onclick="setFilter('blur')" class="filter-btn bg-slate-700 px-4 py-2 rounded-lg hover:bg-slate-600 transition border-2 border-transparent">Blur</button>
+                        <button onclick="setFilter('hue')" class="filter-btn bg-slate-700 px-4 py-2 rounded-lg hover:bg-slate-600 transition border-2 border-transparent">Neon</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Gallery -->
+            <div class="space-y-4">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-xl font-bold">Snapshots</h2>
+                    <button id="clear-gallery" class="text-xs text-slate-500 hover:text-red-400">Clear All</button>
+                </div>
+                <div id="gallery" class="grid grid-cols-2 lg:grid-cols-1 gap-4 overflow-y-auto max-h-[600px] pr-2">
+                    <!-- Snapshots will appear here -->
+                    <p id="empty-msg" class="text-slate-600 italic text-sm text-center py-8">No photos yet...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden Canvas for capturing -->
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const startBtn = document.getElementById('start-btn');
+        const captureBtn = document.getElementById('capture-btn');
+        const setupMessage = document.getElementById('setup-message');
+        const videoOverlay = document.getElementById('video-overlay');
+        const gallery = document.getElementById('gallery');
+        const emptyMsg = document.getElementById('empty-msg');
+        const clearBtn = document.getElementById('clear-gallery');
+
+        let stream = null;
+        let currentFilter = 'none';
+
+        // Start Camera
+        async function initCamera() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: "user",
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
+                    audio: false
+                });
+                video.srcObject = stream;
+                video.classList.remove('hidden');
+                setupMessage.classList.add('hidden');
+                videoOverlay.classList.remove('opacity-0');
+            } catch (err) {
+                console.error("Error accessing webcam:", err);
+                showError("Could not access camera. Please ensure you've granted permissions.");
+            }
+        }
+
+        // Apply Filter
+        function setFilter(filterName) {
+            currentFilter = filterName;
+            video.className = `w-full h-full object-cover filter-${filterName}`;
+           
+            // UI Visual Feedback
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('border-blue-500', 'bg-slate-600');
+                if(btn.textContent.toLowerCase().includes(filterName === 'hue' ? 'neon' : filterName === 'none' ? 'normal' : filterName)) {
+                    btn.classList.add('border-blue-500', 'bg-slate-600');
+                }
+            });
+        }
+
+        // Capture Snapshot
+        function capturePhoto() {
+            if (!stream) return;
+
+            const context = canvas.getContext('2d');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+
+            // Mirror the context to match the video element display
+            context.translate(canvas.width, 0);
+            context.scale(-1, 1);
+
+            // Apply filter to the canvas context
+            const filters = {
+                'none': 'none',
+                'grayscale': 'grayscale(100%)',
+                'sepia': 'sepia(100%)',
+                'invert': 'invert(100%)',
+                'blur': 'blur(5px)',
+                'hue': 'hue-rotate(90deg)'
+            };
+            context.filter = filters[currentFilter];
+
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+           
+            const dataUrl = canvas.toDataURL('image/png');
+            addPhotoToGallery(dataUrl);
+        }
+
+        function addPhotoToGallery(dataUrl) {
+            emptyMsg.classList.add('hidden');
+           
+            const div = document.createElement('div');
+            div.className = 'snapshot-card bg-slate-800 p-2 rounded-xl relative group';
+            div.innerHTML = `
+                <img src="${dataUrl}" class="w-full h-auto rounded-lg shadow-md" alt="Snapshot">
+                <a href="${dataUrl}" download="snapshot.png" class="absolute top-4 right-4 bg-blue-600 p-2 rounded-full opacity-0 group-hover:opacity-100 transition shadow-lg">
+                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                </a>
+                <p class="text-[10px] text-slate-500 mt-2">${new Date().toLocaleTimeString()}</p>
+            `;
+            gallery.prepend(div);
+        }
+
+        function showError(msg) {
+            setupMessage.innerHTML = `
+                <div class="text-red-400 mb-4">⚠️</div>
+                <p class="text-slate-300 mb-4">${msg}</p>
+                <button onclick="location.reload()" class="text-blue-400 underline">Try Again</button>
+            `;
+        }
+
+        // Listeners
+        startBtn.addEventListener('click', initCamera);
+        captureBtn.addEventListener('click', capturePhoto);
+        clearBtn.addEventListener('click', () => {
+            gallery.innerHTML = '';
+            gallery.appendChild(emptyMsg);
+            emptyMsg.classList.remove('hidden');
+        });
+
+        // Initialize UI State
+        setFilter('none');
+    </script>
+</body>
+</html>

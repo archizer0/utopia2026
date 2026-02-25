@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice no País das Maravilhas - Jogo de Câmara</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+   
+    <!-- Scripts do MediaPipe para deteção de mãos e câmara -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #1a1025;
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-image: radial-gradient(circle at 50% 50%, #3a1c54 0%, #1a1025 100%);
+        }
+       
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* O vídeo real fica escondido, usamos apenas para processar */
+        .input_video {
+            display: none;
+        }
+
+        /* O canvas onde o jogo e a imagem da câmara são desenhados */
+        .output_canvas {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); /* Espelhar a câmara para parecer um espelho real */
+            z-index: 1;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none; /* Deixa os cliques passarem para o canvas se necessário */
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 2rem;
+            box-sizing: border-box;
+        }
+
+        .wonderland-border {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            border: 15px solid transparent;
+            border-image: repeating-linear-gradient(45deg, #000, #000 20px, #fff 20px, #fff 40px) 15;
+            z-index: 5;
+            pointer-events: none;
+            opacity: 0.3;
+        }
+
+        #overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(26, 16, 37, 0.85);
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            pointer-events: auto;
+            backdrop-filter: blur(5px);
+            transition: opacity 0.5s;
+        }
+
+        .btn {
+            background: linear-gradient(to bottom, #d6457d, #8b2252);
+            border: 2px solid #ffb6c1;
+            padding: 12px 30px;
+            border-radius: 30px;
+            color: white;
+            font-size: 1.2rem;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(214, 69, 125, 0.5);
+            transition: transform 0.2s, box-shadow 0.2s;
+            pointer-events: auto;
+        }
+
+        .btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 20px rgba(214, 69, 125, 0.7);
+        }
+
+        .btn:disabled {
+            background: #555;
+            border-color: #777;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .score-board {
+            background: rgba(0, 0, 0, 0.6);
+            border: 2px solid #d6457d;
+            padding: 10px 20px;
+            border-radius: 15px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #ffb6c1;
+            text-shadow: 1px 1px 2px black;
+            display: inline-block;
+        }
+
+        #loading-text {
+            margin-bottom: 20px;
+            font-size: 1.2rem;
+            color: #ffb6c1;
+            text-align: center;
+            max-width: 600px;
+        }
+       
+        .title {
+            font-family: 'Georgia', serif;
+            font-size: 3rem;
+            color: #fff;
+            text-shadow: 0 0 10px #d6457d, 0 0 20px #d6457d;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <!-- Vídeo de origem -->
+        <video class="input_video" autoplay playsinline></video>
+       
+        <!-- Onde a magia acontece -->
+        <canvas class="output_canvas" id="gameCanvas"></canvas>
+       
+        <!-- Borda do xadrez místico -->
+        <div class="wonderland-border"></div>
+
+        <!-- Elementos de UI (Pontuação, etc) -->
+        <div id="ui-layer">
+            <div class="flex justify-between items-start">
+                <div class="score-board">
+                    Pontuação: <span id="scoreDisplay">0</span>
+                </div>
+                <div class="score-board text-sm bg-purple-900 border-purple-400">
+                    Vidas: <span id="livesDisplay">❤️❤️❤️</span>
+                </div>
+            </div>
+           
+            <div id="instructions" class="text-center text-white/70 text-sm hidden">
+                Move a tua mão na frente da câmara para controlar a chávena!
+            </div>
+        </div>
+
+        <!-- Menu Inicial / Ecrã de Carregamento -->
+        <div id="overlay">
+            <h1 class="title">Alice no País das Maravilhas</h1>
+            <p id="loading-text">A preparar a magia visual... Por favor, permite o acesso à câmara se for solicitado.</p>
+            <div id="loader" class="w-12 h-12 border-4 border-pink-500 border-t-transparent rounded-full animate-spin mb-6"></div>
+            <button id="startBtn" class="btn hidden">Entrar na Toca do Coelho</button>
+           
+            <div class="mt-8 bg-black/50 p-4 rounded-xl max-w-md text-center border border-purple-500">
+                <h3 class="text-pink-300 font-bold mb-2">Como Jogar:</h3>
+                <p class="text-sm mb-2">Usa o dedo indicador ou o rato para mover a <b>Chávena de Chá</b> ☕.</p>
+                <div class="flex justify-center gap-4 text-2xl mt-3">
+                    <span title="Apanha isto!">+10 ⏱️</span>
+                    <span title="Apanha isto!">+15 🍰</span>
+                    <span title="Apanha isto!">+20 🧪</span>
+                </div>
+                <div class="flex justify-center gap-4 text-2xl mt-2">
+                    <span title="Evita isto!" class="text-red-400">PERIGO! ♥️ (Cartas)</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Elementos DOM ---
+        const videoElement = document.querySelector('.input_video');
+        const canvasElement = document.querySelector('.output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const overlay = document.getElementById('overlay');
+        const startBtn = document.getElementById('startBtn');
+        const loadingText = document.getElementById('loading-text');
+        const loader = document.getElementById('loader');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const livesDisplay = document.getElementById('livesDisplay');
+        const instructionsDisplay = document.getElementById('instructions');
+
+        // --- Variáveis do Jogo ---
+        let gameRunning = false;
+        let score = 0;
+        let lives = 3;
+        let animationId;
+       
+        // Posição do jogador (0 a 1 em percentagem da largura, para ser independente da resolução)
+        let playerNormalizedX = 0.5;
+        let isHandDetected = false;
+
+        // Entidades do jogo
+        const items = [];
+        const emojis = {
+            player: '☕',
+            good: ['⏱️', '🍰', '🧪', '🍄'],
+            bad: ['♥️', '♠️']
+        };
+
+        // Classes do Jogo
+        class FallingItem {
+            constructor() {
+                this.x = Math.random() * canvasElement.width;
+                this.y = -50; // Começa fora do ecrã
+                this.isBad = Math.random() < 0.3; // 30% de chance de ser uma carta má
+                this.emoji = this.isBad ?
+                    emojis.bad[Math.floor(Math.random() * emojis.bad.length)] :
+                    emojis.good[Math.floor(Math.random() * emojis.good.length)];
+               
+                // Velocidade baseada na pontuação
+                this.speed = (Math.random() * 3 + 2) + (score * 0.05);
+                this.size = 40; // Tamanho do emoji
+                this.markedForDeletion = false;
+            }
+
+            update() {
+                this.y += this.speed;
+                if (this.y > canvasElement.height + this.size) {
+                    this.markedForDeletion = true;
+                    // Penaliza se deixar cair itens bons
+                    if (!this.isBad && gameRunning) {
+                        score = Math.max(0, score - 5);
+                        updateScoreBoard();
+                    }
+                }
+            }
+
+            draw(ctx) {
+                ctx.font = `${this.size}px Arial`;
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText(this.emoji, this.x, this.y);
+            }
+        }
+
+        class FloatingText {
+            constructor(text, x, y, color) {
+                this.text = text;
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.life = 1.0; // 100% de opacidade inicial
+                this.markedForDeletion = false;
+            }
+            update() {
+                this.y -= 2; // Sobe flutuando
+                this.life -= 0.02; // Desvanece
+                if (this.life <= 0) this.markedForDeletion = true;
+            }
+            draw(ctx) {
+                ctx.globalAlpha = Math.max(0, this.life);
+                ctx.font = "bold 24px Arial";
+                ctx.fillStyle = this.color;
+                ctx.textAlign = "center";
+                ctx.fillText(this.text, this.x, this.y);
+                ctx.globalAlpha = 1.0;
+            }
+        }
+
+        const floatingTexts = [];
+
+        // Redimensionamento do Canvas
+        function resizeCanvas() {
+            canvasElement.width = window.innerWidth;
+            canvasElement.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // --- Configuração do MediaPipe Hands ---
+        const hands = new Hands({
+            locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+            }
+        });
+
+        hands.setOptions({
+            maxNumHands: 1, // Só precisamos de uma mão para simplificar
+            modelComplexity: 1,
+            minDetectionConfidence: 0.6,
+            minTrackingConfidence: 0.6
+        });
+
+        hands.onResults((results) => {
+            // Desenhar a imagem da câmara base
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+           
+            // O Canvas está espelhado no CSS (`transform: scaleX(-1)`).
+            // Portanto, desenhamos normalmente aqui.
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+            // Filtro roxo translúcido do "País das Maravilhas"
+            canvasCtx.fillStyle = "rgba(100, 0, 150, 0.2)";
+            canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                isHandDetected = true;
+                const landmarks = results.multiHandLandmarks[0];
+               
+                // Usar a ponta do dedo indicador (landmark 8)
+                const indexFinger = landmarks[8];
+               
+                // Atualizar posição do jogador.
+                // Como o canvas está espelhado fisicamente no CSS, o X da câmara mapeia diretamente para a posição visual se invertermos o valor de tracking
+                playerNormalizedX = 1 - indexFinger.x;
+               
+                // (Opcional) Desenhar esqueleto mágico na mão para feedback
+                drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#ffb6c1', lineWidth: 2});
+                drawLandmarks(canvasCtx, landmarks, {color: '#d6457d', lineWidth: 1, radius: 3});
+            } else {
+                isHandDetected = false;
+            }
+
+            // Continuar o loop do jogo desenhando por cima do vídeo
+            if (gameRunning) {
+                updateAndDrawGame();
+            }
+
+            canvasCtx.restore();
+        });
+
+        // Configuração da Câmara
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({image: videoElement});
+            },
+            width: 1280,
+            height: 720
+        });
+
+        // Inicializar
+        camera.start()
+            .then(() => {
+                loadingText.innerText = "Magia carregada! Prepara a tua mão.";
+                loader.classList.add('hidden');
+                startBtn.classList.remove('hidden');
+            })
+            .catch((err) => {
+                loadingText.innerText = "Erro ao aceder à câmara: " + err.message + "\nPodes jogar usando o rato!";
+                loader.classList.add('hidden');
+                startBtn.classList.remove('hidden');
+                console.error(err);
+            });
+
+        // --- Lógica do Rato como Alternativa ---
+        canvasElement.addEventListener('mousemove', (e) => {
+            // Se a mão não estiver a ser detetada, o rato assume o controlo
+            if (!isHandDetected && gameRunning) {
+                // Converter a posição X do ecrã para a escala do canvas invertida (devido ao CSS)
+                playerNormalizedX = 1 - (e.clientX / window.innerWidth);
+            }
+        });
+
+        // --- Lógica do Jogo ---
+
+        function startGame() {
+            score = 0;
+            lives = 3;
+            items.length = 0;
+            floatingTexts.length = 0;
+            gameRunning = true;
+            updateScoreBoard();
+           
+            overlay.style.opacity = '0';
+            setTimeout(() => overlay.style.display = 'none', 500);
+            instructionsDisplay.classList.remove('hidden');
+           
+            // Ocultar instruções após 5 segundos
+            setTimeout(() => instructionsDisplay.classList.add('hidden'), 5000);
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            overlay.style.display = 'flex';
+            setTimeout(() => overlay.style.opacity = '1', 10);
+           
+            document.querySelector('.title').innerText = "Fim do Chá!";
+            loadingText.innerText = `Apanhaste um total de ${score} pontos. A Rainha de Copas cortou-te a cabeça!`;
+            startBtn.innerText = "Tentar Novamente";
+        }
+
+        function updateScoreBoard() {
+            scoreDisplay.innerText = score;
+            let hearts = "";
+            for(let i=0; i<lives; i++) hearts += "❤️";
+            for(let i=lives; i<3; i++) hearts += "🖤";
+            livesDisplay.innerText = hearts;
+        }
+
+        function updateAndDrawGame() {
+            // 1. Posição do jogador (Chávena)
+            // Lembre-se que o canvas está com scaleX(-1) no CSS, por isso a coordenada de desenho
+            // precisa de estar invertida em relação ao ecrã para parecer estar no sítio certo.
+            const playerPixelX = playerNormalizedX * canvasElement.width;
+            const playerPixelY = canvasElement.height - 100; // Fica na parte inferior do ecrã
+            const playerSize = 80;
+
+            // 2. Gerar novos itens aleatoriamente
+            if (Math.random() < 0.03 + (score * 0.0005)) { // Fica ligeiramente mais difícil com a pontuação
+                items.push(new FallingItem());
+            }
+
+            // 3. Atualizar e Desenhar Itens
+            for (let i = items.length - 1; i >= 0; i--) {
+                const item = items[i];
+                item.update();
+                item.draw(canvasCtx);
+
+                // Deteção de Colisão
+                const dx = item.x - playerPixelX;
+                const dy = item.y - playerPixelY;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < (playerSize/2 + item.size/2)) {
+                    // Colisão detetada!
+                    item.markedForDeletion = true;
+                   
+                    if (item.isBad) {
+                        // Apanhou uma carta da Rainha!
+                        lives--;
+                        score = Math.max(0, score - 20);
+                        floatingTexts.push(new FloatingText("-20", playerPixelX, playerPixelY - 50, "#ff4444"));
+                        updateScoreBoard();
+                       
+                        // Efeito de flash vermelho no ecrã
+                        canvasCtx.fillStyle = "rgba(255, 0, 0, 0.4)";
+                        canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+
+                        if (lives <= 0) {
+                            gameOver();
+                        }
+                    } else {
+                        // Apanhou um item bom
+                        let points = 10;
+                        if (item.emoji === '🍰') points = 15;
+                        if (item.emoji === '🧪') points = 20;
+                       
+                        score += points;
+                        floatingTexts.push(new FloatingText(`+${points}`, playerPixelX, playerPixelY - 50, "#44ff44"));
+                        updateScoreBoard();
+                    }
+                }
+
+                if (item.markedForDeletion) {
+                    items.splice(i, 1);
+                }
+            }
+
+            // 4. Atualizar e Desenhar Textos Flutuantes
+            for (let i = floatingTexts.length - 1; i >= 0; i--) {
+                const ft = floatingTexts[i];
+                ft.update();
+                ft.draw(canvasCtx);
+                if (ft.markedForDeletion) {
+                    floatingTexts.splice(i, 1);
+                }
+            }
+
+            // 5. Desenhar o Jogador (Chávena)
+            canvasCtx.font = `${playerSize}px Arial`;
+            canvasCtx.textAlign = "center";
+            canvasCtx.textBaseline = "middle";
+           
+            // Adicionar um pequeno brilho
+            canvasCtx.shadowColor = '#fff';
+            canvasCtx.shadowBlur = 15;
+            canvasCtx.fillText(emojis.player, playerPixelX, playerPixelY);
+            canvasCtx.shadowBlur = 0; // Reset
+        }
+
+        // Event Listeners
+        startBtn.addEventListener('click', startGame);
+
+        // Caso a MediaPipe falhe mas o jogador queira jogar com o rato na mesma
+        // Se a câmara não foi encontrada, iniciamos o loop manualmente via requestAnimationFrame
+        function manualLoop() {
+            if (!isHandDetected && gameRunning) {
+                // Limpar canvas
+                canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+               
+                // Fundo fallback
+                canvasCtx.fillStyle = "#2a163d";
+                canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+               
+                updateAndDrawGame();
+            }
+            requestAnimationFrame(manualLoop);
+        }
+        manualLoop();
+
+    </script>
+</body>
+</html>
