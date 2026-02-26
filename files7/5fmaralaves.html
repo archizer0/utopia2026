@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice: Fuga das Copas - Controle por Gestos</title>
+    <!-- Bibliotecas MediaPipe para Hand Tracking -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; background: #1a1a1a; color: white; overflow: hidden; font-family: 'serif'; }
+        #canvas-container { position: relative; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; flex-direction: column; }
+        canvas { border: 4px solid #c026d3; border-radius: 12px; box-shadow: 0 0 30px rgba(192, 38, 211, 0.4); background: linear-gradient(to bottom, #87CEEB 0%, #E0F2F1 100%); max-width: 90vw; }
+        #webcam-container { position: absolute; top: 20px; right: 20px; width: 220px; height: 165px; border-radius: 8px; border: 3px solid #c026d3; overflow: hidden; background: #000; }
+        #webcam-preview { width: 100%; height: 100%; transform: scaleX(-1); object-fit: cover; }
+        #hand-guide { position: absolute; top: 40%; left: 0; width: 100%; border-top: 2px dashed yellow; z-index: 10; pointer-events: none; }
+        #ui { position: absolute; top: 20px; left: 20px; pointer-events: none; }
+        .instructions { background: rgba(0,0,0,0.7); padding: 15px; border-radius: 8px; margin-top: 10px; border-left: 4px solid #c026d3; max-width: 300px; }
+        #game-over { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.95); padding: 40px; border-radius: 16px; text-align: center; border: 4px solid #dc2626; z-index: 100; box-shadow: 0 0 50px #000; }
+        .status-badge { position: absolute; bottom: -25px; left: 50%; transform: translateX(-50%); background: yellow; color: black; font-weight: bold; padding: 2px 8px; border-radius: 4px; font-size: 10px; text-transform: uppercase; white-space: nowrap; }
+    </style>
+</head>
+<body>
+
+<div id="canvas-container">
+    <div id="ui">
+        <h1 class="text-4xl font-bold italic" style="color: #c026d3; text-shadow: 2px 2px #000;">Alice no País das Maravilhas</h1>
+        <div class="text-2xl mt-2 font-mono">PONTOS: <span id="score-val">0</span></div>
+        <div class="instructions">
+            <p class="font-bold text-yellow-400 mb-1">CONTROLO POR MÃO:</p>
+            <p class="text-sm">Mantenha a palma virada para a câmera. <span class="text-yellow-300 font-bold">Levante a mão acima da linha amarela</span> para a Alice saltar!</p>
+        </div>
+    </div>
+
+    <div id="webcam-container">
+        <div id="hand-guide"></div>
+        <video id="webcam-preview" autoplay playsinline></video>
+        <div class="status-badge" id="hand-status">Mão não detetada</div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="game-over">
+        <h2 class="text-5xl font-bold text-red-600 mb-4">CORTEM AS CABEÇAS!</h2>
+        <p class="text-xl mb-6">A Rainha de Copas apanhou-te.</p>
+        <button onclick="resetGame()" class="bg-red-600 hover:bg-red-700 text-white px-10 py-4 rounded-full font-bold text-2xl transition-all shadow-lg active:scale-95">RECOMEÇAR</button>
+    </div>
+</div>
+
+<script>
+    const videoElement = document.getElementById('webcam-preview');
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreElement = document.getElementById('score-val');
+    const gameOverScreen = document.getElementById('game-over');
+    const handStatus = document.getElementById('hand-status');
+
+    canvas.width = 800;
+    canvas.height = 500;
+   
+    let gameState = 'playing';
+    let score = 0;
+    let frame = 0;
+    let gameSpeed = 6;
+   
+    // Configurações da Alice
+    const alice = {
+        x: 100,
+        y: 350,
+        width: 60,
+        height: 80,
+        dy: 0,
+        jumpForce: -18,
+        gravity: 0.9,
+        ground: 350,
+        isJumping: false,
+        draw() {
+            ctx.save();
+            // Sombras
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = "rgba(0,0,0,0.3)";
+           
+            // Vestido
+            ctx.fillStyle = "#3b82f6";
+            ctx.beginPath();
+            ctx.moveTo(this.x, this.y + this.height);
+            ctx.lineTo(this.x + this.width, this.y + this.height);
+            ctx.lineTo(this.x + this.width/2 + 10, this.y + 20);
+            ctx.lineTo(this.x + this.width/2 - 10, this.y + 20);
+            ctx.closePath();
+            ctx.fill();
+           
+            // Avental Branco
+            ctx.fillStyle = "white";
+            ctx.fillRect(this.x + 15, this.y + 35, 30, 30);
+           
+            // Rosto
+            ctx.fillStyle = "#ffe4e1";
+            ctx.beginPath();
+            ctx.arc(this.x + this.width/2, this.y + 15, 18, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Cabelo
+            ctx.fillStyle = "#fbbf24";
+            ctx.fillRect(this.x + this.width/2 - 18, this.y - 5, 36, 12);
+            ctx.restore();
+        }
+    };
+
+    let obstacles = [];
+    class CardSoldier {
+        constructor() {
+            this.width = 50;
+            this.height = 75;
+            this.x = canvas.width;
+            this.y = alice.ground + (alice.height - this.height);
+            this.type = Math.random() > 0.5 ? '♥' : '♠';
+            this.color = this.type === '♥' ? '#dc2626' : '#000000';
+        }
+        update() {
+            this.x -= gameSpeed;
+        }
+        draw() {
+            ctx.fillStyle = "white";
+            ctx.strokeStyle = "#333";
+            ctx.lineWidth = 2;
+            ctx.fillRect(this.x, this.y, this.width, this.height);
+            ctx.strokeRect(this.x, this.y, this.width, this.height);
+           
+            ctx.fillStyle = this.color;
+            ctx.font = "bold 24px Arial";
+            ctx.textAlign = "center";
+            ctx.fillText(this.type, this.x + this.width/2, this.y + this.height/2 + 8);
+            ctx.font = "bold 14px Arial";
+            ctx.fillText("A", this.x + 12, this.y + 20);
+        }
+    }
+
+    // Lógica Melhorada do MediaPipe
+    const JUMP_THRESHOLD = 0.4; // 40% do topo da imagem. Se a mão estiver acima disso, pula.
+
+    function onResults(results) {
+        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+            handStatus.innerText = "Mão Detetada";
+            handStatus.style.background = "#00ff00";
+           
+            const hand = results.multiHandLandmarks[0];
+            // Landmark 9 é o centro da mão
+            const currentHandY = hand[9].y;
+
+            // Lógica de Pulo por Posição (Mais estável que velocidade)
+            if (currentHandY < JUMP_THRESHOLD) {
+                if (!alice.isJumping && gameState === 'playing') {
+                    alice.dy = alice.jumpForce;
+                    alice.isJumping = true;
+                }
+            }
+        } else {
+            handStatus.innerText = "Mão não detetada";
+            handStatus.style.background = "yellow";
+        }
+    }
+
+    const hands = new Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    });
+
+    hands.setOptions({
+        maxNumHands: 1,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.6,
+        minTrackingConfidence: 0.6
+    });
+    hands.onResults(onResults);
+
+    const camera = new Camera(videoElement, {
+        onFrame: async () => {
+            await hands.send({image: videoElement});
+        },
+        width: 640,
+        height: 480
+    });
+    camera.start();
+
+    function update() {
+        if (gameState === 'playing') {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Relva (Chão)
+            ctx.fillStyle = "#15803d";
+            ctx.fillRect(0, alice.ground + alice.height - 5, canvas.width, canvas.height);
+           
+            // Flores no chão
+            for(let i=0; i<canvas.width; i+=100) {
+                ctx.fillStyle = "#f472b6";
+                ctx.beginPath();
+                ctx.arc(i + (frame%100), alice.ground + alice.height + 20, 3, 0, Math.PI*2);
+                ctx.fill();
+            }
+
+            // Alice Física
+            alice.dy += alice.gravity;
+            alice.y += alice.dy;
+            if (alice.y > alice.ground) {
+                alice.y = alice.ground;
+                alice.dy = 0;
+                alice.isJumping = false;
+            }
+            alice.draw();
+
+            // Obstáculos
+            if (frame % 100 === 0) {
+                obstacles.push(new CardSoldier());
+            }
+
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                obstacles[i].update();
+                obstacles[i].draw();
+
+                // Colisão (Hitbox ajustada para ser justa)
+                const hitboxPadding = 10;
+                if (
+                    alice.x + hitboxPadding < obstacles[i].x + obstacles[i].width &&
+                    alice.x + alice.width - hitboxPadding > obstacles[i].x &&
+                    alice.y + hitboxPadding < obstacles[i].y + obstacles[i].height &&
+                    alice.y + alice.height - hitboxPadding > obstacles[i].y
+                ) {
+                    endGame();
+                }
+
+                if (obstacles[i].x + obstacles[i].width < 0) {
+                    obstacles.splice(i, 1);
+                    score++;
+                    scoreElement.innerText = score;
+                    if (score % 5 === 0) gameSpeed += 0.3;
+                }
+            }
+
+            frame++;
+        }
+        requestAnimationFrame(update);
+    }
+
+    function endGame() {
+        gameState = 'gameover';
+        gameOverScreen.style.display = 'block';
+    }
+
+    function resetGame() {
+        gameState = 'playing';
+        score = 0;
+        scoreElement.innerText = "0";
+        obstacles = [];
+        frame = 0;
+        gameSpeed = 6;
+        alice.y = alice.ground;
+        gameOverScreen.style.display = 'none';
+    }
+
+    update();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice: Salto Arrojado ✨</title>
+    <!-- Bibliotecas MediaPipe atualizadas -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            background: #1a0a2e;
+            color: white;
+            overflow: hidden;
+            font-family: 'Palatino', serif;
+        }
+        canvas {
+            display: block;
+            margin: 0 auto;
+            background: linear-gradient(to bottom, #4b0082, #800080, #ff1493);
+            box-shadow: 0 0 50px rgba(0,0,0,0.5);
+            border: 4px solid #ffd700;
+        }
+        #webcam-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 160px;
+            height: 120px;
+            border: 2px solid #fff;
+            border-radius: 10px;
+            overflow: hidden;
+            transform: scaleX(-1);
+            z-index: 50;
+        }
+        .status-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.6);
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 5px solid #ffd700;
+            z-index: 40;
+        }
+        #msg {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            background: rgba(0,0,0,0.9);
+            padding: 30px;
+            border-radius: 20px;
+            border: 2px solid #ff1493;
+            display: block;
+            z-index: 100;
+            max-width: 80%;
+        }
+        #ai-advisor {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            z-index: 40;
+            max-width: 250px;
+        }
+        .cat-bubble {
+            background: #2d004d;
+            border: 2px solid #ff1493;
+            padding: 10px;
+            border-radius: 15px;
+            font-style: italic;
+            font-size: 0.9rem;
+            margin-bottom: 10px;
+            display: none;
+        }
+        .loader {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #ff1493;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <div id="msg">
+        <h1 class="text-3xl font-bold mb-4 text-pink-400">Alice no País dos Saltos</h1>
+        <div id="game-over-content">
+            <p class="mb-4">Permita o acesso à câmara e <br><strong>mova a cabeça para CIMA</strong> para saltar!</p>
+            <button id="start-btn" onclick="startGame()" class="bg-pink-600 hover:bg-pink-500 px-8 py-3 rounded-full font-bold transition transform hover:scale-105 opacity-50 cursor-not-allowed" disabled>A carregar scripts...</button>
+        </div>
+        <div id="ai-feedback" class="mt-6 text-sm italic text-gray-300"></div>
+    </div>
+
+    <div class="status-panel">
+        <div class="text-xl font-bold text-pink-300">Pontuação: <span id="score">0</span></div>
+        <div class="text-sm opacity-80">Rastreio: <span id="tracking-status" class="text-red-400">Desligado</span></div>
+    </div>
+
+    <div id="ai-advisor">
+        <div id="cat-speech" class="cat-bubble"></div>
+        <button onclick="askCheshireCat()" id="cat-btn" class="bg-indigo-700 hover:bg-indigo-600 px-4 py-2 rounded-lg text-sm font-bold flex items-center shadow-lg transition">
+            <span id="cat-btn-text">Pedir conselho ao Gato ✨</span>
+        </button>
+    </div>
+
+    <div id="webcam-container">
+        <video id="webcam" autoplay playsinline style="width: 100%; height: 100%; object-fit: cover;"></video>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const apiKey = "";
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const trackingStatusEl = document.getElementById('tracking-status');
+        const videoElement = document.getElementById('webcam');
+        const catSpeech = document.getElementById('cat-speech');
+        const catBtnText = document.getElementById('cat-btn-text');
+        const startBtn = document.getElementById('start-btn');
+       
+        canvas.width = 400;
+        canvas.height = window.innerHeight;
+
+        // Game State
+        let score = 0;
+        let gameRunning = false;
+        let lastNoseY = null;
+        const jumpThreshold = 0.008;
+       
+        const alice = {
+            x: 180,
+            y: canvas.height - 150,
+            w: 40,
+            h: 60,
+            vy: 0,
+            gravity: 0.35,
+            jumpStrength: -12,
+            color: '#87CEEB'
+        };
+
+        let platforms = [];
+        const platformTypes = ['mushroom', 'card', 'clock'];
+
+        // --- Gemini API ---
+        async function callGemini(prompt, systemInstruction = "") {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const payload = {
+                contents: [{ parts: [{ text: prompt }] }],
+                systemInstruction: systemInstruction ? { parts: [{ text: systemInstruction }] } : undefined
+            };
+
+            for (let i = 0; i < 5; i++) {
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await response.json();
+                    return data.candidates?.[0]?.content?.parts?.[0]?.text || "O Gato de Cheshire desapareceu...";
+                } catch (err) {
+                    const delay = Math.pow(2, i) * 1000;
+                    await new Promise(r => setTimeout(r, delay));
+                }
+            }
+            return "A magia falhou desta vez.";
+        }
+
+        async function askCheshireCat() {
+            catBtnText.innerHTML = `<span class="loader"></span> A pensar...`;
+            const prompt = "Dê um conselho curto, enigmático e engraçado para um jogador que está a saltar no País das Maravilhas movendo a cabeça. Seja como o Gato de Cheshire.";
+            const advice = await callGemini(prompt, "Você é o Gato de Cheshire de Alice no País das Maravilhas. Suas respostas devem ser curtas, misteriosas e em português.");
+           
+            catSpeech.innerText = advice;
+            catSpeech.style.display = 'block';
+            catBtnText.innerText = "Pedir outro conselho ✨";
+           
+            setTimeout(() => { catSpeech.style.display = 'none'; }, 8000);
+        }
+
+        async function getGameOverFeedback(finalScore) {
+            const feedbackEl = document.getElementById('ai-feedback');
+            feedbackEl.innerHTML = `<span class="loader"></span> O Gato está a avaliar a sua queda...`;
+            const prompt = `O jogador acabou de perder no jogo da Alice. A pontuação foi ${finalScore}. Dê um comentário sarcástico mas encorajador de apenas uma frase sobre este resultado.`;
+            const feedback = await callGemini(prompt, "Você é o Gato de Cheshire. Comente sobre a pontuação do jogador de forma sarcástica e curta em português.");
+            feedbackEl.innerText = `"${feedback}"`;
+        }
+
+        // --- Lógica do Jogo ---
+        function initPlatforms() {
+            platforms = [];
+            for (let i = 0; i < 8; i++) {
+                platforms.push({
+                    x: Math.random() * (canvas.width - 70),
+                    y: canvas.height - (i * 120),
+                    w: 80,
+                    h: 15,
+                    type: platformTypes[Math.floor(Math.random() * platformTypes.length)]
+                });
+            }
+        }
+
+        function drawAlice() {
+            ctx.fillStyle = alice.color;
+            ctx.beginPath();
+            ctx.moveTo(alice.x, alice.y + alice.h);
+            ctx.lineTo(alice.x + alice.w, alice.y + alice.h);
+            ctx.lineTo(alice.x + alice.w/2, alice.y + 10);
+            ctx.fill();
+            ctx.fillStyle = "white";
+            ctx.fillRect(alice.x + 10, alice.y + 30, 20, 20);
+            ctx.fillStyle = "#FFD700";
+            ctx.beginPath();
+            ctx.arc(alice.x + alice.w/2, alice.y + 15, 12, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#FFE4C4";
+            ctx.beginPath();
+            ctx.arc(alice.x + alice.w/2, alice.y + 15, 8, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function drawPlatforms() {
+            platforms.forEach(p => {
+                if (p.type === 'mushroom') {
+                    ctx.fillStyle = "#ff4d4d";
+                    ctx.beginPath();
+                    ctx.ellipse(p.x + p.w/2, p.y + p.h/2, p.w/2, p.h, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = "white";
+                    ctx.beginPath();
+                    ctx.arc(p.x + p.w/2, p.y + p.h/2, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (p.type === 'card') {
+                    ctx.fillStyle = "white";
+                    ctx.fillRect(p.x, p.y, p.w, p.h);
+                    ctx.strokeStyle = "red";
+                    ctx.strokeRect(p.x + 2, p.y + 2, p.w - 4, p.h - 4);
+                } else {
+                    ctx.fillStyle = "#deb887";
+                    ctx.fillRect(p.x, p.y, p.w, p.h);
+                }
+            });
+        }
+
+        function update() {
+            if (!gameRunning) return;
+            alice.vy += alice.gravity;
+            alice.y += alice.vy;
+            if (alice.x > canvas.width) alice.x = -alice.w;
+            if (alice.x < -alice.w) alice.x = canvas.width;
+            if (alice.vy > 0) {
+                platforms.forEach(p => {
+                    if (alice.x + alice.w > p.x && alice.x < p.x + p.w && alice.y + alice.h > p.y && alice.y + alice.h < p.y + p.h + 10) {
+                        alice.vy = -8;
+                    }
+                });
+            }
+            if (alice.y < canvas.height / 2) {
+                let offset = canvas.height / 2 - alice.y;
+                alice.y = canvas.height / 2;
+                platforms.forEach(p => {
+                    p.y += offset;
+                    if (p.y > canvas.height) {
+                        p.y = -20;
+                        p.x = Math.random() * (canvas.width - 70);
+                        score += 10;
+                        scoreEl.innerText = score;
+                    }
+                });
+            }
+            if (alice.y > canvas.height + 100) gameOver();
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            const msgBox = document.getElementById('msg');
+            const content = document.getElementById('game-over-content');
+            msgBox.style.display = 'block';
+            content.innerHTML = `
+                <h2 class="text-3xl font-bold mb-2">Perdida no Tempo!</h2>
+                <p class="mb-4">Pontuação: ${score}</p>
+                <button onclick="startGame()" class="bg-pink-600 hover:bg-pink-500 px-8 py-3 rounded-full font-bold shadow-lg transition transform hover:scale-105">Tentar de novo ✨</button>
+            `;
+            getGameOverFeedback(score);
+        }
+
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = "rgba(255,255,255,0.05)";
+            for(let i=0; i<3; i++) {
+                ctx.beginPath();
+                ctx.arc(Math.random()*canvas.width, Math.random()*canvas.height, Math.random()*3, 0, Math.PI*2);
+                ctx.fill();
+            }
+            update();
+            drawPlatforms();
+            drawAlice();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // --- MediaPipe Setup ---
+        window.onload = () => {
+            const faceMesh = new FaceMesh({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+            });
+
+            faceMesh.setOptions({
+                maxNumFaces: 1,
+                refineLandmarks: true,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+
+            faceMesh.onResults((results) => {
+                if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                    trackingStatusEl.innerText = "Ativo";
+                    trackingStatusEl.className = "text-green-400 font-bold";
+                    const landmarks = results.multiFaceLandmarks[0];
+                    const nose = landmarks[1];
+                    if (lastNoseY !== null) {
+                        const deltaY = lastNoseY - nose.y;
+                        if (deltaY > jumpThreshold && gameRunning) {
+                            if (alice.vy > -3) {
+                                alice.vy = alice.jumpStrength;
+                                alice.color = '#FFFFFF';
+                                setTimeout(() => alice.color = '#87CEEB', 150);
+                            }
+                        }
+                    }
+                    lastNoseY = nose.y;
+                } else {
+                    trackingStatusEl.innerText = "Procurando rosto...";
+                    trackingStatusEl.className = "text-yellow-400";
+                }
+            });
+
+            // Correção: Verificar se a classe Camera existe e usar window.Camera se necessário
+            const CameraConstructor = typeof Camera !== 'undefined' ? Camera : (window.Camera || null);
+
+            if (CameraConstructor) {
+                const cam = new CameraConstructor(videoElement, {
+                    onFrame: async () => { await faceMesh.send({image: videoElement}); },
+                    width: 640,
+                    height: 480
+                });
+                cam.start().then(() => {
+                    startBtn.innerText = "Começar a Magia";
+                    startBtn.disabled = false;
+                    startBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                });
+            } else {
+                trackingStatusEl.innerText = "Erro: Camera não carregada";
+            }
+
+            gameLoop();
+        };
+
+        function startGame() {
+            document.getElementById('msg').style.display = 'none';
+            document.getElementById('ai-feedback').innerText = "";
+            score = 0;
+            scoreEl.innerText = "0";
+            alice.y = canvas.height - 150;
+            alice.vy = 0;
+            initPlatforms();
+            gameRunning = true;
+        }
+
+        window.addEventListener('resize', () => {
+            canvas.width = 400;
+            canvas.height = window.innerHeight;
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="pt-pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A Fuga Real da Rainha</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #1a4314;
+            font-family: 'Georgia', serif;
+        }
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: radial-gradient(circle, #2d5a27 0%, #1a4314 100%);
+        }
+        canvas {
+            border: 10px solid #8b0000;
+            background: #3d7a35;
+            box-shadow: 0 0 50px rgba(0,0,0,0.5);
+            image-rendering: pixelated;
+        }
+        .ui-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            text-shadow: 2px 2px #000;
+            pointer-events: none;
+        }
+        .game-over {
+            position: absolute;
+            background: rgba(139, 0, 0, 0.9);
+            color: white;
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            display: none;
+            border: 4px solid #ffd700;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="runCanvas"></canvas>
+   
+    <div class="ui-panel">
+        <h2 class="text-2xl font-bold">Distância: <span id="dist-val">0</span>m</h2>
+        <p>Vidas: <span id="lives-val">3</span></p>
+    </div>
+
+    <div id="gameOverScreen" class="game-over">
+        <h1 class="text-4xl font-bold mb-4">"CORTEM-LHE A CABEÇA!"</h1>
+        <p class="mb-6">Foste apanhada pelas cartas da Rainha.</p>
+        <button onclick="location.reload()" class="bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 px-6 rounded-full transition">
+            Tentar Novamente
+        </button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('runCanvas');
+    const ctx = canvas.getContext('2d');
+    const distDisplay = document.getElementById('dist-val');
+    const livesDisplay = document.getElementById('lives-val');
+    const gameOverScreen = document.getElementById('gameOverScreen');
+
+    canvas.width = 400;
+    canvas.height = 600;
+
+    let distance = 0;
+    let lives = 3;
+    let gameActive = true;
+    let frames = 0;
+
+    const alice = {
+        x: canvas.width / 2 - 20,
+        y: canvas.height - 100,
+        w: 40,
+        h: 50,
+        speed: 5
+    };
+
+    const obstacles = []; // Soldados Carta
+    const items = []; // Rosas
+
+    // Controlo de Input
+    const keys = {};
+    window.addEventListener('keydown', e => keys[e.code] = true);
+    window.addEventListener('keyup', e => keys[e.code] = false);
+
+    function spawnObstacle() {
+        const lane = Math.floor(Math.random() * 3); // 3 pistas
+        obstacles.push({
+            x: lane * (canvas.width / 3) + 30,
+            y: -60,
+            w: 70,
+            h: 90,
+            speed: 4 + (distance / 100)
+        });
+    }
+
+    function spawnItem() {
+        const lane = Math.floor(Math.random() * 3);
+        items.push({
+            x: lane * (canvas.width / 3) + 50,
+            y: -40,
+            type: 'rose'
+        });
+    }
+
+    function update() {
+        if (!gameActive) return;
+
+        frames++;
+        distance += 0.1;
+        distDisplay.innerText = Math.floor(distance);
+
+        // Movimento Alice
+        if (keys['ArrowLeft'] && alice.x > 0) alice.x -= alice.speed;
+        if (keys['ArrowRight'] && alice.x + alice.w < canvas.width) alice.x += alice.speed;
+
+        // Criar Cartas
+        if (frames % 60 === 0) spawnObstacle();
+        if (frames % 200 === 0) spawnItem();
+
+        // Mover e Colidir Obstáculos
+        for (let i = obstacles.length - 1; i >= 0; i--) {
+            obstacles[i].y += obstacles[i].speed;
+
+            // Colisão Alice vs Carta
+            if (alice.x < obstacles[i].x + obstacles[i].w &&
+                alice.x + alice.w > obstacles[i].x &&
+                alice.y < obstacles[i].y + obstacles[i].h &&
+                alice.y + alice.h > obstacles[i].y) {
+               
+                lives--;
+                livesDisplay.innerText = lives;
+                obstacles.splice(i, 1);
+                if (lives <= 0) endGame();
+                continue;
+            }
+
+            if (obstacles[i].y > canvas.height) obstacles.splice(i, 1);
+        }
+
+        // Mover e Colidir Itens
+        for (let i = items.length - 1; i >= 0; i--) {
+            items[i].y += 3;
+            if (alice.x < items[i].x + 30 &&
+                alice.x + alice.w > items[i].x &&
+                alice.y < items[i].y + 30 &&
+                alice.y + alice.h > items[i].y) {
+               
+                // Ganha vida ao apanhar rosa (raro)
+                if (lives < 5) lives++;
+                livesDisplay.innerText = lives;
+                items.splice(i, 1);
+                continue;
+            }
+            if (items[i].y > canvas.height) items.splice(i, 1);
+        }
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Desenhar Chão (Relva)
+        ctx.fillStyle = '#2d5a27';
+        for(let i=0; i<canvas.width; i+= canvas.width/3) {
+            ctx.strokeStyle = '#1a4314';
+            ctx.strokeRect(i, 0, canvas.width/3, canvas.height);
+        }
+
+        // Desenhar Alice
+        ctx.font = '40px serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('👧', alice.x + alice.w/2, alice.y + alice.h/2 + 10);
+
+        // Desenhar Soldados Carta
+        ctx.font = '60px serif';
+        obstacles.forEach(ob => {
+            // Corpo da carta
+            ctx.fillStyle = 'white';
+            ctx.fillRect(ob.x, ob.y, ob.w, ob.h);
+            ctx.strokeStyle = 'black';
+            ctx.strokeRect(ob.x, ob.y, ob.w, ob.h);
+            ctx.fillStyle = 'red';
+            ctx.font = '20px serif';
+            ctx.fillText('♥', ob.x + 10, ob.y + 20);
+            ctx.font = '40px serif';
+            ctx.fillText('🛡️', ob.x + ob.w/2, ob.y + ob.h/2 + 15);
+        });
+
+        // Desenhar Rosas
+        items.forEach(item => {
+            ctx.font = '30px serif';
+            ctx.fillText('🌹', item.x, item.y);
+        });
+
+        if (gameActive) {
+            update();
+            requestAnimationFrame(draw);
+        }
+    }
+
+    function endGame() {
+        gameActive = false;
+        gameOverScreen.style.display = 'block';
+    }
+
+    draw();
+</script>
+
+</body>
+</html>

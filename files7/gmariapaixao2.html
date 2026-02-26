@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <title>Alice: A Fuga do País das Maravilhas</title>
+    <style>
+        body { background: #2c1639; display: flex; flex-direction: column; align-items: center; color: white; font-family: 'Courier New', Courier, monospace; }
+        canvas { border: 4px solid #522d6d; background: #3c1450; cursor: none; margin-top: 20px; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        .stats { margin-top: 10px; font-size: 18px; }
+    </style>
+</head>
+<body>
+    <h1>Alice no País das Maravilhas</h1>
+    <div class="stats">Chapéus: <span id="chapeus">0</span>/5 | Velocidade: <span id="vel">3</span></div>
+    <canvas id="gameCanvas" width="400" height="400"></canvas>
+    <p>Usa as setas do teclado para mover a Alice.</p>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const chapeusCount = document.getElementById('chapeus');
+        const velDisplay = document.getElementById('vel');
+
+        // Configurações e Cores
+        let alice = { x: 200, y: 200, tam: 30, velBase: 3, bonusCha: 0, lento: 0 };
+        let contadorVerdes = 0;
+        let items = [];
+        let inimigos = [];
+        let jogoAtivo = true;
+        let vitoria = false;
+        let keys = {};
+
+        const CORES = {
+            vestido: '#1E90FF', avental: '#FFFFFF', pele: '#FFE0BD',
+            verde: '#32CD32', vermelho: '#DC143C', azul: '#0000CD',
+            dourado: '#FFD700', castanho: '#8B4513'
+        };
+
+        // Inicialização
+        function spawnCoord() { return { x: 30 + Math.random() * 340, y: 30 + Math.random() * 340 }; }
+
+        function init() {
+            for(let i=0; i<3; i++) items.push({...spawnCoord(), tipo: 'verde'});
+            items.push({...spawnCoord(), tipo: 'vermelha'});
+            items.push({...spawnCoord(), tipo: 'azul'});
+            items.push({...spawnCoord(), tipo: 'relogio'});
+        }
+
+        // Timer de 30 segundos para novas poções
+        setInterval(() => {
+            if (jogoAtivo) items.push({...spawnCoord(), tipo: ['verde', 'vermelha', 'azul'][Math.floor(Math.random()*3)]});
+        }, 30000);
+
+        // Desenho Procedural
+        function desenharAlice() {
+            const { x, y, tam } = alice;
+            ctx.fillStyle = CORES.vestido;
+            ctx.fillRect(x, y + tam/3, tam, tam*2/3);
+            ctx.fillStyle = CORES.avental;
+            ctx.fillRect(x + tam/4, y + tam/3, tam/2, tam/2);
+            ctx.fillStyle = CORES.pele;
+            ctx.beginPath();
+            ctx.arc(x + tam/2, y + tam/4, tam/3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function desenharItem(it) {
+            const { x, y, tipo } = it;
+            if (tipo === 'verde') { // CHAPÉU
+                ctx.fillStyle = '#228B22';
+                ctx.fillRect(x, y + 10, 20, 5);
+                ctx.fillRect(x + 4, y, 12, 12);
+            } else if (tipo === 'vermelha') { // SANDES
+                ctx.fillStyle = '#D2B48C';
+                ctx.beginPath();
+                ctx.moveTo(x, y + 15); ctx.lineTo(x + 10, y); ctx.lineTo(x + 20, y + 15);
+                ctx.fill();
+                ctx.strokeStyle = 'red'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(x+2, y+10); ctx.lineTo(x+18, y+10); ctx.stroke();
+            } else if (tipo === 'azul') { // CORAÇÃO
+                ctx.fillStyle = CORES.azul;
+                ctx.beginPath();
+                ctx.arc(x + 5, y + 5, 5, 0, Math.PI*2);
+                ctx.arc(x + 15, y + 5, 5, 0, Math.PI*2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(x, y + 7); ctx.lineTo(x + 20, y + 7); ctx.lineTo(x + 10, y + 18);
+                ctx.fill();
+            } else if (tipo === 'relogio') { // RELÓGIO
+                ctx.fillStyle = CORES.dourado;
+                ctx.beginPath(); ctx.arc(x + 10, y + 10, 10, 0, Math.PI*2); ctx.fill();
+                ctx.strokeStyle = 'black'; ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(x+10, y+10); ctx.lineTo(x+10, y+4); ctx.stroke();
+            } else if (tipo === 'cha') { // CHÁVENA
+                ctx.fillStyle = 'white';
+                ctx.fillRect(x, y + 5, 15, 10);
+                ctx.strokeStyle = 'white';
+                ctx.beginPath(); ctx.arc(x + 15, y + 10, 4, -Math.PI/2, Math.PI/2); ctx.stroke();
+            }
+        }
+
+        function update() {
+            if (!jogoAtivo) return;
+
+            // Movimento
+            let v = (alice.lento > 0) ? 1 : (alice.velBase + alice.bonusCha);
+            if (keys['ArrowLeft'] && alice.x > 0) alice.x -= v;
+            if (keys['ArrowRight'] && alice.x < canvas.width - alice.tam) alice.x += v;
+            if (keys['ArrowUp'] && alice.y > 0) alice.y -= v;
+            if (keys['ArrowDown'] && alice.y < canvas.height - alice.tam) alice.y += v;
+
+            if (alice.lento > 0) alice.lento--;
+
+            const aRect = { x: alice.x, y: alice.y, w: alice.tam, h: alice.tam };
+
+            // Inimigos
+            inimigos.forEach(ini => {
+                if (ini.x < alice.x) ini.x += 1; else ini.x -= 1;
+                if (ini.y < alice.y) ini.y += 1; else ini.y -= 1;
+
+                const iRect = { x: ini.x, y: ini.y, w: 20, h: 30 };
+               
+                // Homem de Copas toca em itens -> Vira Verde
+                items.forEach(it => {
+                    if (rectIntersect(iRect.x, iRect.y, iRect.w, iRect.h, it.x, it.y, 20, 20)) {
+                        if (it.tipo !== 'verde') it.tipo = 'verde';
+                    }
+                });
+
+                if (rectIntersect(aRect.x, aRect.y, aRect.w, aRect.h, iRect.x, iRect.y, iRect.w, iRect.h)) {
+                    jogoAtivo = false;
+                }
+            });
+
+            // Itens
+            items.forEach((it, index) => {
+                if (rectIntersect(aRect.x, aRect.y, aRect.w, aRect.h, it.x, it.y, 20, 20)) {
+                    if (it.tipo === 'verde') {
+                        alice.tam = Math.max(10, alice.tam - 5);
+                        contadorVerdes++;
+                    } else if (it.tipo === 'vermelha') {
+                        alice.tam += 10;
+                        contadorVerdes = 0;
+                    } else if (it.tipo === 'azul') {
+                        inimigos.push({...spawnCoord()});
+                    } else if (it.tipo === 'relogio') {
+                        alice.lento = 100;
+                    } else if (it.tipo === 'cha') {
+                        if (alice.bonusCha < 2) alice.bonusCha += 2;
+                    }
+
+                    items.splice(index, 1);
+                    let novoTipo = ['verde', 'vermelha', 'azul', 'relogio'][Math.floor(Math.random()*4)];
+                    if (Math.random() > 0.8) novoTipo = 'cha';
+                    items.push({...spawnCoord(), tipo: novoTipo});
+                }
+            });
+
+            // Porta
+            if (contadorVerdes >= 5) {
+                if (rectIntersect(aRect.x, aRect.y, aRect.w, aRect.h, 360, 180, 30, 50)) {
+                    vitoria = true;
+                    jogoAtivo = false;
+                }
+            }
+
+            // UI
+            chapeusCount.innerText = contadorVerdes;
+            velDisplay.innerText = v;
+        }
+
+        function rectIntersect(x1, y1, w1, h1, x2, y2, w2, h2) {
+            return x2 < x1 + w1 && x2 + w2 > x1 && y2 < y1 + h1 && y2 + h2 > y1;
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+           
+            items.forEach(desenharItem);
+            inimigos.forEach(ini => {
+                ctx.fillStyle = 'white';
+                ctx.fillRect(ini.x, ini.y, 20, 30);
+                ctx.fillStyle = 'red';
+                ctx.beginPath(); ctx.arc(ini.x + 10, ini.y + 15, 5, 0, Math.PI*2); ctx.fill();
+            });
+
+            if (contadorVerdes >= 5) {
+                ctx.fillStyle = CORES.castanho;
+                ctx.fillRect(360, 180, 30, 50);
+                ctx.fillStyle = '#5D2E0A';
+                ctx.beginPath(); ctx.arc(365, 205, 2, 0, Math.PI*2); ctx.fill();
+            }
+
+            desenharAlice();
+
+            if (!jogoAtivo) {
+                ctx.fillStyle = "rgba(0,0,0,0.7)";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = "white";
+                ctx.font = "20px Courier New";
+                ctx.textAlign = "center";
+                ctx.fillText(vitoria ? "ENTRASTE NA PORTA!" : "APANHADA!", 200, 200);
+                ctx.fillText("F5 para recomeçar", 200, 230);
+            }
+
+            update();
+            requestAnimationFrame(draw);
+        }
+
+        window.addEventListener('keydown', e => keys[e.code] = true);
+        window.addEventListener('keyup', e => keys[e.code] = false);
+
+        init();
+        draw();
+    </script>
+</body>
+</html>

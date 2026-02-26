@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Xadrez: Alice vs Rainha de Copas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --color-light: #f3e5f5;
+            --color-dark: #7b1fa2;
+            --color-highlight: rgba(255, 235, 59, 0.7);
+            --color-selected: #4caf50;
+        }
+
+        body {
+            background: radial-gradient(circle, #2c003e 0%, #000000 100%);
+            color: white;
+            font-family: 'Palatino', 'Georgia', serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow-x: hidden;
+        }
+
+        .board-container {
+            perspective: 1000px;
+            margin: 20px 0;
+        }
+
+        .chess-board {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            grid-template-rows: repeat(8, 1fr);
+            width: min(95vw, 560px);
+            height: min(95vw, 560px);
+            border: 10px solid #4a148c;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+            transform: rotateX(2deg);
+        }
+
+        .square {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            cursor: pointer;
+            font-size: clamp(24px, 8vw, 44px);
+            user-select: none;
+            touch-action: manipulation;
+        }
+
+        .square.light { background-color: var(--color-light); }
+        .square.dark { background-color: var(--color-dark); }
+        .square.selected { background-color: var(--color-selected) !important; }
+       
+        .square.highlight::after {
+            content: '';
+            width: 22px;
+            height: 22px;
+            background: var(--color-highlight);
+            border-radius: 50%;
+            position: absolute;
+            border: 2px solid rgba(0,0,0,0.2);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.8); opacity: 0.6; }
+            50% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(0.8); opacity: 0.6; }
+        }
+
+        .piece {
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 10;
+        }
+
+        .piece.white { filter: drop-shadow(0 0 8px #fff); color: #fff; }
+        .piece.black { filter: drop-shadow(0 0 8px #ff1744); color: #ff1744; }
+
+        .ui-panel {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 12px 25px;
+            border-radius: 50px;
+            margin-bottom: 15px;
+            border: 1px solid rgba(255,255,255,0.2);
+            text-align: center;
+            min-width: 280px;
+        }
+
+        .thinking {
+            animation: blink 1s infinite;
+            color: #ff1744;
+            font-weight: bold;
+        }
+
+        @keyframes blink {
+            50% { opacity: 0.2; }
+        }
+    </style>
+</head>
+<body>
+
+    <h1 class="text-3xl md:text-5xl mt-6 mb-4 text-center font-bold tracking-tighter" style="color: #ea80fc; text-shadow: 0 0 15px #7b1fa2;">ALICE NO PAÍS DO XADREZ</h1>
+
+    <div class="ui-panel">
+        <span id="status-text" class="text-lg md:text-xl font-medium uppercase">Sua vez, Alice!</span>
+    </div>
+
+    <div class="board-container">
+        <div id="board" class="chess-board"></div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-4 text-xs md:text-sm mb-6 text-purple-200">
+        <div class="bg-black/40 p-2 rounded">⚪ Alice (Você)</div>
+        <div class="bg-black/40 p-2 rounded">🔴 Rainha (Auto)</div>
+    </div>
+
+    <button onclick="resetGame()" class="px-8 py-3 bg-purple-800 hover:bg-pink-700 text-white font-bold rounded-full transition-all shadow-lg mb-10 border-2 border-purple-400">RECOMEÇAR O CHÁ</button>
+
+    <script>
+        const boardElement = document.getElementById('board');
+        const statusText = document.getElementById('status-text');
+       
+        const piecesConfig = {
+            white: { p: '♟️', r: '🏰', n: '🐇', b: '🎩', q: '👸', k: '👑' },
+            black: { p: '🃏', r: '🏰', n: '🐱', b: '🐛', q: '❤️', k: '🤴' }
+        };
+
+        let board = [];
+        let selectedSquare = null;
+        let turn = 'white';
+        let possibleMoves = [];
+        let isGameOver = false;
+
+        function initBoard() {
+            const layout = [
+                ['r', 'n', 'b', 'q', 'k', 'b', 'n', 'r'],
+                ['p', 'p', 'p', 'p', 'p', 'p', 'p', 'p'],
+                [null, null, null, null, null, null, null, null],
+                [null, null, null, null, null, null, null, null],
+                [null, null, null, null, null, null, null, null],
+                [null, null, null, null, null, null, null, null],
+                ['p', 'p', 'p', 'p', 'p', 'p', 'p', 'p'],
+                ['r', 'n', 'b', 'q', 'k', 'b', 'n', 'r']
+            ];
+
+            board = layout.map((row, rIdx) =>
+                row.map((p, cIdx) => {
+                    if (!p) return null;
+                    return { type: p, color: rIdx < 2 ? 'black' : 'white' };
+                })
+            );
+        }
+
+        function drawBoard() {
+            boardElement.innerHTML = '';
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const square = document.createElement('div');
+                    square.className = `square ${(r + c) % 2 === 0 ? 'light' : 'dark'}`;
+                   
+                    if (selectedSquare && selectedSquare.r === r && selectedSquare.c === c) {
+                        square.classList.add('selected');
+                    }
+
+                    if (possibleMoves.some(m => m.r === r && m.c === c)) {
+                        square.classList.add('highlight');
+                    }
+
+                    const piece = board[r][c];
+                    if (piece) {
+                        const pieceEl = document.createElement('div');
+                        pieceEl.className = `piece ${piece.color}`;
+                        pieceEl.textContent = piecesConfig[piece.color][piece.type];
+                        square.appendChild(pieceEl);
+                    }
+
+                    square.onclick = () => handleSquareClick(r, c);
+                    boardElement.appendChild(square);
+                }
+            }
+        }
+
+        function handleSquareClick(r, c) {
+            if (turn === 'black' || isGameOver) return;
+
+            const piece = board[r][c];
+
+            // Selecionar peça do jogador
+            if (piece && piece.color === 'white') {
+                selectedSquare = { r, c };
+                possibleMoves = getValidMoves(r, c);
+                drawBoard();
+                return;
+            }
+
+            // Executar movimento se for válido
+            if (selectedSquare && possibleMoves.some(m => m.r === r && m.c === c)) {
+                executeMove(selectedSquare.r, selectedSquare.c, r, c);
+                selectedSquare = null;
+                possibleMoves = [];
+                drawBoard();
+
+                if (!isGameOver) {
+                    turn = 'black';
+                    statusText.innerHTML = '<span class="thinking">A Rainha de Copas está a pensar...</span>';
+                    setTimeout(makeComputerMove, 1000);
+                }
+                return;
+            }
+
+            // Limpar seleção se clicar fora
+            selectedSquare = null;
+            possibleMoves = [];
+            drawBoard();
+        }
+
+        function getValidMoves(r, c) {
+            const piece = board[r][c];
+            if (!piece) return [];
+           
+            const moves = [];
+            const directions = {
+                p: piece.color === 'white' ? [[-1, 0], [-1, 1], [-1, -1], [-2, 0]] : [[1, 0], [1, 1], [1, -1], [2, 0]],
+                r: [[0, 1], [0, -1], [1, 0], [-1, 0]],
+                n: [[-2, -1], [-2, 1], [2, -1], [2, 1], [-1, -2], [-1, 2], [1, -2], [1, 2]],
+                b: [[1, 1], [1, -1], [-1, 1], [-1, -1]],
+                q: [[0, 1], [0, -1], [1, 0], [-1, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]],
+                k: [[0, 1], [0, -1], [1, 0], [-1, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]]
+            };
+
+            const steps = directions[piece.type];
+            const maxRange = (['p', 'n', 'k'].includes(piece.type)) ? 1 : 8;
+
+            steps.forEach((step, index) => {
+                for (let i = 1; i <= maxRange; i++) {
+                    const nr = r + step[0] * i;
+                    const nc = c + step[1] * i;
+
+                    if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+                        const target = board[nr][nc];
+                       
+                        if (piece.type === 'p') {
+                            if (step[1] === 0) { // Movimento frontal
+                                if (Math.abs(step[0]) === 2) { // Salto duplo
+                                    const isInitialRow = (piece.color === 'white' && r === 6) || (piece.color === 'black' && r === 1);
+                                    const pathClear = !board[r + step[0]/2][c];
+                                    if (isInitialRow && !target && pathClear) moves.push({ r: nr, c: nc });
+                                } else if (!target) {
+                                    moves.push({ r: nr, c: nc });
+                                }
+                            } else { // Captura diagonal
+                                if (target && target.color !== piece.color) moves.push({ r: nr, c: nc });
+                            }
+                        } else {
+                            if (!target) {
+                                moves.push({ r: nr, c: nc });
+                            } else {
+                                if (target.color !== piece.color) moves.push({ r: nr, c: nc });
+                                break;
+                            }
+                        }
+                    } else break;
+                }
+            });
+            return moves;
+        }
+
+        function executeMove(fromR, fromC, toR, toC) {
+            const piece = board[fromR][fromC];
+            const target = board[toR][toC];
+
+            if (target && (target.type === 'k' || target.type === 'q' && target.color === 'black')) {
+                // Se a peça principal cair
+                if (target.type === 'k' || (target.color === 'black' && target.type === 'q')) {
+                   isGameOver = true;
+                   statusText.textContent = piece.color === 'white' ? "ALICE VENCEU! BRAVO!" : "A RAINHA VENCEU! CORTEM A CABEÇA!";
+                }
+            }
+
+            board[toR][toC] = piece;
+            board[fromR][fromC] = null;
+
+            if (piece.type === 'p' && (toR === 0 || toR === 7)) {
+                piece.type = 'q';
+            }
+        }
+
+        function makeComputerMove() {
+            if (isGameOver) return;
+
+            let allMoves = [];
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    if (board[r][c] && board[r][c].color === 'black') {
+                        const moves = getValidMoves(r, c);
+                        moves.forEach(m => allMoves.push({ from: { r, c }, to: m }));
+                    }
+                }
+            }
+
+            if (allMoves.length === 0) {
+                isGameOver = true;
+                statusText.textContent = "EMPATE!";
+                return;
+            }
+
+            // IA Simples: Prioriza capturar a Alice (Dama) ou o Rei
+            const highValue = allMoves.filter(m => board[m.to.r][m.to.c] && (board[m.to.r][m.to.c].type === 'q' || board[m.to.r][m.to.c].type === 'k'));
+            const captures = allMoves.filter(m => board[m.to.r][m.to.c] !== null);
+           
+            const move = highValue.length > 0 ? highValue[0] :
+                         (captures.length > 0 ? captures[Math.floor(Math.random() * captures.length)] :
+                         allMoves[Math.floor(Math.random() * allMoves.length)]);
+
+            executeMove(move.from.r, move.from.c, move.to.r, move.to.c);
+           
+            if (!isGameOver) {
+                turn = 'white';
+                statusText.textContent = "Sua vez, Alice!";
+            }
+            drawBoard();
+        }
+
+        function resetGame() {
+            initBoard();
+            turn = 'white';
+            selectedSquare = null;
+            possibleMoves = [];
+            isGameOver = false;
+            statusText.textContent = "Sua vez, Alice!";
+            drawBoard();
+        }
+
+        window.onload = () => {
+            initBoard();
+            drawBoard();
+        };
+
+    </script>
+</body>
+</html>

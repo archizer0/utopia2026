@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stickman Shadow Fight - Boss Mode</title>
+    <style>
+        :root {
+            --bg-color: #050505;
+            --p1-1: #ff3333;
+            --p1-2: #3333ff;
+            --p2-1: #ffff33;
+            --p2-2: #33aa33;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background-color: var(--bg-color);
+            color: white;
+            font-family: 'Segoe UI', sans-serif;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        #game-container {
+            position: relative;
+            box-shadow: 0 0 100px rgba(0,0,0,1);
+            border: 1px solid #222;
+            background: linear-gradient(to bottom, #111 0%, #000 100%);
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .health-bar-vertical {
+            position: absolute;
+            top: 60px;
+            width: 22px;
+            height: 330px;
+            background-color: #111;
+            border: 2px solid #555;
+            border-radius: 6px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column-reverse;
+            z-index: 10;
+        }
+
+        #p1-bar-container { left: 60px; }
+        #p2-bar-container { right: 60px; }
+
+        .health-fill-vertical {
+            width: 100%;
+            height: 100%;
+            transition: height 0.5s cubic-bezier(0.1, 0, 0.1, 1);
+        }
+
+        #p1-health { background: linear-gradient(to top, var(--p1-2), var(--p1-1)); }
+        #p2-health { background: linear-gradient(to top, var(--p2-2), var(--p2-1)); }
+
+        .label-vertical {
+            position: absolute;
+            top: 35px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        #p1-label { left: 50px; color: var(--p1-1); }
+        #p2-label { right: 40px; color: var(--p2-1); }
+
+        .timer {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 48px;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 0 0 15px rgba(255, 255, 255, 0.8);
+            z-index: 20;
+            font-family: monospace;
+        }
+
+        #boss-bar-container {
+            display: none;
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 400px;
+            height: 25px;
+            background-color: #111;
+            border: 2px solid #fff;
+            box-shadow: 0 0 15px #aa00ff;
+            border-radius: 6px;
+            overflow: hidden;
+            z-index: 10;
+        }
+        #boss-health {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to right, #aa00ff, #5500aa);
+            transition: width 0.3s;
+        }
+        .boss-label {
+            position: absolute;
+            top: 4px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 14px;
+            font-weight: bold;
+            color: white;
+            text-shadow: 1px 1px 2px black;
+        }
+
+        #message-box {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.95);
+            padding: 40px;
+            border: 1px solid #555;
+            text-align: center;
+            display: none;
+            z-index: 100;
+        }
+
+        button {
+            background: #fff;
+            color: #000;
+            border: none;
+            padding: 12px 30px;
+            cursor: pointer;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        #menu-box {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.95);
+            padding: 40px;
+            border: 2px solid #555;
+            text-align: center;
+            z-index: 200;
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.8);
+        }
+
+        .menu-title {
+            color: #fff;
+            font-size: 32px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 10px #fff;
+        }
+
+        .menu-option {
+            margin: 15px 0;
+            font-size: 18px;
+            color: #aaa;
+            text-align: left;
+        }
+
+        .menu-key {
+            display: inline-block;
+            color: #ffaa00;
+            font-weight: bold;
+            width: 40px;
+            text-align: center;
+        }
+
+        .game-ui {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <div id="p1-label" class="label-vertical game-ui">JOGADOR</div>
+        <div id="p1-bar-container" class="health-bar-vertical game-ui">
+            <div id="p1-health" class="health-fill-vertical"></div>
+        </div>
+
+        <div id="p2-label" class="label-vertical game-ui">INIMIGO</div>
+        <div id="p2-bar-container" class="health-bar-vertical game-ui">
+            <div id="p2-health" class="health-fill-vertical"></div>
+        </div>
+
+        <div id="timer-display" class="timer game-ui">30</div>
+       
+        <div id="boss-bar-container">
+            <div id="boss-health"></div>
+            <div class="boss-label">BOSS STICKMAN</div>
+        </div>
+
+        <div id="menu-box">
+            <div class="menu-title">STICKMAN FIGHT</div>
+            <div class="menu-option"><span class="menu-key">[T]</span> TREINO (Inimigos Infinitos)</div>
+            <div class="menu-option"><span class="menu-key">[B]</span> BATALHA NORMAL (Com Boss)</div>
+            <div class="menu-option"><span class="menu-key">[C]</span> COMPETIÇÃO (Sem Boss)</div>
+            <div class="menu-option"><span class="menu-key">[P]</span> PARKOUR (Corrida Infinita)</div>
+        </div>
+
+        <div id="training-qty-box" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.95); padding: 40px; border: 2px solid #555; text-align: center; z-index: 200; box-shadow: 0 0 30px rgba(0, 0, 0, 0.8);">
+            <div class="menu-title">MODO TREINO</div>
+            <div class="menu-option">Quantos inimigos queres enfrentar?</div>
+            <div class="menu-option" style="color: #ffaa00; font-size: 24px; font-weight: bold;">Pressiona de [0] a [7]</div>
+        </div>
+
+        <canvas id="gameCanvas"></canvas>
+        <div id="message-box">
+            <h1 id="winner-text">DERROTA</h1>
+            <button id="menu-btn" onclick="resetToMenu()">VOLTAR AO MENU</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const msgBox = document.getElementById('message-box');
+
+        canvas.width = 1000;
+        canvas.height = 500;
+
+        let gameState = { gameOver: false, flawless: false, loser: null };
+        const config = { gravity: 0.6, groundY: 420, friction: 0.88, jumpForce: -11.5, moveSpeed: 1.2 };
+        let particles = [];
+        let keys = {};
+       
+        let gameMode = 'menu';
+        let timeLeft = 30;
+        let lastTime = Date.now();
+        let phase = 'normal';
+        let boss = null;
+        let bossKiller = null;
+        let competitionWins = 0;
+       
+        let tPressCount = 0;
+        let tPressTimer = null;
+        let bPressCount = 0;
+        let bPressTimer = null;
+        let pExitPressCount = 0;
+        let pExitPressTimer = null;
+        let pParkourRestartCount = 0;
+        let pParkourRestartTimer = null;
+
+        let parkourPlatforms = [];
+        let parkourScore = 0;
+
+        const platforms = [
+            { x: 150, y: 300, w: 200, h: 10 },
+            { x: 650, y: 300, w: 200, h: 10 },
+            { x: 400, y: 180, w: 200, h: 10 }
+        ];
+
+        window.addEventListener('keydown', e => {
+            keys[e.code] = true;
+            if (gameMode === 'menu') {
+                if (e.code === 'KeyT') {
+                    document.getElementById('menu-box').style.display = 'none';
+                    document.getElementById('training-qty-box').style.display = 'block';
+                    gameMode = 'menu-training-qty';
+                }
+                if (e.code === 'KeyB') startGame('battle');
+                if (e.code === 'KeyC') {
+                    competitionWins = 0;
+                    startGame('competition');
+                }
+                if (e.code === 'KeyP') startGame('parkour');
+            } else if (gameMode === 'menu-training-qty') {
+                let num = -1;
+                if (e.code.startsWith('Digit')) num = parseInt(e.code.replace('Digit', ''));
+                if (e.code.startsWith('Numpad')) num = parseInt(e.code.replace('Numpad', ''));
+               
+                if (num >= 0 && num <= 7) {
+                    setupEnemies(num);
+                    startGame('training');
+                }
+            } else {
+                if (gameState.gameOver && gameMode === 'competition') {
+                    if (e.code === 'KeyC') resetToMenu();
+                    else if (e.code === 'KeyP') startGame('competition');
+                }
+               
+                if (gameState.gameOver && gameMode === 'parkour' && e.code === 'KeyP') {
+                    pParkourRestartCount++;
+                    if (pParkourRestartTimer) clearTimeout(pParkourRestartTimer);
+                    pParkourRestartTimer = setTimeout(() => { pParkourRestartCount = 0; }, 500);
+                    if (pParkourRestartCount === 2) {
+                        pParkourRestartCount = 0;
+                        startGame('parkour');
+                    }
+                }
+               
+                if (gameMode === 'training' && e.code === 'KeyT') {
+                    tPressCount++;
+                    if (tPressTimer) clearTimeout(tPressTimer);
+                    tPressTimer = setTimeout(() => { tPressCount = 0; }, 500);
+                    if (tPressCount === 2) {
+                        tPressCount = 0;
+                        resetToMenu();
+                        document.getElementById('menu-box').style.display = 'none';
+                        document.getElementById('training-qty-box').style.display = 'block';
+                        gameMode = 'menu-training-qty';
+                    }
+                }
+
+                if (gameMode === 'battle' && e.code === 'KeyB') {
+                    bPressCount++;
+                    if (bPressTimer) clearTimeout(bPressTimer);
+                    bPressTimer = setTimeout(() => { bPressCount = 0; }, 500);
+                    if (bPressCount === 2) { bPressCount = 0; resetToMenu(); }
+                }
+
+                if (gameMode === 'competition' && e.code === 'KeyP' && !gameState.gameOver) {
+                    pExitPressCount++;
+                    if (pExitPressTimer) clearTimeout(pExitPressTimer);
+                    pExitPressTimer = setTimeout(() => { pExitPressCount = 0; }, 600);
+                    if (pExitPressCount === 3) { pExitPressCount = 0; resetToMenu(); }
+                }
+            }
+        });
+        window.addEventListener('keyup', e => keys[e.code] = false);
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x; this.y = y; this.color = color;
+                this.vx = (Math.random() - 0.5) * 15;
+                this.vy = (Math.random() - 0.5) * 15 - 5;
+                this.life = 1.0;
+                this.decay = 0.01 + Math.random() * 0.015;
+            }
+            update() { this.x += this.vx; this.y += this.vy; this.vy += 0.3; this.life -= this.decay; }
+            draw() {
+                ctx.globalAlpha = Math.max(0, this.life);
+                ctx.fillStyle = this.color;
+                ctx.fillRect(this.x, this.y, 5, 5);
+                ctx.globalAlpha = 1.0;
+            }
+        }
+
+        class Fighter {
+            constructor(x, c1, c2, isPlayer, scale = 1) {
+                this.isPlayer = isPlayer; this.c1 = c1; this.c2 = c2; this.scale = scale;
+                this.maxHealth = scale > 1 ? 150 : 100;
+                this.reset(x);
+            }
+            reset(x) {
+                this.x = x; this.y = config.groundY;
+                this.vx = 0; this.vy = 0;
+                this.health = this.maxHealth;
+                this.isJumping = false; this.isAttacking = false; this.isKicking = false;
+                this.isDead = false; this.isShielding = false; this.isExploded = false;
+                this.isRaisingTrophy = false; this.deathTimer = 0; this.attackCooldown = 0;
+                this.facing = this.x < 500 ? 1 : -1;
+                this.animFrame = 0; this.rotation = 0;
+            }
+            explode() {
+                for(let i = 0; i < 50 * this.scale; i++) {
+                    const color = Math.random() > 0.5 ? this.c1 : this.c2;
+                    particles.push(new Particle(this.x, this.y - 15 * this.scale, color));
+                }
+                this.isExploded = true;
+            }
+            draw() {
+                if (this.isExploded) return;
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.scale(this.scale, this.scale);
+                if (this.isDead) ctx.rotate(this.rotation * this.facing);
+                ctx.fillStyle = "rgba(0,0,0,0.3)";
+                ctx.beginPath();
+                ctx.ellipse(0, 0, 20, 5, 0, 0, Math.PI*2);
+                ctx.fill();
+                const walk = Math.abs(this.vx) > 0.5 && !this.isDead ? Math.sin(this.animFrame) * 20 : 0;
+                const breathing = !this.isDead ? Math.sin(Date.now() / 400) * 2 : 0;
+                let grad = ctx.createLinearGradient(0, -80, 0, 0);
+                grad.addColorStop(0, this.c1); grad.addColorStop(1, this.c2);
+                ctx.strokeStyle = grad; ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+                ctx.beginPath();
+                if (this.isKicking) { ctx.moveTo(0, -25); ctx.lineTo(0, 0); ctx.moveTo(0, -25); ctx.lineTo(45 * this.facing, -25); }
+                else { ctx.moveTo(0, -25); ctx.lineTo(-walk, 0); ctx.moveTo(0, -25); ctx.lineTo(walk, 0); }
+                ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(0, -25); ctx.lineTo(0, -55 + breathing); ctx.stroke();
+                ctx.beginPath(); ctx.arc(0, -65 + breathing, 10, 0, Math.PI * 2); ctx.stroke();
+                ctx.beginPath();
+                if (this.isRaisingTrophy) { ctx.moveTo(0, -55 + breathing); ctx.lineTo(-12, -85 + breathing); ctx.moveTo(0, -55 + breathing); ctx.lineTo(12, -85 + breathing); }
+                else if (this.isAttacking) { ctx.moveTo(0, -55 + breathing); ctx.lineTo(40 * this.facing, -55 + breathing); }
+                else { const armSide = 20 + (walk * 0.5); ctx.moveTo(0, -55 + breathing); ctx.lineTo(-armSide, -35); ctx.moveTo(0, -55 + breathing); ctx.lineTo(armSide, -35); }
+                ctx.stroke();
+                if (this.isRaisingTrophy) {
+                    ctx.fillStyle = "#FFD700"; ctx.strokeStyle = "#DAA520"; ctx.lineWidth = 2;
+                    ctx.fillRect(-10, -95 + breathing, 20, 5); ctx.fillRect(-3, -100 + breathing, 6, 5);
+                    ctx.beginPath(); ctx.arc(0, -105 + breathing, 14, 0, Math.PI, false); ctx.fill(); ctx.stroke();
+                    ctx.beginPath(); ctx.arc(-14, -105 + breathing, 5, Math.PI/2, Math.PI*1.5); ctx.stroke();
+                    ctx.beginPath(); ctx.arc(14, -105 + breathing, 5, -Math.PI/2, Math.PI/2); ctx.stroke();
+                }
+                if (this.isShielding) {
+                    ctx.beginPath(); ctx.arc(0, -35, 50, 0, Math.PI * 2);
+                    ctx.fillStyle = this.c1; ctx.globalAlpha = 0.2; ctx.fill();
+                    ctx.lineWidth = 3; ctx.strokeStyle = this.c2; ctx.globalAlpha = 0.6; ctx.stroke();
+                }
+                ctx.restore();
+            }
+            update() {
+                if (this.isExploded) return;
+                this.vy += config.gravity;
+                let oldY = this.y;
+                this.x += this.vx; this.y += this.vy; this.vx *= config.friction;
+               
+                if (gameMode === 'parkour' && this.y > 600 && !this.isDead) {
+                    this.health = 0; this.isDead = true; this.deathTimer = 1;
+                }
+
+                if (this.y >= config.groundY) { this.y = config.groundY; this.vy = 0; this.isJumping = false; }
+                else { this.isJumping = true; }
+               
+                let activePlatforms = gameMode === 'parkour' ? parkourPlatforms : platforms;
+                if (this.vy >= 0) {
+                    for (let p of activePlatforms) {
+                        if (oldY <= p.y && this.y >= p.y && this.x > p.x && this.x < p.x + p.w) {
+                            this.y = p.y; this.vy = 0; this.isJumping = false; break;
+                        }
+                    }
+                }
+                if (this.x < 40 * this.scale) this.x = 40 * this.scale;
+                if (this.x > canvas.width - 40 * this.scale) this.x = canvas.width - 40 * this.scale;
+                if (!this.isDead) {
+                    if (Math.abs(this.vx) > 0.2) this.animFrame += 0.2;
+                    if (this.attackCooldown > 0) this.attackCooldown--;
+                    if (this.attackCooldown === 0) { this.isAttacking = false; this.isKicking = false; }
+                } else {
+                    if (this.rotation < Math.PI / 2) this.rotation += 0.1;
+                    if (this.deathTimer > 0) { this.deathTimer--; if (this.deathTimer === 0) this.explode(); }
+                }
+            }
+            attack(type) {
+                if (this.isDead || this.attackCooldown > 0) return;
+                this.isAttacking = type === 'punch'; this.isKicking = type === 'kick';
+                this.attackCooldown = 18;
+            }
+        }
+
+        let player = new Fighter(200, '#ff3333', '#3333ff', true);
+        let enemies = [new Fighter(800, '#ffff33', '#33aa33', false)];
+
+        function setupEnemies(count) {
+            enemies = [];
+            for (let i = 0; i < count; i++) {
+                let startX = 500 + (i * 60);
+                if (startX > 900) startX = 900 - (i * 10);
+                enemies.push(new Fighter(startX, '#ffff33', '#33aa33', false));
+            }
+        }
+
+        function checkHitPair(atk, def) {
+            if (atk.isDead || def.isDead) return;
+            const dist = Math.sqrt(Math.pow(atk.x - def.x, 2) + Math.pow(atk.y - def.y, 2));
+            const rangeScale = atk.scale || 1;
+            if (atk.isAttacking && atk.attackCooldown === 14 && dist < 80 * rangeScale) applyDamage(atk, def, 3 * rangeScale, 10 * rangeScale);
+            if (atk.isKicking && atk.attackCooldown === 14 && dist < 100 * rangeScale) applyDamage(atk, def, 7 * rangeScale, 15 * rangeScale);
+        }
+
+        function applyDamage(atk, def, dmg, kb) {
+            if (def.isShielding) { def.health -= Math.ceil(dmg * 0.4); def.vx += Math.ceil(kb * 0.3) * atk.facing; }
+            else { def.health -= dmg; def.vx += kb * atk.facing; }
+            if (def.health <= 0 && !def.isDead) {
+                def.health = 0; def.isDead = true; def.deathTimer = 60;
+                if (def === boss) bossKiller = atk;
+            }
+        }
+
+        function checkHits() {
+            if (phase !== 'boss') {
+                enemies.forEach(e => { checkHitPair(player, e); checkHitPair(e, player); });
+            }
+            if (boss) {
+                checkHitPair(player, boss); checkHitPair(boss, player);
+                enemies.forEach(e => { checkHitPair(e, boss); checkHitPair(boss, e); });
+            }
+        }
+
+        function resetToMenu() {
+            gameMode = 'menu';
+            document.getElementById('menu-box').style.display = 'block';
+            document.getElementById('training-qty-box').style.display = 'none';
+            msgBox.style.display = 'none';
+            document.querySelectorAll('.game-ui').forEach(ui => ui.style.display = 'none');
+            document.getElementById('boss-bar-container').style.display = 'none';
+            setupEnemies(1);
+            config.groundY = 420;
+            player.reset(200); enemies[0].reset(800);
+            boss = null; particles = []; gameState.gameOver = false;
+        }
+
+        function startGame(mode) {
+            gameMode = mode;
+            document.getElementById('menu-box').style.display = 'none';
+            document.getElementById('training-qty-box').style.display = 'none';
+            if (mode !== 'training' && mode !== 'parkour') setupEnemies(1);
+            if (mode === 'parkour') enemies = [];
+            document.getElementById('p1-label').style.display = 'block';
+            document.getElementById('p1-bar-container').style.display = 'flex';
+            if (enemies.length === 1) {
+                document.getElementById('p2-label').style.display = 'block';
+                document.getElementById('p2-bar-container').style.display = 'flex';
+            } else {
+                document.getElementById('p2-label').style.display = 'none';
+                document.getElementById('p2-bar-container').style.display = 'none';
+            }
+            document.getElementById('timer-display').style.display = 'block';
+            resetGame();
+        }
+
+        function resetGame() {
+            if (gameMode === 'parkour') {
+                config.groundY = 2000;
+                config.jumpForce = -11.5; // Salto mais curto e preciso para o Parkour
+            } else {
+                config.groundY = 420;
+                config.jumpForce = -14.5; // Salto alto e normal para as batalhas
+            }
+
+            player.reset(200);
+           
+            if (gameMode === 'parkour') {
+                player.y = 300; // Garante que o jogador começa acima da plataforma e cai em segurança
+            }
+
+            if (enemies.length > 0) enemies.forEach((e, i) => e.reset(600 + (i * 60)));
+            boss = null; bossKiller = null; phase = 'normal'; particles = [];
+            gameState.gameOver = false; gameState.flawless = false; gameState.loser = null;
+            timeLeft = 30; lastTime = Date.now();
+            let timerDisplay = document.getElementById('timer-display');
+           
+            if (gameMode === 'parkour') {
+                parkourPlatforms = [{ x: 50, y: 350, w: 800, h: 10 }];
+                parkourScore = 0;
+                timerDisplay.innerText = '0m';
+            } else {
+                timerDisplay.innerText = gameMode === 'training' ? '∞' : timeLeft;
+            }
+           
+            timerDisplay.style.color = '#fff';
+            document.getElementById('boss-bar-container').style.display = 'none';
+            msgBox.style.display = 'none';
+        }
+
+        function loop() {
+            ctx.fillStyle = "#050505"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            if (gameMode !== 'parkour') {
+                ctx.fillStyle = "#0a0a0a"; ctx.fillRect(0, config.groundY, canvas.width, 500 - config.groundY);
+            }
+            ctx.fillStyle = "#222";
+           
+            let activePlatforms = gameMode === 'parkour' ? parkourPlatforms : platforms;
+            for (let p of activePlatforms) {
+                ctx.fillRect(p.x, p.y, p.w, p.h);
+                ctx.strokeStyle = "#444"; ctx.strokeRect(p.x, p.y, p.w, p.h);
+            }
+
+            if (gameMode !== 'menu' && !gameState.gameOver) {
+                if (gameMode === 'parkour') {
+                    // O mundo só se move se o jogador passar do meio do ecrã (x = 400)
+                    const cameraX = 400;
+                    if (player.x > cameraX) {
+                        let diff = player.x - cameraX;
+                        player.x = cameraX; // Mantém o jogador no sítio
+                        parkourScore += diff / 50; // Calcula os metros com base no teu movimento
+                        document.getElementById('timer-display').innerText = Math.floor(parkourScore) + 'm';
+                       
+                        // Empurra as plataformas para trás, simulando a câmara a avançar
+                        parkourPlatforms.forEach(p => {
+                            p.x -= diff;
+                        });
+                    }
+                   
+                    // Remove plataformas antigas
+                    if (parkourPlatforms[0].x + parkourPlatforms[0].w < -50) parkourPlatforms.shift();
+                   
+                    // Gera plataformas novas "à medida que andas"
+                    let lastP = parkourPlatforms[parkourPlatforms.length - 1];
+                    if (lastP.x + lastP.w < canvas.width + 200) {
+                        let gap = Math.random() * 100 + 50; // Buracos mais pequenos (antes: 150 + 80)
+                        let w = Math.random() * 150 + 150;  // Plataformas mais largas (antes: 150 + 100)
+                        let yDist = (Math.random() - 0.5) * 100; // Menos variação de altura (antes: 160)
+                        let y = lastP.y + yDist;
+                        if (y < 200) y = 200;
+                        if (y > 450) y = 450;
+                        parkourPlatforms.push({ x: lastP.x + lastP.w + gap, y: y, w: w, h: 10 });
+                    }
+                } else if (phase !== 'boss' && gameMode !== 'training') {
+                    const now = Date.now();
+                    if (now - lastTime >= 1000) {
+                        timeLeft--; document.getElementById('timer-display').innerText = timeLeft; lastTime = now;
+                        if (timeLeft <= 5 && timeLeft > 0) document.getElementById('timer-display').style.color = '#ff3333';
+                        if (timeLeft <= 0) {
+                            if (phase === 'normal') { phase = 'overtime'; timeLeft = 15; document.getElementById('timer-display').style.color = '#ffaa00'; }
+                            else if (phase === 'overtime') {
+                                if (gameMode === 'battle') {
+                                    phase = 'boss'; document.getElementById('timer-display').style.display = 'none';
+                                    document.getElementById('boss-bar-container').style.display = 'block';
+                                    boss = new Fighter(500, '#aa00ff', '#4400aa', false, 1.5);
+                                    for(let i=0; i<40; i++) particles.push(new Particle(boss.x, boss.y - 20, '#aa00ff'));
+                                } else if (gameMode === 'competition') {
+                                    gameState.gameOver = true; competitionWins = 0;
+                                    setTimeout(() => {
+                                        msgBox.style.display = 'block'; document.getElementById('menu-btn').style.display = 'none';
+                                        document.getElementById('winner-text').innerHTML = "EMPATE!<br><br><span style='font-size: 16px; color: #aaa'>[P] - Jogar Novamente | [C] - Sair</span>";
+                                    }, 500);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (!player.isDead && !player.isRaisingTrophy) {
+                    player.isShielding = keys['ArrowDown'];
+                    if (keys['ArrowLeft']) { player.vx -= config.moveSpeed; player.facing = -1; }
+                    if (keys['ArrowRight']) { player.vx += config.moveSpeed; player.facing = 1; }
+                    if (keys['KeyS'] && !player.isJumping) player.vy = config.jumpForce;
+                    if (keys['Space']) player.attack('punch');
+                    if (keys['KeyP']) player.attack('kick');
+                }
+
+                enemies.forEach(enemy => {
+                    if (!enemy.isDead) {
+                        let target = (phase === 'boss' && boss && !boss.isDead) ? boss : player;
+                        if (target && !target.isDead) {
+                            const dx = target.x - enemy.x; const dy = target.y - enemy.y;
+                            enemy.facing = dx > 0 ? 1 : -1;
+                            enemy.isShielding = (Math.abs(dx) < 90 && (target.isAttacking || target.isKicking) && Math.random() < 0.2);
+                            if (!enemy.isShielding) {
+                                if (Math.abs(dx) > 60) enemy.vx += (dx > 0 ? 0.3 : -0.3);
+                                if (dy < -50 && !enemy.isJumping && Math.random() < 0.05) enemy.vy = config.jumpForce;
+                                if (Math.abs(dx) < 80 && Math.abs(dy) < 50 && Math.random() < 0.04) enemy.attack(Math.random() > 0.5 ? 'punch' : 'kick');
+                            }
+                        }
+                    }
+                });
+
+                if (boss && !boss.isDead) {
+                    let target = player.isDead ? null : player;
+                    enemies.forEach(e => { if (!e.isDead && Math.abs(boss.x - e.x) < (target ? Math.abs(boss.x - target.x) : Infinity)) target = e; });
+                    if (target) {
+                        const dx = target.x - boss.x; const dy = target.y - boss.y;
+                        boss.facing = dx > 0 ? 1 : -1;
+                        boss.isShielding = (Math.abs(dx) < 120 && (target.isAttacking || target.isKicking) && Math.random() < 0.1);
+                        if (!boss.isShielding) {
+                            if (Math.abs(dx) > 70) boss.vx += (dx > 0 ? 0.25 : -0.25);
+                            if (dy < -50 && !boss.isJumping && Math.random() < 0.05) boss.vy = config.jumpForce;
+                            if (Math.abs(dx) < 100 && Math.abs(dy) < 60 && Math.random() < 0.03) boss.attack(Math.random() > 0.5 ? 'punch' : 'kick');
+                        }
+                    }
+                }
+
+                player.update(); enemies.forEach(e => e.update()); if (boss) boss.update();
+                checkHits();
+
+                if (gameMode === 'parkour') {
+                    if (player.isExploded && !gameState.gameOver) {
+                        gameState.gameOver = true;
+                        setTimeout(() => {
+                            msgBox.style.display = 'block';
+                            document.getElementById('menu-btn').style.display = 'inline-block';
+                            document.getElementById('winner-text').innerHTML = `QUEDA MORTAL!<br><br><span style='font-size: 20px; color: #ffaa00'>PERCORRESTE: ${Math.floor(parkourScore)}m</span><br><br><span style='font-size: 14px; color: #aaa'>[P] 2x - Tentar Novamente</span>`;
+                        }, 500);
+                    }
+                } else if (phase !== 'boss') {
+                    if (gameMode === 'training') {
+                        let allEnemiesDead = enemies.length > 0 && enemies.every(e => e.isExploded);
+                        if ((player.isExploded || allEnemiesDead) && !gameState.gameOver) {
+                            gameState.gameOver = true;
+                            setTimeout(() => {
+                                msgBox.style.display = 'block';
+                                document.getElementById('menu-btn').style.display = 'inline-block';
+                                let text = player.isExploded ? "FIM DO TREINO" : "TREINO CONCLUÍDO!";
+                                document.getElementById('winner-text').innerHTML = text + "<br><br><span style='font-size: 14px; color: #aaa'>[T] 2x - Escolher Inimigos</span>";
+                            }, 500);
+                        }
+                    } else {
+                        let mainEnemy = enemies[0];
+                        if (player.isExploded || (mainEnemy && mainEnemy.isExploded)) {
+                            gameState.gameOver = true;
+                            let winner = player.isExploded ? mainEnemy : player;
+                            let loser = player.isExploded ? player : mainEnemy;
+                            if (winner.health === winner.maxHealth) { gameState.flawless = true; gameState.loser = loser; }
+                            if (gameMode === 'competition') {
+                                if (winner === player) { competitionWins++; if (competitionWins >= 10) { player.isRaisingTrophy = true; player.vx = 0; } }
+                                else { competitionWins = 0; }
+                            }
+                            setTimeout(() => {
+                                if (!gameState.gameOver) return;
+                                msgBox.style.display = 'block';
+                                if (gameMode === 'competition') {
+                                    document.getElementById('menu-btn').style.display = 'none';
+                                    let winText = (mainEnemy && mainEnemy.isExploded) ? "VITÓRIA!" : "DERROTA!";
+                                    if (gameState.flawless) winText = (mainEnemy && mainEnemy.isExploded) ? "VITÓRIA PERFEITA!" : "DERROTA TOTAL!";
+                                    if (winner === player) {
+                                        winText += `<br><span style='font-size: 20px; color: #ffaa00'>VITÓRIAS SEGUIDAS: ${competitionWins}</span>`;
+                                        if (competitionWins >= 10) winText += `<br><span style='font-size: 18px; color: #FFD700'>🏆 CAMPEÃO INVICTO! 🏆</span>`;
+                                    }
+                                    winText += "<br><br><span style='font-size: 16px; color: #aaa'>[P] - Nova Partida | [C] - Sair</span>";
+                                    document.getElementById('winner-text').innerHTML = winText;
+                                } else {
+                                    document.getElementById('menu-btn').style.display = 'inline-block';
+                                    let winText = (mainEnemy && mainEnemy.isExploded) ? "VITÓRIA" : "DERROTA";
+                                    if (gameState.flawless) winText = (mainEnemy && mainEnemy.isExploded) ? "VITÓRIA PERFEITA!" : "DERROTA TOTAL!";
+                                    document.getElementById('winner-text').innerText = winText;
+                                }
+                            }, 500);
+                        }
+                    }
+                } else {
+                    if (boss && boss.isExploded) { gameState.gameOver = true; setTimeout(() => { msgBox.style.display = 'block'; document.getElementById('winner-text').innerText = "VITÓRIA: DERROTARAM O BOSS!"; }, 500); }
+                    else if (player.isExploded || (enemies[0] && enemies[0].isExploded && player.isExploded)) { gameState.gameOver = true; setTimeout(() => { msgBox.style.display = 'block'; document.getElementById('winner-text').innerText = "O BOSS ESMAGOU-VOS!"; }, 500); }
+                }
+            }
+
+            if (gameState.gameOver && gameState.flawless && gameState.loser) {
+                for (let i = 0; i < 3; i++) particles.push(new Particle(gameState.loser.x, gameState.loser.y - 15, Math.random() > 0.5 ? gameState.loser.c1 : gameState.loser.c2));
+            }
+            if (gameState.gameOver && boss && boss.isExploded) {
+                for (let i = 0; i < 8; i++) {
+                    let p = new Particle(boss.x + (Math.random() - 0.5) * 60, boss.y - 40 + (Math.random() - 0.5) * 60, Math.random() > 0.2 ? (Math.random() > 0.5 ? boss.c1 : boss.c2) : '#ffffff');
+                    p.vx = (Math.random() - 0.5) * 25; p.vy = (Math.random() - 0.5) * 25 - 5; p.decay = 0.015 + Math.random() * 0.02;
+                    particles.push(p);
+                }
+            }
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].update(); particles[i].draw();
+                if (particles[i].life <= 0) particles.splice(i, 1);
+            }
+
+            if (boss) boss.draw(); player.draw(); enemies.forEach(e => e.draw());
+            document.getElementById('p1-health').style.height = Math.max(0, (player.health/player.maxHealth)*100) + '%';
+            if (enemies.length === 1) document.getElementById('p2-health').style.height = Math.max(0, (enemies[0].health/enemies[0].maxHealth)*100) + '%';
+            if (boss) document.getElementById('boss-health').style.width = Math.max(0, (boss.health/boss.maxHealth)*100) + '%';
+            requestAnimationFrame(loop);
+        }
+
+        resetToMenu();
+        window.onload = loop; // Garantir que arranca apenas quando carregado
+    </script>
+</body>
+</html>

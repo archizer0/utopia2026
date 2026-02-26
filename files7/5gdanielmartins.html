@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice vs Rainha de Copas - AI Edition</title>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: #2c3e50;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Press Start 2P', cursive;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        #game-container {
+            position: relative;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            border: 4px solid #4a2c2a;
+        }
+
+        canvas {
+            display: block;
+            background-color: #87CEEB;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .health-bar-container {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .fighter-hud {
+            width: 45%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .name-tag {
+            color: white;
+            font-size: 12px;
+            margin-bottom: 5px;
+            text-shadow: 2px 2px #000;
+        }
+
+        .bar-bg {
+            background-color: #333;
+            height: 30px;
+            width: 100%;
+            border: 2px solid white;
+            position: relative;
+            box-shadow: 0 4px 0 rgba(0,0,0,0.5);
+        }
+
+        .bar-fill {
+            height: 100%;
+            transition: width 0.1s linear;
+        }
+
+        #player-health {
+            background-color: #4ade80;
+            width: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        #enemy-health {
+            background-color: #f87171;
+            width: 100%;
+            position: absolute;
+            top: 0;
+            right: 0;
+        }
+
+        #timer {
+            background-color: #333;
+            color: white;
+            border: 2px solid white;
+            width: 60px;
+            height: 60px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 20px;
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            top: 20px;
+            box-shadow: 0 4px 0 rgba(0,0,0,0.5);
+        }
+
+        #display-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 30px;
+            text-align: center;
+            text-shadow: 4px 4px #000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: rgba(0,0,0,0.8);
+            padding: 20px;
+            border: 2px solid white;
+            z-index: 10;
+            pointer-events: auto;
+            min-width: 400px;
+        }
+
+        .ai-text {
+            font-size: 14px;
+            color: #fbbf24; /* Ouro */
+            margin-top: 15px;
+            margin-bottom: 15px;
+            line-height: 1.5;
+            text-shadow: none;
+            font-family: monospace; /* Fonte diferente para IA */
+            max-width: 500px;
+        }
+
+        .btn {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: #e11d48;
+            color: white;
+            border: 2px solid white;
+            font-family: 'Press Start 2P', cursive;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .btn:hover {
+            background: #be123c;
+        }
+
+        /* Caixa de Diálogo do Gato (IA) */
+        #cheshire-hint {
+            position: absolute;
+            top: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(75, 0, 130, 0.9); /* Roxo Indigo */
+            color: #e0e7ff;
+            padding: 15px;
+            border: 2px solid #a78bfa;
+            border-radius: 10px;
+            max-width: 80%;
+            text-align: center;
+            font-size: 12px;
+            line-height: 1.4;
+            display: none;
+            z-index: 5;
+            box-shadow: 0 0 15px #8b5cf6;
+        }
+
+        #cheshire-hint::before {
+            content: "😼 Gato de Cheshire diz:";
+            display: block;
+            font-weight: bold;
+            color: #fcd34d;
+            margin-bottom: 5px;
+            font-size: 10px;
+        }
+       
+        #controls-hint {
+            position: absolute;
+            bottom: 10px;
+            width: 100%;
+            text-align: center;
+            color: rgba(255,255,255,0.8);
+            font-size: 10px;
+            text-shadow: 1px 1px 0 #000;
+        }
+
+        .sparkle-btn {
+            background: linear-gradient(45deg, #7c3aed, #db2777);
+            border: 2px solid #fce7f3;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+       
+        <div id="ui-layer">
+            <div id="timer">60</div>
+           
+            <div class="health-bar-container">
+                <div class="fighter-hud">
+                    <div class="name-tag">ALICE</div>
+                    <div class="bar-bg">
+                        <div class="bar-fill" id="player-health"></div>
+                    </div>
+                </div>
+               
+                <div class="fighter-hud" style="align-items: flex-end;">
+                    <div class="name-tag">RAINHA DE COPAS</div>
+                    <div class="bar-bg">
+                        <div class="bar-fill" id="enemy-health"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI Hint Box -->
+            <div id="cheshire-hint"></div>
+
+            <div id="display-text">
+                <div>ALICE: O COMBATE</div>
+                <div style="font-size: 10px; margin-top: 10px; color: #aaa;">Agora com IA Gemini ✨</div>
+                <button class="btn" onclick="startGame()">INICIAR</button>
+            </div>
+            <div id="controls-hint">MOVER: SETAS | SALTAR: CIMA | ATACAR: ESPAÇO | ✨ DICA DO GATO: H</div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.querySelector('canvas');
+        const c = canvas.getContext('2d');
+
+        canvas.width = 1024;
+        canvas.height = 576;
+
+        const gravity = 0.7;
+        let gameRunning = false;
+        let particles = [];
+        let animationId;
+        const apiKey = ""; // Chave injetada pelo ambiente
+
+        // --- Integração Gemini AI ---
+
+        async function generateAIContent(prompt) {
+            if (!apiKey) {
+                console.warn("API Key em falta");
+                return "O Gato está a dormir (Falta API Key)...";
+            }
+
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+           
+            const payload = {
+                contents: [{ parts: [{ text: prompt }] }]
+            };
+
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await response.json();
+                return data.candidates?.[0]?.content?.parts?.[0]?.text || "O Gato sorriu e desapareceu...";
+            } catch (error) {
+                console.error("Erro Gemini:", error);
+                return "O caos reina... (Erro na IA)";
+            }
+        }
+
+        async function triggerCheshireHint() {
+            const hintBox = document.getElementById('cheshire-hint');
+            hintBox.style.display = 'block';
+            hintBox.innerText = "A pensar num enigma... ✨";
+
+            // Contexto do jogo para a IA
+            const hpDiff = player.health - enemy.health;
+            let context = "";
+            if (hpDiff > 20) context = "A Alice está a ganhar facilmente.";
+            else if (hpDiff < -20) context = "A Alice está a perder feio.";
+            else context = "A luta está muito renhida.";
+
+            const prompt = `Tu és o Gato de Cheshire. Dá uma dica curta, enigmática e rimada (máximo 15 palavras) para a Alice vencer a Rainha de Copas, baseada nisto: ${context}. Responde em Português de Portugal.`;
+
+            const text = await generateAIContent(prompt);
+            hintBox.innerText = text;
+
+            // Esconder após 5 segundos
+            setTimeout(() => {
+                hintBox.style.display = 'none';
+            }, 6000);
+        }
+
+        async function generateEnding(winnerName, loserName) {
+            const displayText = document.getElementById('display-text');
+            const aiTextDiv = document.createElement('div');
+            aiTextDiv.className = 'ai-text';
+            aiTextDiv.innerText = "A escrever o destino... ✨";
+           
+            // Inserir antes do botão de reiniciar se já existir, ou no fim
+            const restartBtn = displayText.querySelector('button');
+            if (restartBtn) {
+                displayText.insertBefore(aiTextDiv, restartBtn);
+            } else {
+                displayText.appendChild(aiTextDiv);
+            }
+
+            const prompt = `Escreve um final muito curto, absurdo e divertido (máximo 2 frases) para uma luta onde ${winnerName} derrotou ${loserName} no País das Maravilhas. Inclui uma referência a chá ou cabeças. Em Português de Portugal.`;
+           
+            const story = await generateAIContent(prompt);
+            aiTextDiv.innerText = story;
+        }
+
+        // --- Classes de Jogo ---
+
+        class Particle {
+            constructor({ position, velocity, radius, color }) {
+                this.position = position;
+                this.velocity = velocity;
+                this.radius = radius;
+                this.color = color;
+                this.opacity = 1;
+            }
+
+            draw() {
+                c.save();
+                c.globalAlpha = this.opacity;
+                c.beginPath();
+                c.arc(this.position.x, this.position.y, this.radius, 0, Math.PI * 2, false);
+                c.fillStyle = this.color;
+                c.fill();
+                c.restore();
+            }
+
+            update() {
+                this.draw();
+                this.position.x += this.velocity.x;
+                this.position.y += this.velocity.y;
+                this.opacity -= 0.05; // Fade out
+            }
+        }
+
+        class Sprite {
+            constructor({ position, velocity, color = 'red', offset = { x: 0, y: 0 } }) {
+                this.position = position;
+                this.velocity = velocity;
+                this.width = 50;
+                this.height = 150;
+                this.lastKey;
+                this.attackBox = {
+                    position: { x: this.position.x, y: this.position.y },
+                    offset: offset,
+                    width: 100,
+                    height: 50
+                };
+                this.color = color;
+                this.isAttacking = false;
+                this.health = 100;
+                this.dead = false;
+                this.direction = 1;
+                this.frames = 0;
+            }
+
+            draw() {
+                c.fillStyle = this.color;
+                c.fillRect(this.position.x, this.position.y, this.width, this.height);
+            }
+
+            update() {
+                if (!this.dead) this.draw();
+                if (this.dead) return;
+
+                this.frames++;
+               
+                if (this.direction === 1) {
+                     this.attackBox.position.x = this.position.x + this.width + this.attackBox.offset.x - 50;
+                } else {
+                     this.attackBox.position.x = this.position.x - this.attackBox.width + 50 - this.attackBox.offset.x;
+                }
+                this.attackBox.position.y = this.position.y + 30;
+
+                this.position.x += this.velocity.x;
+                this.position.y += this.velocity.y;
+
+                if (this.position.y + this.height + this.velocity.y >= canvas.height - 60) {
+                    this.velocity.y = 0;
+                    this.position.y = canvas.height - 60 - this.height;
+                } else {
+                    this.velocity.y += gravity;
+                }
+            }
+
+            attack() {
+                this.isAttacking = true;
+                setTimeout(() => {
+                    this.isAttacking = false;
+                }, 100);
+            }
+
+            takeHit(damage, attackerDirection) {
+                this.health -= damage;
+                this.velocity.y = -5;
+                this.velocity.x = attackerDirection * 10;
+               
+                for (let i = 0; i < 8; i++) {
+                    particles.push(new Particle({
+                        position: { x: this.position.x + this.width/2, y: this.position.y + this.height/2 },
+                        velocity: { x: (Math.random() - 0.5) * 10, y: (Math.random() - 0.5) * 10 },
+                        radius: Math.random() * 3,
+                        color: 'white'
+                    }));
+                }
+            }
+        }
+
+        class Alice extends Sprite {
+            draw() {
+                if(this.dead) return;
+                const x = this.position.x;
+                const y = this.position.y;
+                const w = this.width;
+                const h = this.height;
+                const legOffset = (Math.abs(this.velocity.x) > 0) ? Math.sin(this.frames * 0.2) * 10 : 0;
+
+                c.fillStyle = 'white';
+                c.fillRect(x + 5, y + h - 20, 15, 20 + legOffset);
+                c.fillRect(x + w - 20, y + h - 20, 15, 20 - legOffset);
+                c.fillStyle = 'black';
+                c.fillRect(x + 5, y + h + legOffset, 15, 5);
+                c.fillRect(x + w - 20, y + h - legOffset, 15, 5);
+
+                c.fillStyle = '#3b82f6';
+                c.fillRect(x, y + 30, w, h - 50);
+               
+                c.fillStyle = 'white';
+                c.fillRect(x + 10, y + 35, w - 20, h - 70);
+
+                c.fillStyle = '#fcd34d';
+                if (this.isAttacking) {
+                     if (this.direction === 1) c.fillRect(x + w - 10, y + 40, 40, 10);
+                     else c.fillRect(x - 30, y + 40, 40, 10);
+                } else {
+                    c.fillRect(x + 15, y + 40, 20, 10);
+                }
+
+                c.fillStyle = '#fcd34d';
+                c.beginPath();
+                c.arc(x + w/2, y + 15, 22, 0, Math.PI * 2);
+                c.fill();
+
+                c.fillStyle = '#fbbf24';
+                c.beginPath();
+                c.arc(x + w/2, y + 15, 24, Math.PI, Math.PI * 2);
+                c.fill();
+
+                c.fillStyle = 'black';
+                c.fillRect(x + 10, y - 5, w - 20, 6);
+
+                if (this.isAttacking) {
+                    c.fillStyle = '#e2e8f0';
+                    c.strokeStyle = '#94a3b8';
+                    c.lineWidth = 4;
+                    c.beginPath();
+                    if (this.direction === 1) {
+                        c.moveTo(x + w + 30, y + 45);
+                        c.lineTo(x + w + 90, y + 45);
+                        c.lineTo(x + w + 80, y + 25);
+                    } else {
+                        c.moveTo(x - 30, y + 45);
+                        c.lineTo(x - 90, y + 45);
+                        c.lineTo(x - 80, y + 25);
+                    }
+                    c.stroke();
+                }
+            }
+        }
+
+        class Queen extends Sprite {
+            constructor(props) {
+                super(props);
+                this.attackCooldown = 0;
+            }
+
+            draw() {
+                if(this.dead) return;
+                const x = this.position.x;
+                const y = this.position.y;
+                const w = this.width;
+                const h = this.height;
+
+                c.fillStyle = '#ef4444';
+                c.beginPath();
+                c.moveTo(x + w/2, y + 30);
+                c.lineTo(x + w + 20, y + h);
+                c.lineTo(x - 20, y + h);
+                c.fill();
+
+                c.fillStyle = 'black';
+                c.font = "20px Arial";
+                c.fillText("♥", x + 15, y + 80);
+
+                c.fillStyle = 'white';
+                c.beginPath();
+                c.arc(x + w/2, y + 15, 25, 0, Math.PI * 2);
+                c.fill();
+
+                c.fillStyle = '#fbbf24';
+                c.beginPath();
+                c.moveTo(x, y - 5);
+                c.lineTo(x + 10, y + 10);
+                c.lineTo(x + 25, y - 10);
+                c.lineTo(x + 40, y + 10);
+                c.lineTo(x + 50, y - 5);
+                c.lineTo(x + 50, y + 10);
+                c.lineTo(x, y + 10);
+                c.fill();
+
+                if (this.isAttacking) {
+                    c.fillStyle = '#b91c1c';
+                    c.fillRect(this.attackBox.position.x, this.attackBox.position.y, this.attackBox.width, 10);
+                }
+            }
+
+            updateAI(target) {
+                if(this.dead) return;
+                this.update();
+               
+                const dx = target.position.x - this.position.x;
+                const distance = Math.abs(dx);
+
+                if (distance > 60) {
+                    if (dx > 0) {
+                        this.velocity.x = 4.5; // Ainda mais rápida a perseguir
+                        this.direction = 1;
+                    } else {
+                        this.velocity.x = -4.5; // Ainda mais rápida a perseguir
+                        this.direction = -1;
+                    }
+                } else {
+                    this.velocity.x = 0;
+                }
+
+                if (distance < 130 && this.attackCooldown <= 0) { // Aumentei ligeiramente o alcance
+                    this.attack();
+                    this.attackCooldown = 10; // Quase sem tempo de espera (ataque contínuo!)
+                }
+
+                if (Math.random() < 0.01 && this.position.y + this.height >= canvas.height - 61) {
+                    this.velocity.y = -15;
+                }
+
+                if (this.attackCooldown > 0) this.attackCooldown--;
+            }
+        }
+
+        // --- Variáveis Globais ---
+
+        const player = new Alice({
+            position: { x: 100, y: 0 },
+            velocity: { x: 0, y: 0 },
+            offset: { x: 0, y: 0 }
+        });
+
+        const enemy = new Queen({
+            position: { x: 800, y: 0 },
+            velocity: { x: 0, y: 0 },
+            offset: { x: -50, y: 0 },
+            color: 'blue'
+        });
+
+        const keys = {
+            ArrowRight: { pressed: false },
+            ArrowLeft: { pressed: false },
+            ArrowUp: { pressed: false }
+        };
+
+        let timer = 60;
+        let timerId;
+        let gameOver = false;
+
+        // --- Funções Principais ---
+
+        function startGame() {
+            if(gameRunning) return;
+            gameRunning = true;
+            document.getElementById('display-text').style.display = 'none';
+            decreaseTimer();
+            animate();
+        }
+
+        function rectangularCollision({ rectangle1, rectangle2 }) {
+            return (
+                rectangle1.attackBox.position.x + rectangle1.attackBox.width >= rectangle2.position.x &&
+                rectangle1.attackBox.position.x <= rectangle2.position.x + rectangle2.width &&
+                rectangle1.attackBox.position.y + rectangle1.attackBox.height >= rectangle2.position.y &&
+                rectangle1.attackBox.position.y <= rectangle2.position.y + rectangle2.height
+            );
+        }
+
+        function determineWinner({ player, enemy, timerId }) {
+            clearTimeout(timerId);
+            gameOver = true;
+            gameRunning = false;
+           
+            const displayText = document.querySelector('#display-text');
+            displayText.style.display = 'flex';
+            displayText.innerHTML = ''; // Limpar conteúdo anterior
+
+            let title = document.createElement('div');
+            let winner = "";
+            let loser = "";
+           
+            if (player.health === enemy.health) {
+                title.innerHTML = 'EMPATE';
+                winner = "Ninguém"; loser = "Ninguém";
+            } else if (player.health > enemy.health) {
+                title.innerHTML = 'ALICE VENCEU!';
+                winner = "Alice"; loser = "Rainha de Copas";
+            } else {
+                title.innerHTML = 'RAINHA VENCEU!';
+                winner = "Rainha de Copas"; loser = "Alice";
+            }
+            displayText.appendChild(title);
+
+            // Botão Restart
+            const btn = document.createElement('button');
+            btn.className = 'btn';
+            btn.innerText = 'REINICIAR (R)';
+            btn.onclick = () => location.reload();
+            displayText.appendChild(btn);
+
+            // Gerar história com IA
+            generateEnding(winner, loser);
+        }
+
+        function decreaseTimer() {
+            if (timer > 0 && gameRunning) {
+                timerId = setTimeout(decreaseTimer, 1000);
+                timer--;
+                document.querySelector('#timer').innerHTML = timer;
+            }
+
+            if (timer === 0) {
+                determineWinner({ player, enemy, timerId });
+            }
+        }
+
+        function drawBackground() {
+            const tileSize = 60;
+            const floorY = canvas.height - 60;
+           
+            c.fillStyle = '#87CEEB';
+            c.fillRect(0, 0, canvas.width, canvas.height);
+           
+            c.fillStyle = '#d8b4fe';
+            c.beginPath();
+            c.arc(200, 400, 60, 0, Math.PI, true);
+            c.fill();
+            c.fillStyle = '#fef3c7';
+            c.fillRect(180, 400, 40, 120);
+
+            c.fillStyle = '#fca5a5';
+            c.beginPath();
+            c.arc(700, 450, 40, 0, Math.PI, true);
+            c.fill();
+            c.fillStyle = '#fef3c7';
+            c.fillRect(690, 450, 20, 70);
+
+            // Chão
+            for (let x = 0; x < canvas.width; x += tileSize) {
+                c.fillStyle = (x / tileSize) % 2 === 0 ? '#10b981' : '#047857';
+                c.fillRect(x, floorY, tileSize, tileSize);
+            }
+        }
+
+        function animate() {
+            if(!gameRunning && !gameOver) return; // Pausa se não iniciado
+           
+            animationId = window.requestAnimationFrame(animate);
+           
+            c.clearRect(0, 0, canvas.width, canvas.height);
+            drawBackground();
+
+            // Sombras
+            c.fillStyle = 'rgba(0,0,0,0.2)';
+            c.beginPath();
+            c.ellipse(player.position.x + player.width/2, canvas.height - 50, 30, 10, 0, 0, Math.PI * 2);
+            c.fill();
+            c.beginPath();
+            c.ellipse(enemy.position.x + enemy.width/2, canvas.height - 50, 30, 10, 0, 0, Math.PI * 2);
+            c.fill();
+
+            // Atualizar e Desenhar Entidades
+            player.update();
+            enemy.updateAI(player);
+
+            // Partículas
+            particles.forEach((particle, index) => {
+                if (particle.opacity <= 0) {
+                    particles.splice(index, 1);
+                } else {
+                    particle.update();
+                }
+            });
+
+            // Movimento Jogador
+            player.velocity.x = 0;
+            if (keys.ArrowLeft.pressed && player.lastKey === 'ArrowLeft') {
+                player.velocity.x = -5;
+                player.direction = -1;
+            } else if (keys.ArrowRight.pressed && player.lastKey === 'ArrowRight') {
+                player.velocity.x = 5;
+                player.direction = 1;
+            }
+
+            // Colisões
+            if (
+                rectangularCollision({ rectangle1: player, rectangle2: enemy }) &&
+                player.isAttacking && player.frames % 4 === 0
+            ) {
+                player.isAttacking = false;
+                enemy.takeHit(10, player.direction);
+                document.querySelector('#enemy-health').style.width = Math.max(0, enemy.health) + '%';
+            }
+
+            if (
+                rectangularCollision({ rectangle1: enemy, rectangle2: player }) &&
+                enemy.isAttacking && enemy.frames % 4 === 0
+            ) {
+                enemy.isAttacking = false;
+                player.takeHit(15, enemy.direction);
+                document.querySelector('#player-health').style.width = Math.max(0, player.health) + '%';
+            }
+
+            // Game Over
+            if (enemy.health <= 0 || player.health <= 0) {
+                if(!gameOver) {
+                    if(enemy.health <= 0) enemy.dead = true;
+                    if(player.health <= 0) player.dead = true;
+                    determineWinner({ player, enemy, timerId });
+                    window.cancelAnimationFrame(animationId);
+                }
+            }
+        }
+
+        // Event Listeners
+        window.addEventListener('keydown', (event) => {
+            if (!gameRunning && event.key !== 'Enter') return;
+           
+            if (gameOver) {
+                if(event.key.toLowerCase() === 'r') location.reload();
+                return;
+            }
+
+            switch (event.key) {
+                case 'ArrowRight':
+                    keys.ArrowRight.pressed = true;
+                    player.lastKey = 'ArrowRight';
+                    break;
+                case 'ArrowLeft':
+                    keys.ArrowLeft.pressed = true;
+                    player.lastKey = 'ArrowLeft';
+                    break;
+                case 'ArrowUp':
+                    if(player.position.y + player.height >= canvas.height - 61) {
+                         player.velocity.y = -20;
+                    }
+                    break;
+                case ' ':
+                    player.attack();
+                    break;
+                case 'h':
+                case 'H':
+                    triggerCheshireHint();
+                    break;
+            }
+        });
+
+        window.addEventListener('keyup', (event) => {
+            switch (event.key) {
+                case 'ArrowRight':
+                    keys.ArrowRight.pressed = false;
+                    break;
+                case 'ArrowLeft':
+                    keys.ArrowLeft.pressed = false;
+                    break;
+            }
+        });
+
+    </script>
+</body>
+</html>

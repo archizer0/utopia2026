@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drift in Wonderland</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; }
+        #ui { position: absolute; top: 20px; left: 20px; color: white; pointer-events: none; z-index: 10; }
+        .stat-card { background: rgba(50, 0, 100, 0.7); padding: 10px 20px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid #a855f7; backdrop-filter: blur(5px); }
+        #shop-btn { position: absolute; top: 20px; right: 20px; pointer-events: auto; z-index: 10; }
+        #shop-menu {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: #1e0b36; color: white; padding: 30px; border-radius: 15px;
+            display: none; pointer-events: auto; border: 2px solid #a855f7; min-width: 320px; z-index: 20;
+        }
+        .msg { position: absolute; top: 20%; left: 50%; transform: translateX(-50%); color: #e879f9; font-size: 2.5rem; font-weight: bold; opacity: 0; transition: 0.5s; z-index: 15; text-shadow: 2px 2px 10px rgba(0,0,0,0.8); pointer-events: none; }
+        #instructions { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); color: #d8b4fe; opacity: 0.8; font-size: 0.9rem; text-align: center; }
+        .skin-button { transition: transform 0.2s; border: 2px solid transparent; }
+        .skin-button:hover { transform: scale(1.05); border-color: white; }
+    </style>
+</head>
+<body>
+
+<div id="ui">
+    <div class="stat-card">
+        <div class="text-xs uppercase opacity-70">Nível</div>
+        <div id="level-val" class="text-2xl font-bold">1</div>
+    </div>
+    <div class="stat-card">
+        <div class="text-xs uppercase opacity-70">Dinheiro</div>
+        <div id="money-val" class="text-2xl font-bold text-green-400">0€</div>
+    </div>
+    <div class="stat-card">
+        <div class="text-xs uppercase opacity-70">Drift Mágico</div>
+        <div id="drift-points" class="text-2xl font-bold text-purple-400">0</div>
+    </div>
+</div>
+
+<div id="level-msg" class="msg text-center">NÍVEL SUBIU! +500€</div>
+
+<button id="shop-btn" class="bg-purple-700 hover:bg-purple-600 text-white font-bold py-2 px-6 rounded-full shadow-lg transition border-2 border-purple-400">
+    ARMÁRIO MÁGICO (Pinturas)
+</button>
+
+<div id="shop-menu">
+    <h2 class="text-2xl mb-4 font-bold border-b border-purple-500 pb-2 italic text-center">Escolha o seu Tema</h2>
+    <div class="grid grid-cols-2 gap-3 mb-6">
+        <button onclick="buyColor(0x8b5cf6, 'Gato de Cheshire')" class="skin-button p-2 rounded bg-purple-600 text-xs font-bold">GATO CHESHIRE<br>(200€)</button>
+        <button onclick="buyColor(0xef4444, 'Rainha de Copas')" class="skin-button p-2 rounded bg-red-600 text-xs font-bold">RAINHA COPAS<br>(200€)</button>
+        <button onclick="buyColor(0x22c55e, 'Chapeleiro')" class="skin-button p-2 rounded bg-green-600 text-xs font-bold">CHAPELEIRO<br>(200€)</button>
+        <button onclick="buyColor(0x60a5fa, 'Alice')" class="skin-button p-2 rounded bg-blue-400 text-xs font-bold border-2 border-white ring-2 ring-blue-200">✨ TEMA ALICE ✨<br>(500€)</button>
+    </div>
+    <button onclick="toggleShop()" class="w-full bg-gray-800 py-2 rounded hover:bg-gray-700">Voltar ao Chá</button>
+</div>
+
+<div id="instructions">Setas/WASD: Correr | ESPAÇO: Drift Roxo | Cuidado com as Cartas!</div>
+
+<script>
+    let scene, camera, renderer, car, floor;
+    let keys = {};
+    let obstacles = [];
+    let carData = {
+        speed: 0,
+        acceleration: 0.018,
+        deceleration: 0.97,
+        maxSpeed: 0.85,
+        angle: 0,
+        turnSpeed: 0.038,
+        driftFactor: 0,
+        isDrifting: false,
+        color: 0x8b5cf6,
+        radius: 0.6
+    };
+
+    let gameState = {
+        level: 1,
+        money: 0,
+        totalDriftPoints: 0,
+        currentCombo: 0,
+        pointsToNextLevel: 1000
+    };
+
+    const particles = [];
+
+    function init() {
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0514);
+        scene.fog = new THREE.Fog(0x0a0514, 20, 160);
+
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+       
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+        scene.add(ambientLight);
+
+        const pointLight = new THREE.PointLight(0xd8b4fe, 1, 100);
+        pointLight.position.set(0, 10, 0);
+        scene.add(pointLight);
+
+        const floorSize = 3000;
+        const floorGeo = new THREE.PlaneGeometry(floorSize, floorSize);
+        const floorMat = new THREE.MeshPhongMaterial({ color: 0x1a0a2a, shininess: 10 });
+        floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        floor.receiveShadow = true;
+        scene.add(floor);
+
+        const grid = new THREE.GridHelper(3000, 200, 0x6b21a8, 0x3b0764);
+        grid.position.y = 0.01;
+        scene.add(grid);
+
+        // --- CONSTRUÇÃO DO CARRO DETALHADO (ESTILO IMAGEM) ---
+        car = new THREE.Group();
+       
+        const carMat = new THREE.MeshPhongMaterial({ color: carData.color, shininess: 100 });
+        const blackMat = new THREE.MeshPhongMaterial({ color: 0x111111 });
+        const wheelMat = new THREE.MeshPhongMaterial({ color: 0x222222 });
+
+        // Corpo Principal (Base mais baixa)
+        const bodyGeo = new THREE.BoxGeometry(1.1, 0.35, 2.2);
+        const body = new THREE.Mesh(bodyGeo, carMat);
+        body.position.y = 0.3;
+        body.castShadow = true;
+        car.add(body);
+
+        // Cabine (Estilo Coupe)
+        const cabinGeo = new THREE.BoxGeometry(0.85, 0.4, 1.1);
+        const cabin = new THREE.Mesh(cabinGeo, carMat);
+        cabin.position.set(0, 0.6, -0.2);
+        car.add(cabin);
+
+        // Pára-brisas
+        const glassGeo = new THREE.BoxGeometry(0.75, 0.35, 0.6);
+        const glassMat = new THREE.MeshPhongMaterial({ color: 0x222222, transparent: true, opacity: 0.7 });
+        const windshield = new THREE.Mesh(glassGeo, glassMat);
+        windshield.position.set(0, 0.65, 0.1);
+        windshield.rotation.x = 0.5;
+        car.add(windshield);
+
+        // Spoiler Traseiro Desportivo (Elevado)
+        const spoilerBaseL = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.2, 0.1), carMat);
+        spoilerBaseL.position.set(0.4, 0.5, -0.9);
+        car.add(spoilerBaseL);
+
+        const spoilerBaseR = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.2, 0.1), carMat);
+        spoilerBaseR.position.set(-0.4, 0.5, -0.9);
+        car.add(spoilerBaseR);
+
+        const spoilerTop = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.05, 0.4), carMat);
+        spoilerTop.position.set(0, 0.65, -0.95);
+        car.add(spoilerTop);
+
+        // Faróis Frontais
+        const headLightGeo = new THREE.PlaneGeometry(0.3, 0.15);
+        const headLightMat = new THREE.MeshBasicMaterial({ color: 0xffffaa });
+        const headL = new THREE.Mesh(headLightGeo, headLightMat);
+        headL.position.set(0.35, 0.35, 1.11);
+        car.add(headL);
+        const headR = new THREE.Mesh(headLightGeo, headLightMat);
+        headR.position.set(-0.35, 0.35, 1.11);
+        car.add(headR);
+
+        // Luzes Traseiras (Como na imagem)
+        const tailLightGeo = new THREE.PlaneGeometry(0.4, 0.1);
+        const tailLightMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+        const tailL = new THREE.Mesh(tailLightGeo, tailLightMat);
+        tailL.position.set(0.3, 0.35, -1.11);
+        tailL.rotation.y = Math.PI;
+        car.add(tailL);
+        const tailR = new THREE.Mesh(tailLightGeo, tailLightMat);
+        tailR.position.set(-0.3, 0.35, -1.11);
+        tailR.rotation.y = Math.PI;
+        car.add(tailR);
+
+        // Rodas (4 cilindros)
+        const wheelGeo = new THREE.CylinderGeometry(0.25, 0.25, 0.2, 16);
+        const wheelPos = [
+            { x: 0.5, z: 0.7 }, { x: -0.5, z: 0.7 },
+            { x: 0.5, z: -0.7 }, { x: -0.5, z: -0.7 }
+        ];
+        wheelPos.forEach(p => {
+            const w = new THREE.Mesh(wheelGeo, wheelMat);
+            w.rotation.z = Math.PI / 2;
+            w.position.set(p.x, 0.25, p.z);
+            car.add(w);
+        });
+
+        scene.add(car);
+
+        createObstacles(70);
+
+        window.addEventListener('keydown', e => keys[e.code] = true);
+        window.addEventListener('keyup', e => keys[e.code] = false);
+        window.addEventListener('resize', onWindowResize);
+        document.getElementById('shop-btn').onclick = toggleShop;
+    }
+
+    function createObstacles(count) {
+        for (let i = 0; i < count; i++) {
+            let x, z;
+            do {
+                x = (Math.random() - 0.5) * 400;
+                z = (Math.random() - 0.5) * 400;
+            } while (Math.sqrt(x*x + z*z) < 20);
+
+            const isCard = Math.random() > 0.5;
+            let obs;
+           
+            if (isCard) {
+                obs = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.5, 3, 2),
+                    new THREE.MeshPhongMaterial({ color: 0xfafafa })
+                );
+                obs.userData = { radius: 1.2 };
+            } else {
+                obs = new THREE.Mesh(
+                    new THREE.BoxGeometry(2, 2, 2),
+                    new THREE.MeshPhongMaterial({ color: 0x9d174d })
+                );
+                obs.userData = { radius: 1.8 };
+            }
+
+            obs.position.set(x, isCard ? 1.5 : 1, z);
+            obs.castShadow = true;
+            obs.receiveShadow = true;
+            scene.add(obs);
+            obstacles.push(obs);
+        }
+    }
+
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function toggleShop() {
+        const menu = document.getElementById('shop-menu');
+        menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+    }
+
+    function buyColor(hex, name) {
+        const cost = name === 'Alice' ? 500 : 200;
+        if (gameState.money >= cost) {
+            gameState.money -= cost;
+            carData.color = hex;
+           
+            // Atualizar cor de todas as partes da carroçaria
+            car.children.forEach(child => {
+                if (child.material && child.material.type === 'MeshPhongMaterial' && child.material.color.getHex() !== 0x222222 && child.material.color.getHex() !== 0x111111) {
+                   if (!child.material.transparent) child.material.color.setHex(hex);
+                }
+            });
+           
+            updateUI();
+            toggleShop();
+            showNotice(`VESTIU O TEMA: ${name.toUpperCase()}!`);
+        } else {
+            showNotice("FALTAM MOEDAS DE OURO!");
+        }
+    }
+
+    function showNotice(text) {
+        const msg = document.getElementById('level-msg');
+        msg.innerText = text;
+        msg.style.opacity = 1;
+        setTimeout(() => msg.style.opacity = 0, 2000);
+    }
+
+    function updateUI() {
+        document.getElementById('level-val').innerText = gameState.level;
+        document.getElementById('money-val').innerText = gameState.money + '€';
+        document.getElementById('drift-points').innerText = Math.floor(gameState.currentCombo);
+    }
+
+    function checkLevelUp() {
+        if (gameState.totalDriftPoints >= gameState.pointsToNextLevel) {
+            gameState.level++;
+            gameState.money += 500;
+            gameState.pointsToNextLevel *= 1.8;
+            showNotice(`MAGIA SUBIU! NÍVEL ${gameState.level}`);
+            updateUI();
+        }
+    }
+
+    function createPurpleSmoke() {
+        const smokeGeo = new THREE.SphereGeometry(0.12, 6, 6);
+        const smokeMat = new THREE.MeshBasicMaterial({
+            color: 0xa855f7,
+            transparent: true,
+            opacity: 0.6
+        });
+        const smoke = new THREE.Mesh(smokeGeo, smokeMat);
+       
+        smoke.position.copy(car.position);
+        smoke.position.y = 0.1;
+       
+        const smokeData = {
+            mesh: smoke,
+            life: 1.0,
+            vx: (Math.random() - 0.5) * 0.08,
+            vy: Math.random() * 0.06,
+            vz: (Math.random() - 0.5) * 0.08
+        };
+       
+        scene.add(smoke);
+        particles.push(smokeData);
+    }
+
+    function checkCollisions() {
+        for (let obs of obstacles) {
+            const dx = car.position.x - obs.position.x;
+            const dz = car.position.z - obs.position.z;
+            const distance = Math.sqrt(dx * dx + dz * dz);
+           
+            if (distance < carData.radius + obs.userData.radius) {
+                carData.speed = -carData.speed * 0.4;
+                gameState.currentCombo = 0;
+                showNotice("CUIDADO COM A RAINHA!");
+               
+                const angle = Math.atan2(dx, dz);
+                car.position.x = obs.position.x + Math.sin(angle) * (carData.radius + obs.userData.radius + 0.1);
+                car.position.z = obs.position.z + Math.cos(angle) * (carData.radius + obs.userData.radius + 0.1);
+            }
+        }
+    }
+
+    function update() {
+        if (keys['ArrowUp'] || keys['KeyW']) carData.speed += carData.acceleration;
+        if (keys['ArrowDown'] || keys['KeyS']) carData.speed -= carData.acceleration;
+
+        carData.isDrifting = keys['Space'] && Math.abs(carData.speed) > 0.15;
+
+        let rotationAmount = carData.turnSpeed;
+        if (carData.isDrifting) {
+            rotationAmount *= 2.3;
+            gameState.currentCombo += Math.abs(carData.speed) * 15;
+            gameState.totalDriftPoints += Math.abs(carData.speed) * 15;
+           
+            createPurpleSmoke();
+            if (Math.random() > 0.5) createPurpleSmoke();
+           
+            checkLevelUp();
+        } else {
+            if (gameState.currentCombo > 0) gameState.currentCombo = 0;
+        }
+
+        if (keys['ArrowLeft'] || keys['KeyA']) carData.angle += rotationAmount;
+        if (keys['ArrowRight'] || keys['KeyD']) carData.angle -= rotationAmount;
+
+        carData.speed *= carData.deceleration;
+        car.rotation.y = carData.angle;
+
+        const moveAngle = carData.angle + (carData.isDrifting ? (keys['ArrowLeft'] || keys['KeyA'] ? 0.45 : -0.45) : 0);
+       
+        car.position.x += Math.sin(moveAngle) * carData.speed;
+        car.position.z += Math.cos(moveAngle) * carData.speed;
+
+        checkCollisions();
+
+        const camOffset = new THREE.Vector3(
+            Math.sin(carData.angle) * -7,
+            3.5,
+            Math.cos(carData.angle) * -7
+        );
+        camera.position.lerp(car.position.clone().add(camOffset), 0.08);
+        camera.lookAt(car.position);
+
+        for (let i = particles.length - 1; i >= 0; i--) {
+            const p = particles[i];
+            p.mesh.position.x += p.vx;
+            p.mesh.position.y += p.vy;
+            p.mesh.position.z += p.vz;
+            p.life -= 0.025;
+            p.mesh.scale.setScalar(p.life * 2.5);
+            p.mesh.material.opacity = p.life * 0.7;
+            if (p.life <= 0) { scene.remove(p.mesh); particles.splice(i, 1); }
+        }
+
+        updateUI();
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        update();
+        renderer.render(scene, camera);
+    }
+
+    window.onload = () => {
+        init();
+        animate();
+    };
+</script>
+
+</body>
+</html>

@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice: O Labirinto de Paradoxos</title>
+    <style>
+        body {
+            background-color: #1a1a2e;
+            color: #e94560;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        #game-container {
+            background-color: #16213e;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            width: 80%;
+            max-width: 600px;
+            text-align: center;
+            border: 2px solid #0f3460;
+        }
+        #display {
+            height: 200px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+            padding: 10px;
+            background: #0f3460;
+            border-radius: 5px;
+            text-align: left;
+            border: 1px inset #533483;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 10px 20px;
+            cursor: pointer;
+            background-color: #e94560;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-weight: bold;
+            transition: 0.3s;
+        }
+        button:hover {
+            background-color: #ff2e63;
+            transform: scale(1.05);
+        }
+        .status {
+            font-size: 0.8em;
+            color: #4ecca3;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <h1>🍄 ALICE 🍄</h1>
+    <div class="status" id="status">Tamanho: Normal | Local: Sala das Portas</div>
+    <div id="display">Você está diante de uma porta minúscula de ouro. Há um frasco e um bolo sobre a mesa.</div>
+   
+    <div class="controls">
+        <button onclick="jogar('beber')">Bebida (Encolher)</button>
+        <button onclick="jogar('comer')">Bolo (Crescer)</button>
+        <button onclick="jogar('abrir')">Abrir Porta</button>
+        <button onclick="resetar()" style="background-color: #533483;">Resetar</button>
+    </div>
+</div>
+
+<script>
+    let tamanho = "normal";
+    const display = document.getElementById('display');
+    const status = document.getElementById('status');
+
+    function atualizarStatus() {
+        status.innerText = `Tamanho: ${tamanho.toUpperCase()} | Local: Sala das Portas`;
+    }
+
+    function escrever(texto) {
+        display.innerHTML += `<br>> ${texto}`;
+        display.scrollTop = display.scrollHeight;
+    }
+
+    function jogar(acao) {
+        if (acao === 'beber') {
+            tamanho = "minúsculo";
+            escrever("Você bebeu! <b>Encolheu</b> tanto que o teto parece o céu.");
+        }
+        else if (acao === 'comer') {
+            tamanho = "gigante";
+            escrever("Você comeu! <b>Cresceu</b> tanto que quase quebrou o teto!");
+        }
+        else if (acao === 'abrir') {
+            if (tamanho === "minúsculo") {
+                escrever("<span style='color: #4ecca3;'>SUCESSO! Você passou pela fresta e entrou no País das Maravilhas!</span>");
+            } else if (tamanho === "gigante") {
+                escrever("ERRO: Você é grande demais. A porta parece um brinquedo de formiga.");
+            } else {
+                escrever("A porta está trancada. Você precisa ser menor para passar pela fechadura.");
+            }
+        }
+        atualizarStatus();
+    }
+
+    function resetar() {
+        tamanho = "normal";
+        display.innerHTML = "O jogo recomeçou. Você está diante da porta minúscula.";
+        atualizarStatus();
+    }
+</script>
+
+</body>
+</html>

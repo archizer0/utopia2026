@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coelho no País das Maravilhas - Controlo por Webcam</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #ffd1dc; /* Pastel Pink background fallback */
+        }
+       
+        #game-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+        }
+
+        /* Interface UI */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .hud {
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            color: #5e4b8b; /* Deep pastel purple */
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 2px 2px 0px rgba(255, 255, 255, 0.5);
+        }
+
+        /* Start/Game Over Screens */
+        #start-screen, #game-over-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 240, 245, 0.8); /* Milky white/pink */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            pointer-events: auto;
+            backdrop-filter: blur(5px);
+        }
+
+        h1 {
+            color: #6a5acd; /* Slate Blue */
+            font-size: 48px;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        p {
+            color: #555;
+            font-size: 18px;
+            max-width: 600px;
+            text-align: center;
+            margin-bottom: 30px;
+            line-height: 1.5;
+        }
+
+        button {
+            background: linear-gradient(45deg, #ffb7b2, #ff9aa2);
+            border: none;
+            padding: 15px 40px;
+            font-size: 24px;
+            color: white;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(255, 105, 97, 0.4);
+            transition: transform 0.2s, box-shadow 0.2s;
+            font-weight: bold;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 8px 20px rgba(255, 105, 97, 0.6);
+        }
+
+        /* Small preview of webcam to help user adjust */
+        #webcam-preview {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 160px;
+            height: 120px;
+            border-radius: 10px;
+            border: 4px solid white;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            transform: scaleX(-1); /* Mirror effect */
+            background: #000;
+            z-index: 5;
+            opacity: 0.8;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        #score-display {
+            font-size: 32px;
+        }
+       
+        #calibration-msg {
+            font-size: 14px;
+            color: #888;
+            background: rgba(255,255,255,0.8);
+            padding: 5px 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+    </style>
+    <!-- Load Three.js from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+    <!-- Game Container -->
+    <div id="game-container"></div>
+
+    <!-- Webcam Preview (Small box in corner) -->
+    <video id="webcam-preview" autoplay playsinline muted></video>
+
+    <!-- Invisible processing canvas -->
+    <canvas id="motion-canvas" width="100" height="75" style="display:none;"></canvas>
+
+    <!-- UI Layer -->
+    <div id="ui-layer">
+        <div class="hud">
+            <div>Alices: <span id="score">0</span></div>
+            <div>Vidas: <span id="lives">3</span></div>
+        </div>
+    </div>
+
+    <!-- Start Screen -->
+    <div id="start-screen">
+        <h1>O Sonho do Coelho</h1>
+        <p>
+            Mergulhe num mundo surreal em tons pastéis.<br>
+            Use a sua <strong>Webcam</strong> para controlar o Coelho Branco.<br>
+            Mova-se para a esquerda e direita para apanhar as Alices e fugir da Rainha.
+        </p>
+        <button id="start-btn">Começar Aventura</button>
+        <div id="calibration-msg">A câmera é usada apenas para movimento localmente.</div>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="game-over-screen" class="hidden">
+        <h1>Acordaste!</h1>
+        <p>A Rainha apanhou-te (ou perdeste-te no caminho).</p>
+        <p>Pontuação Final: <span id="final-score">0</span></p>
+        <button id="restart-btn">Dormir Outra Vez</button>
+    </div>
+
+    <script>
+        // --- GAME CONFIGURATION ---
+        const CONFIG = {
+            laneWidth: 3,
+            speed: 0.3,
+            accel: 0.0001,
+            colors: {
+                bg: 0xd6e5fa,      // Pastel Blue Sky
+                fog: 0xd6e5fa,
+                ground: 0xfff0f5,  // Lavender Blush
+                rabbit: 0xffffff,
+                alice: 0x89cff0,   // Baby Blue
+                queen: 0xff6961,   // Pastel Red
+                grid: 0xe6e6fa     // Lavender
+            }
+        };
+
+        // --- GLOBAL VARIABLES ---
+        let scene, camera, renderer;
+        let rabbit;
+        let gameActive = false;
+        let score = 0;
+        let lives = 3;
+        let speed = CONFIG.speed;
+        let frameId;
+       
+        // Arrays for objects
+        let obstacles = []; // Queens
+        let collectibles = []; // Alices
+        let decorativeItems = []; // Floating surreal objects
+
+        // Webcam vars
+        const video = document.getElementById('webcam-preview');
+        const motionCanvas = document.getElementById('motion-canvas');
+        const motionCtx = motionCanvas.getContext('2d');
+        let prevFrameData = null;
+        let targetX = 0; // Where we want the rabbit to go
+        let currentX = 0; // Where the rabbit currently is
+
+        // --- INITIALIZATION ---
+        function init() {
+            // Scene Setup
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(CONFIG.colors.bg);
+            scene.fog = new THREE.Fog(CONFIG.colors.fog, 10, 50);
+
+            // Camera Setup
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 4, 8);
+            camera.lookAt(0, 0, -5);
+
+            // Renderer Setup
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            document.getElementById('game-container').appendChild(renderer.domElement);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(5, 10, 7);
+            dirLight.castShadow = true;
+            scene.add(dirLight);
+
+            // Environment
+            createSurrealEnvironment();
+
+            // Player
+            createRabbit();
+
+            // Event Listeners
+            window.addEventListener('resize', onWindowResize, false);
+            document.getElementById('start-btn').addEventListener('click', startGame);
+            document.getElementById('restart-btn').addEventListener('click', resetGame);
+        }
+
+        // --- ASSET CREATION ---
+
+        function createSurrealEnvironment() {
+            // Moving Grid Floor (Infinite illusion created by texture offset later or simple geometry recycling)
+            // For simplicity, we make a long floor that moves with the player
+            const geometry = new THREE.PlaneGeometry(200, 200, 50, 50);
+           
+            // Warp the vertices for surreal effect
+            const positionAttribute = geometry.attributes.position;
+            for ( let i = 0; i < positionAttribute.count; i ++ ) {
+                const z = positionAttribute.getZ( i );
+                // Make it wavy
+                const x = positionAttribute.getX( i );
+                const y = positionAttribute.getY( i );
+                positionAttribute.setZ( i, z + Math.sin(x/5) * 0.5 );
+            }
+            geometry.computeVertexNormals();
+
+            const material = new THREE.MeshPhongMaterial({
+                color: CONFIG.colors.ground,
+                shininess: 10,
+                flatShading: true,
+                side: THREE.DoubleSide
+            });
+           
+            const floor = new THREE.Mesh(geometry, material);
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.y = -1;
+            floor.receiveShadow = true;
+            scene.add(floor);
+
+            // Add floating surreal objects in distance
+            for(let i=0; i<20; i++) {
+                const geo = new THREE.IcosahedronGeometry(Math.random() * 2);
+                const mat = new THREE.MeshBasicMaterial({ color: Math.random() * 0xffffff, wireframe: true, transparent: true, opacity: 0.3 });
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.set(
+                    (Math.random() - 0.5) * 60,
+                    5 + Math.random() * 10,
+                    -10 - Math.random() * 50
+                );
+                scene.add(mesh);
+                decorativeItems.push(mesh);
+            }
+        }
+
+        function createRabbit() {
+            const rabbitGroup = new THREE.Group();
+
+            // Body
+            const bodyGeo = new THREE.BoxGeometry(1, 1.2, 1);
+            const bodyMat = new THREE.MeshLambertMaterial({ color: CONFIG.colors.rabbit });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 0.6;
+            body.castShadow = true;
+            rabbitGroup.add(body);
+
+            // Ears
+            const earGeo = new THREE.BoxGeometry(0.3, 1, 0.2);
+            const earLeft = new THREE.Mesh(earGeo, bodyMat);
+            earLeft.position.set(-0.3, 1.5, 0);
+            rabbitGroup.add(earLeft);
+
+            const earRight = new THREE.Mesh(earGeo, bodyMat);
+            earRight.position.set(0.3, 1.5, 0);
+            rabbitGroup.add(earRight);
+
+            // Tail
+            const tailGeo = new THREE.SphereGeometry(0.3);
+            const tail = new THREE.Mesh(tailGeo, bodyMat);
+            tail.position.set(0, 0.3, 0.5);
+            rabbitGroup.add(tail);
+
+            // Clock (The Rabbit needs a clock)
+            const clockGeo = new THREE.CircleGeometry(0.3, 32);
+            const clockMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+            const clock = new THREE.Mesh(clockGeo, clockMat);
+            clock.position.set(0, 0.5, -0.51); // Front chest
+            clock.rotation.y = Math.PI; // Face forward
+            rabbitGroup.add(clock);
+
+            scene.add(rabbitGroup);
+            rabbit = rabbitGroup;
+        }
+
+        function createAlice(zPos) {
+            const group = new THREE.Group();
+           
+            // Dress
+            const geo = new THREE.SphereGeometry(0.5, 16, 16);
+            const mat = new THREE.MeshPhongMaterial({
+                color: CONFIG.colors.alice,
+                emissive: 0x2244aa,
+                shininess: 50
+            });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.castShadow = true;
+           
+            // Floating Halo
+            const haloGeo = new THREE.TorusGeometry(0.7, 0.05, 8, 32);
+            const haloMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const halo = new THREE.Mesh(haloGeo, haloMat);
+            halo.rotation.x = Math.PI / 2;
+            halo.position.y = 0.8;
+
+            group.add(mesh);
+            group.add(halo);
+
+            // Random X lane (-4 to 4)
+            group.position.set((Math.random() - 0.5) * 10, 0.5, zPos);
+           
+            scene.add(group);
+            collectibles.push({ mesh: group, active: true });
+        }
+
+        function createQueen(zPos) {
+            // The Queen is abstract and scary/spiky
+            const geo = new THREE.ConeGeometry(0.6, 1.5, 4);
+            const mat = new THREE.MeshPhongMaterial({ color: CONFIG.colors.queen });
+            const mesh = new THREE.Mesh(geo, mat);
+           
+            mesh.castShadow = true;
+           
+            // Invert cone to look like a spike
+            mesh.rotation.x = Math.PI;
+            mesh.position.set((Math.random() - 0.5) * 10, 1, zPos);
+
+            scene.add(mesh);
+            obstacles.push({ mesh: mesh, active: true });
+        }
+
+        // --- WEBCAM MOTION DETECTION LOGIC ---
+
+        async function setupWebcam() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 } });
+                video.srcObject = stream;
+                // Wait for metadata to load
+                return new Promise((resolve) => {
+                    video.onloadedmetadata = () => {
+                        resolve(true);
+                    };
+                });
+            } catch (err) {
+                console.error("Erro na webcam:", err);
+                alert("Não foi possível aceder à câmara. O jogo usará o rato como alternativa.");
+                // Fallback to mouse movement
+                document.addEventListener('mousemove', (e) => {
+                    const x = (e.clientX / window.innerWidth) * 2 - 1;
+                    targetX = x * -8; // Invert logic for mouse to match mirror logic
+                });
+                return false;
+            }
+        }
+
+        function processMotion() {
+            if (video.paused || video.ended) return;
+
+            // Draw current video frame to canvas
+            motionCtx.drawImage(video, 0, 0, motionCanvas.width, motionCanvas.height);
+           
+            // Get pixel data
+            const frame = motionCtx.getImageData(0, 0, motionCanvas.width, motionCanvas.height);
+            const data = frame.data; // RGBA array
+
+            // If no previous frame, just save this one
+            if (!prevFrameData) {
+                prevFrameData = new Uint8Array(data);
+                return;
+            }
+
+            let sumX = 0;
+            let count = 0;
+            let threshold = 30; // Sensitivity
+
+            // Loop through pixels (step by 4 for RGBA)
+            // Optimize: check every 4th pixel to save CPU
+            for (let i = 0; i < data.length; i += 16) {
+                // Simple average for grayscale
+                const r = data[i];
+                const g = data[i+1];
+                const b = data[i+2];
+                const gray = (r + g + b) / 3;
+
+                const pr = prevFrameData[i];
+                const pg = prevFrameData[i+1];
+                const pb = prevFrameData[i+2];
+                const pGray = (pr + pg + pb) / 3;
+
+                // Difference
+                if (Math.abs(gray - pGray) > threshold) {
+                    // Calculate x coordinate (i / 4) % width
+                    const x = (i / 4) % motionCanvas.width;
+                    sumX += x;
+                    count++;
+                }
+            }
+
+            // Update prevFrameData
+            // We use .set for speed
+            prevFrameData.set(data);
+
+            if (count > 10) { // If enough motion detected
+                const avgX = sumX / count;
+                // Normalize X from 0..100 to -1..1
+                // Mirror logic: Webcam is mirrored naturally by CSS, but logic needs calculation
+                // If user moves Right in real life, they appear Left in video (usually).
+                // Let's map 0 (Left in video) to +X in game and 100 (Right in video) to -X
+               
+                let normX = (avgX / motionCanvas.width) * 2 - 1;
+               
+                // Adjust sensitivity and range
+                targetX = -normX * 8; // Multiplier defines road width reach
+            }
+        }
+
+        // --- GAME LOGIC ---
+
+        function startGame() {
+            setupWebcam().then(() => {
+                document.getElementById('start-screen').classList.add('hidden');
+                document.getElementById('ui-layer').classList.remove('hidden');
+                gameActive = true;
+                score = 0;
+                lives = 3;
+                speed = CONFIG.speed;
+                updateHUD();
+                animate();
+            });
+        }
+
+        function resetGame() {
+            document.getElementById('game-over-screen').classList.add('hidden');
+           
+            // Clear objects
+            obstacles.forEach(o => scene.remove(o.mesh));
+            collectibles.forEach(c => scene.remove(c.mesh));
+            obstacles = [];
+            collectibles = [];
+           
+            rabbit.position.set(0, 0.6, 0);
+           
+            gameActive = true;
+            score = 0;
+            lives = 3;
+            speed = CONFIG.speed;
+            updateHUD();
+        }
+
+        function gameOver() {
+            gameActive = false;
+            document.getElementById('final-score').innerText = score;
+            document.getElementById('game-over-screen').classList.remove('hidden');
+        }
+
+        function updateHUD() {
+            document.getElementById('score').innerText = score;
+            document.getElementById('lives').innerText = lives;
+        }
+
+        function spawnObjects() {
+            // Spawn logic based on randomness
+            if (Math.random() < 0.02) {
+                createAlice(-50); // Spawn far away (-Z)
+            }
+            if (Math.random() < 0.015) {
+                createQueen(-50);
+            }
+        }
+
+        function updateObjects() {
+            // Speed increases slowly
+            speed += CONFIG.accel;
+
+            // Move Collectibles
+            for (let i = collectibles.length - 1; i >= 0; i--) {
+                let obj = collectibles[i];
+                obj.mesh.position.z += speed;
+                obj.mesh.rotation.y += 0.05; // Spin
+
+                // Collision
+                if (obj.active && Math.abs(obj.mesh.position.z - rabbit.position.z) < 1) {
+                    if (Math.abs(obj.mesh.position.x - rabbit.position.x) < 1.2) {
+                        // Collect!
+                        score++;
+                        updateHUD();
+                        scene.remove(obj.mesh);
+                        obj.active = false;
+                       
+                        // Visual pop effect (simple scale up)
+                        // In a complex engine we'd add particles, here we just delete
+                    }
+                }
+
+                // Remove if behind camera
+                if (obj.mesh.position.z > 10) {
+                    scene.remove(obj.mesh);
+                    collectibles.splice(i, 1);
+                }
+            }
+
+            // Move Obstacles
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                let obj = obstacles[i];
+                obj.mesh.position.z += speed;
+               
+                // Rotate scary way
+                obj.mesh.rotation.z += 0.1;
+
+                // Collision
+                if (obj.active && Math.abs(obj.mesh.position.z - rabbit.position.z) < 1) {
+                    if (Math.abs(obj.mesh.position.x - rabbit.position.x) < 1.0) {
+                        // Hit!
+                        lives--;
+                        updateHUD();
+                        scene.remove(obj.mesh);
+                        obj.active = false;
+                       
+                        // Rabbit flash red
+                        rabbit.children[0].material.color.setHex(0xff0000);
+                        setTimeout(() => {
+                            rabbit.children[0].material.color.setHex(CONFIG.colors.rabbit);
+                        }, 200);
+
+                        if (lives <= 0) gameOver();
+                    }
+                }
+
+                if (obj.mesh.position.z > 10) {
+                    scene.remove(obj.mesh);
+                    obstacles.splice(i, 1);
+                }
+            }
+        }
+
+        function animate() {
+            if (!gameActive) return;
+
+            requestAnimationFrame(animate);
+
+            // 1. Process Webcam
+            processMotion();
+
+            // 2. Move Rabbit (Smooth Lerp)
+            // Lerp factor 0.1 for smooth catchup
+            currentX += (targetX - currentX) * 0.1;
+           
+            // Clamp position within bounds
+            if (currentX > 6) currentX = 6;
+            if (currentX < -6) currentX = -6;
+           
+            rabbit.position.x = currentX;
+           
+            // Tilt rabbit based on movement for dynamic feel
+            rabbit.rotation.z = -(targetX - currentX) * 0.1;
+           
+            // Ear bobbing
+            rabbit.children[1].rotation.x = Math.sin(Date.now() * 0.01) * 0.2;
+            rabbit.children[2].rotation.x = Math.sin(Date.now() * 0.01 + 1) * 0.2;
+
+            // 3. Environment logic
+            spawnObjects();
+            updateObjects();
+
+            // Floating background items animation
+            decorativeItems.forEach((mesh, idx) => {
+                mesh.rotation.x += 0.01;
+                mesh.rotation.y += 0.01;
+                mesh.position.y += Math.sin(Date.now() * 0.001 + idx) * 0.02;
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Init Scene
+        init();
+
+    </script>
+</body>
+</html>

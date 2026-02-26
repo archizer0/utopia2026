@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <title>A Corrida do Coelho Branco</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: 'Courier New', Courier, monospace; }
+       
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 2px 2px 0 #000;
+            pointer-events: none;
+            z-index: 10;
+            display: none; /* Escondido no menu inicial */
+        }
+
+        /* Estilos para Menus (Start e Game Over) */
+        .menu-screen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.85);
+            color: white;
+            padding: 40px;
+            text-align: center;
+            border-radius: 15px;
+            border: 4px solid #fff;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+            font-family: serif;
+            z-index: 20;
+            min-width: 300px;
+        }
+
+        #game-over-screen { display: none; }
+       
+        /* Menu Inicial Específico */
+        #start-screen { display: block; }
+
+        h1 { margin-top: 0; color: #FFD700; text-transform: uppercase; letter-spacing: 2px; }
+        h2 { font-size: 18px; color: #ddd; margin-bottom: 10px; }
+        p { font-size: 18px; }
+
+        /* Botões Gerais */
+        button.action-btn {
+            margin-top: 20px;
+            padding: 15px 40px;
+            font-size: 24px;
+            cursor: pointer;
+            background: #4CAF50;
+            color: white;
+            border: 2px solid white;
+            border-radius: 50px;
+            font-weight: bold;
+            transition: 0.3s;
+            box-shadow: 0 4px 0 #2E7D32;
+        }
+        button.action-btn:hover { background: #66BB6A; transform: translateY(-2px); }
+        button.action-btn:active { transform: translateY(2px); box-shadow: none; }
+
+        /* Seleção de Skins */
+        .skin-container {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .skin-btn {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            border: 3px solid transparent;
+            cursor: pointer;
+            transition: 0.2s;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+        }
+
+        .skin-btn:hover { transform: scale(1.1); }
+        .skin-btn.selected { border-color: #FFD700; transform: scale(1.2); box-shadow: 0 0 15px #FFD700; }
+
+        /* Cores das Skins nos botões */
+        #skin-classic { background-color: #FFFFFF; }
+        #skin-dark { background-color: #444444; }
+        #skin-magic { background-color: #FF69B4; }
+
+        #instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: #fff;
+            font-weight: bold;
+            text-shadow: 1px 1px 0 #000;
+        }
+    </style>
+</head>
+<body>
+
+<!-- Interface de Jogo (Pontuação) -->
+<div id="ui-layer">Alices Salvas: <span id="score">0</span> / 5</div>
+
+<!-- Menu Inicial -->
+<div id="start-screen" class="menu-screen">
+    <h1>País das Maravilhas</h1>
+    <h2>Escolhe o teu Coelho:</h2>
+   
+    <div class="skin-container">
+        <div id="skin-classic" class="skin-btn selected" onclick="selectSkin(0xFFFFFF, this)" title="Clássico"></div>
+        <div id="skin-dark" class="skin-btn" onclick="selectSkin(0x333333, this)" title="Sombrio"></div>
+        <div id="skin-magic" class="skin-btn" onclick="selectSkin(0xFF69B4, this)" title="Mágico"></div>
+    </div>
+
+    <button class="action-btn" onclick="startGame()">JOGAR</button>
+    <div style="margin-top: 15px; font-size: 14px; color: #aaa;">Setas para Mover • Espaço para Saltar</div>
+</div>
+
+<!-- Ecrã de Game Over / Vitória -->
+<div id="game-over-screen" class="menu-screen">
+    <h1 id="go-title">FIM DE JOGO</h1>
+    <p id="go-message">A Rainha de Copas apanhou-te!</p>
+    <button class="action-btn" onclick="location.reload()">Menu Principal</button>
+</div>
+
+<!-- Three.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+    // --- VARIÁVEIS GLOBAIS ---
+    let scene, camera, renderer;
+    let player, playerGroup;
+    let platforms = [];
+    let enemies = [];
+    let collectibles = [];
+    let goal;
+   
+    // Estado do Jogo
+    let score = 0;
+    const totalAlices = 5;
+    let isGameOver = false;
+    let isPlaying = false; // Novo estado para controlar o menu
+    let clock = new THREE.Clock();
+    let selectedColor = 0xFFFFFF; // Cor padrão (Branco)
+
+    // Física
+    let playerVelocityY = 0;
+    let isGrounded = false;
+    const GRAVITY = 0.05;
+    const JUMP_FORCE = 0.8;
+    const SPEED = 0.2;
+
+    // Input
+    const keys = { left: false, right: false, jump: false };
+
+    // --- FUNÇÕES DE MENU ---
+   
+    function selectSkin(color, element) {
+        selectedColor = color;
+       
+        // Atualizar visual dos botões
+        document.querySelectorAll('.skin-btn').forEach(btn => btn.classList.remove('selected'));
+        element.classList.add('selected');
+
+        // Se o jogo já carregou a cena (background), atualizar o coelho em tempo real
+        if (playerGroup) {
+            updatePlayerColor(color);
+        }
+    }
+
+    function startGame() {
+        document.getElementById('start-screen').style.display = 'none';
+        document.getElementById('ui-layer').style.display = 'block';
+        isPlaying = true;
+        clock.start();
+    }
+
+    // --- INICIALIZAÇÃO ---
+    function init() {
+        // 1. Cena e Câmara
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB);
+        scene.fog = new THREE.Fog(0x87CEEB, 20, 60);
+
+        camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 5, 15);
+
+        // 2. Renderizador
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        // 3. Luzes
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(10, 20, 10);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        scene.add(dirLight);
+
+        // 4. Criar o Mundo
+        createPlayer(); // Cria o coelho inicial
+        createLevel();
+
+        // 5. Eventos
+        document.addEventListener('keydown', onKeyDown);
+        document.addEventListener('keyup', onKeyUp);
+        window.addEventListener('resize', onWindowResize);
+
+        // Iniciar Loop
+        animate();
+    }
+
+    // --- CRIAÇÃO DE OBJETOS ---
+
+    function createPlayer() {
+        // Se já existe, remove (para reiniciar)
+        if (playerGroup) scene.remove(playerGroup);
+
+        playerGroup = new THREE.Group();
+
+        // Material Base (A cor vem da variável selectedColor)
+        const bodyMat = new THREE.MeshLambertMaterial({ color: selectedColor });
+
+        // Corpo
+        const bodyGeo = new THREE.BoxGeometry(1, 1, 1);
+        const body = new THREE.Mesh(bodyGeo, bodyMat);
+        body.castShadow = true;
+        body.name = "bodyParts"; // Tag para identificar partes coloridas
+        playerGroup.add(body);
+
+        // Orelhas
+        const earGeo = new THREE.BoxGeometry(0.2, 0.8, 0.2);
+       
+        const earLeft = new THREE.Mesh(earGeo, bodyMat);
+        earLeft.position.set(-0.3, 0.8, 0);
+        earLeft.name = "bodyParts";
+        playerGroup.add(earLeft);
+
+        const earRight = new THREE.Mesh(earGeo, bodyMat);
+        earRight.position.set(0.3, 0.8, 0);
+        earRight.name = "bodyParts";
+        playerGroup.add(earRight);
+
+        // Rabo
+        const tailGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+        const tail = new THREE.Mesh(tailGeo, bodyMat);
+        tail.position.set(0, -0.3, 0.4);
+        tail.name = "bodyParts";
+        playerGroup.add(tail);
+
+        playerGroup.position.set(0, 2, 0);
+        scene.add(playerGroup);
+    }
+
+    function updatePlayerColor(color) {
+        // Percorre os filhos do grupo do jogador e muda a cor dos materiais
+        playerGroup.children.forEach(child => {
+            if (child.name === "bodyParts") {
+                child.material.color.setHex(color);
+            }
+        });
+    }
+
+    function createCheckerTexture() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 64;
+        canvas.height = 64;
+        const context = canvas.getContext('2d');
+        context.fillStyle = '#4CAF50';
+        context.fillRect(0,0,64,64);
+        context.fillStyle = '#2E7D32';
+        context.fillRect(0,0,32,32);
+        context.fillRect(32,32,32,32);
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.RepeatWrapping;
+        tex.magFilter = THREE.NearestFilter;
+        return tex;
+    }
+
+    function createPlatform(x, y, z, width, depth = 3) {
+        const height = 1;
+        const geometry = new THREE.BoxGeometry(width, height, depth);
+        const material = new THREE.MeshLambertMaterial({ map: createCheckerTexture() });
+        material.map.repeat.set(width/2, depth/2);
+
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.set(x, y, z);
+        mesh.receiveShadow = true;
+        mesh.castShadow = true;
+       
+        scene.add(mesh);
+       
+        platforms.push({
+            mesh: mesh,
+            box: new THREE.Box3().setFromObject(mesh)
+        });
+    }
+
+    function createEnemy(x, y, range) {
+        const geometry = new THREE.BoxGeometry(0.8, 1.5, 0.2);
+        const material = new THREE.MeshPhongMaterial({ color: 0xD00000 });
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.set(x, y + 0.75, 0);
+        mesh.castShadow = true;
+
+        const whiteGeo = new THREE.BoxGeometry(0.4, 0.6, 0.25);
+        const whiteMat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF });
+        const detail = new THREE.Mesh(whiteGeo, whiteMat);
+        mesh.add(detail);
+
+        scene.add(mesh);
+
+        enemies.push({
+            mesh: mesh,
+            originX: x,
+            range: range,
+            speed: 0.1,
+            direction: 1
+        });
+    }
+
+    function createAlice(x, y) {
+        const geometry = new THREE.SphereGeometry(0.5, 16, 16);
+        const material = new THREE.MeshPhongMaterial({
+            color: 0x3388FF,
+            shininess: 100,
+            emissive: 0x112244
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.set(x, y + 0.5, 0);
+        mesh.userData = { initialY: y + 0.5, offset: Math.random() * Math.PI };
+       
+        scene.add(mesh);
+        collectibles.push(mesh);
+    }
+
+    function createLevel() {
+        createPlatform(0, -1, 0, 15);
+        createPlatform(12, 1, 0, 4);
+        createPlatform(19, 3, 0, 4);
+        createPlatform(26, 1.5, 0, 6);
+        createPlatform(38, 2, 0, 12);
+        createPlatform(50, 4, 0, 4);
+        createPlatform(56, 6, 0, 4);
+        createPlatform(64, 6, 0, 8);
+
+        createEnemy(8, -0.25, 3);
+        createEnemy(26, 2.25, 2);
+        createEnemy(38, 2.75, 4);
+        createEnemy(64, 6.75, 3);
+
+        createAlice(6, 0);
+        createAlice(12, 2.5);
+        createAlice(19, 4.5);
+        createAlice(38, 3.5);
+        createAlice(50, 5.5);
+
+        const goalGeo = new THREE.TorusGeometry(1.5, 0.2, 16, 32);
+        const goalMat = new THREE.MeshBasicMaterial({ color: 0x00FF00 });
+        goal = new THREE.Mesh(goalGeo, goalMat);
+        goal.position.set(66, 7.5, 0);
+        scene.add(goal);
+    }
+
+    // --- LÓGICA DO JOGO ---
+
+    function onKeyDown(event) {
+        switch(event.code) {
+            case 'ArrowLeft': keys.left = true; break;
+            case 'ArrowRight': keys.right = true; break;
+            case 'Space':
+            case 'ArrowUp':
+                keys.jump = true; break;
+        }
+    }
+
+    function onKeyUp(event) {
+        switch(event.code) {
+            case 'ArrowLeft': keys.left = false; break;
+            case 'ArrowRight': keys.right = false; break;
+            case 'Space':
+            case 'ArrowUp':
+                keys.jump = false; break;
+        }
+    }
+
+    function updatePhysics() {
+        if (!isPlaying || isGameOver) return; // Só move se estiver a jogar
+
+        if (keys.left) playerGroup.position.x -= SPEED;
+        if (keys.right) playerGroup.position.x += SPEED;
+
+        if (keys.left) playerGroup.rotation.y = Math.PI;
+        if (keys.right) playerGroup.rotation.y = 0;      
+
+        playerGroup.position.y += playerVelocityY;
+       
+        if (!isGrounded) {
+            playerVelocityY -= GRAVITY;
+        } else {
+            if (keys.jump) {
+                playerVelocityY = JUMP_FORCE;
+                isGrounded = false;
+            } else {
+                playerVelocityY = 0;
+            }
+        }
+
+        isGrounded = false;
+
+        const playerBox = new THREE.Box3().setFromObject(playerGroup);
+        playerBox.expandByScalar(-0.2);
+
+        platforms.forEach(platform => {
+            if (playerBox.intersectsBox(platform.box)) {
+                const playerBottom = playerGroup.position.y - 0.5;
+                const platTop = platform.box.max.y;
+
+                if (playerVelocityY <= 0 && playerBottom >= platTop - 0.5) {
+                    isGrounded = true;
+                    playerVelocityY = 0;
+                    playerGroup.position.y = platTop + 0.5;
+                }
+            }
+        });
+
+        if (playerGroup.position.y < -10) {
+            triggerGameOver("Caíste no abismo!");
+        }
+    }
+
+    function updateGameplay() {
+        // As animações de ambiente (rodar moedas, inimigos a andar) continuam mesmo no menu
+        // para ficar bonito no fundo, mas a colisão pára.
+       
+        const time = clock.getElapsedTime();
+
+        // 1. Inimigos (Movimento)
+        enemies.forEach(enemy => {
+            enemy.mesh.position.x += enemy.speed * enemy.direction;
+            if (Math.abs(enemy.mesh.position.x - enemy.originX) > enemy.range) {
+                enemy.direction *= -1;
+            }
+
+            // Colisão (Só se estiver a jogar)
+            if (isPlaying && !isGameOver) {
+                const playerBox = new THREE.Box3().setFromObject(playerGroup);
+                playerBox.expandByScalar(-0.3);
+                const enemyBox = new THREE.Box3().setFromObject(enemy.mesh);
+                if (playerBox.intersectsBox(enemyBox)) {
+                    triggerGameOver("Apanhado pela Rainha de Copas!");
+                }
+            }
+        });
+
+        // 2. Alices (Animação e Colisão)
+        for (let i = collectibles.length - 1; i >= 0; i--) {
+            const alice = collectibles[i];
+            alice.position.y = alice.userData.initialY + Math.sin(time * 3 + alice.userData.offset) * 0.2;
+            alice.rotation.y += 0.02;
+
+            if (isPlaying && !isGameOver) {
+                const playerBox = new THREE.Box3().setFromObject(playerGroup);
+                const aliceBox = new THREE.Box3().setFromObject(alice);
+                if (playerBox.intersectsBox(aliceBox)) {
+                    scene.remove(alice);
+                    collectibles.splice(i, 1);
+                    score++;
+                    document.getElementById('score').innerText = score;
+                }
+            }
+        }
+
+        // 3. Vitória
+        if (isPlaying && !isGameOver) {
+            const playerBox = new THREE.Box3().setFromObject(playerGroup);
+            const goalBox = new THREE.Box3().setFromObject(goal);
+            if (playerBox.intersectsBox(goalBox)) {
+                if (score >= totalAlices) {
+                    triggerGameOver("Vitória! Escapaste com todas as Alices!", true);
+                } else {
+                    goal.rotation.z += 0.1;
+                }
+            } else {
+                goal.rotation.z += 0.02;
+            }
+        } else {
+            // Rotação ociosa no menu
+            goal.rotation.z += 0.02;
+        }
+    }
+
+    function triggerGameOver(msg, win = false) {
+        if (isGameOver) return;
+        isGameOver = true;
+       
+        const screen = document.getElementById('game-over-screen');
+        const title = document.getElementById('go-title');
+        const message = document.getElementById('go-message');
+
+        screen.style.display = 'block';
+        document.getElementById('ui-layer').style.display = 'none'; // Esconde UI normal
+       
+        message.innerText = msg;
+
+        if (win) {
+            title.innerText = "VITÓRIA!";
+            title.style.color = "#4CAF50";
+        } else {
+            title.innerText = "GAME OVER";
+            title.style.color = "#FF0000";
+        }
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+
+        updatePhysics();
+        updateGameplay();
+
+        // Câmara
+        // Se estiver no menu, a câmara pode rodar suavemente ou ficar parada
+        if (isPlaying) {
+            const targetX = playerGroup.position.x;
+            camera.position.x += (targetX - camera.position.x) * 0.1;
+            const targetY = Math.max(playerGroup.position.y + 3, 5);
+            camera.position.y += (targetY - camera.position.y) * 0.1;
+        } else {
+            // No menu, câmara foca no coelho
+            camera.position.x = playerGroup.position.x;
+            camera.position.y = 4;
+        }
+
+        camera.lookAt(playerGroup.position.x, playerGroup.position.y, 0);
+        renderer.render(scene, camera);
+    }
+
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    init();
+
+</script>
+</body>
+</html>

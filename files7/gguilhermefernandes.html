@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Alice: A Carta Mágica (Webcam)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Biblioteca de Rastreio de Mão -->
+    <script src="https://cdn.jsdelivr.net/npm/handtrackjs/dist/handtrack.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700&family=Playfair+Display:ital@1&display=swap');
+
+        body {
+            overflow: hidden;
+            background-color: #000000; /* Fundo preto puro quando a câmara está desligada */
+            cursor: none;
+            font-family: 'Playfair Display', serif;
+            touch-action: none;
+            user-select: none;
+        }
+
+        /* A Carta */
+        .card-container {
+            position: absolute;
+            width: 220px;
+            height: 340px;
+            transform-style: preserve-3d;
+            pointer-events: none;
+            will-change: transform;
+            filter: drop-shadow(0 20px 30px rgba(0,0,0,0.6));
+            z-index: 50;
+        }
+
+        .card {
+            width: 100%;
+            height: 100%;
+            background: #fdfdfd;
+            border-radius: 15px;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+            box-sizing: border-box;
+            border: 8px solid #a4161a;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-image: url("data:image/svg+xml,%3Csvg width='20' height='20' viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23a4161a' fill-opacity='0.05' fill-rule='evenodd'%3E%3Ccircle cx='3' cy='3' r='3'/%3E%3Ccircle cx='13' cy='13' r='3'/%3E%3C/g%3E%3C/svg%3E");
+            z-index: 0;
+        }
+
+        .corner-symbol {
+            font-family: 'Cinzel Decorative', cursive;
+            font-size: 2rem;
+            color: #a4161a;
+            line-height: 1;
+            z-index: 10;
+        }
+       
+        .bottom-right {
+            transform: rotate(180deg);
+        }
+
+        .center-art {
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            z-index: 10;
+        }
+
+        /* Estilo para a Imagem da Alice */
+        .alice-img {
+            width: 150px;
+            height: auto;
+            filter: sepia(0.3) contrast(1.1); /* Toque vintage */
+            margin-bottom: 5px;
+            pointer-events: none;
+        }
+
+        .quote {
+            font-size: 0.7rem;
+            text-align: center;
+            color: #333;
+            margin-top: 5px;
+            font-style: italic;
+            font-weight: 600;
+        }
+
+        /* Rastro mágico */
+        .trail-dot {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background: gold;
+            border-radius: 50%;
+            pointer-events: none;
+            opacity: 0;
+            animation: sparkle 0.8s forwards;
+            z-index: 40;
+            box-shadow: 0 0 10px gold;
+        }
+
+        @keyframes sparkle {
+            0% { transform: scale(0); opacity: 1; }
+            50% { opacity: 0.8; }
+            100% { transform: scale(2.5) translateY(-20px); opacity: 0; }
+        }
+
+        /* Interface UI */
+        #instruction {
+            position: fixed;
+            bottom: 20px;
+            width: 100%;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.8);
+            pointer-events: none;
+            font-size: 1.4rem;
+            text-shadow: 0 2px 8px rgba(0,0,0,1);
+            z-index: 100;
+        }
+
+        .controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+
+        .btn {
+            background: rgba(0,0,0,0.6);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.4);
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.3s;
+            backdrop-filter: blur(5px);
+            font-family: 'Playfair Display', serif;
+        }
+
+        .btn:hover {
+            background: rgba(164, 22, 26, 0.6);
+            border-color: #a4161a;
+        }
+
+        .btn.active {
+            background: #a4161a;
+            border-color: #a4161a;
+        }
+
+        /* Vídeo da Webcam (FUNDO TOTAL) */
+        #webcam-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            border: none;
+            border-radius: 0;
+            display: none; /* Começa escondido */
+            z-index: -1;
+            opacity: 1;
+        }
+       
+        #video {
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: cover !important;
+            transform: scaleX(-1); /* Espelha o vídeo */
+        }
+
+        #loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 1.5rem;
+            background: rgba(0,0,0,0.8);
+            padding: 20px;
+            border-radius: 10px;
+            display: none;
+            z-index: 200;
+        }
+
+    </style>
+</head>
+<body>
+   
+    <!-- Elemento da Carta -->
+    <div class="card-container" id="aliceCard">
+        <div class="card">
+            <div class="corner-symbol">A<br>♥</div>
+            <div class="center-art">
+                <!-- Imagem clássica da Alice (Wikimedia Commons) -->
+                <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/6/64/Alice_par_John_Tenniel_-_05.png/240px-Alice_par_John_Tenniel_-_05.png" class="alice-img" alt="Alice no País das Maravilhas">
+                <div class="quote">"Curioser and curioser!"</div>
+            </div>
+            <div class="corner-symbol bottom-right">A<br>♥</div>
+        </div>
+    </div>
+
+    <!-- Instrução -->
+    <div id="instruction">
+        Mova o rato ou ative a câmara!
+    </div>
+   
+    <div id="loading">A carregar magia...</div>
+
+    <!-- Controlos -->
+    <div class="controls">
+        <button id="cam-btn" class="btn" onclick="toggleWebcam()">📷 Ativar Câmara</button>
+        <button id="mute-btn" class="btn" onclick="toggleMute()">🎵 Som: ON</button>
+    </div>
+
+    <!-- Container do Vídeo (Fundo) -->
+    <div id="webcam-container">
+        <video id="video"></video>
+    </div>
+
+    <script>
+        const card = document.getElementById('aliceCard');
+        const instruction = document.getElementById('instruction');
+        const muteBtn = document.getElementById('mute-btn');
+        const camBtn = document.getElementById('cam-btn');
+        const video = document.getElementById("video");
+        const webcamContainer = document.getElementById("webcam-container");
+        const loading = document.getElementById("loading");
+
+        // --- Variáveis de Posição ---
+        let targetX = window.innerWidth / 2;
+        let targetY = window.innerHeight / 2;
+        let currentX = window.innerWidth / 2;
+        let currentY = window.innerHeight / 2;
+        const ease = 0.15;
+        let hasInteracted = false;
+
+        // --- Variáveis Webcam ---
+        let isWebcamActive = false;
+        let model = null;
+        let isVideo = false;
+
+        // Configurações do HandTrack.js
+        const modelParams = {
+            flipHorizontal: true,
+            maxNumBoxes: 1,
+            iouThreshold: 0.5,
+            scoreThreshold: 0.6,
+        };
+
+        // --- WEBCAM LOGIC ---
+
+        async function toggleWebcam() {
+            if (isWebcamActive) {
+                // Desativar
+                handTrack.stopVideo(video);
+                isWebcamActive = false;
+                isVideo = false;
+                camBtn.innerText = "📷 Ativar Câmara";
+                camBtn.classList.remove('active');
+               
+                // Esconde vídeo
+                webcamContainer.style.display = 'none';
+               
+                instruction.innerText = "Modo Rato/Toque Ativado";
+            } else {
+                // Ativar
+                loading.style.display = 'block';
+                instruction.innerText = "A ligar aos espíritos...";
+               
+                // Carregar Modelo
+                if (!model) {
+                    model = await handTrack.load(modelParams);
+                }
+
+                // Iniciar Vídeo
+                const status = await handTrack.startVideo(video);
+                loading.style.display = 'none';
+
+                if (status) {
+                    isVideo = true;
+                    isWebcamActive = true;
+                    camBtn.innerText = "📷 Parar Câmara";
+                    camBtn.classList.add('active');
+                   
+                    // Mostra vídeo (fundo total)
+                    webcamContainer.style.display = 'block';
+
+                    instruction.innerText = "Mostra a tua mão!";
+                   
+                    // Inicia o loop de deteção
+                    runDetection();
+                    // Inicializa áudio se ainda não tiver sido
+                    if (!isAudioInit) initAudio();
+                } else {
+                    instruction.innerText = "Erro ao aceder à câmara.";
+                }
+            }
+        }
+
+        function runDetection() {
+            // FIX: Verifica se o vídeo tem dados suficientes antes de processar
+            // readyState 2 = HAVE_CURRENT_DATA
+            if (!video || video.readyState < 2) {
+                if (isVideo) {
+                    requestAnimationFrame(runDetection);
+                }
+                return;
+            }
+
+            model.detect(video).then(predictions => {
+                if (predictions.length > 0) {
+                    // Pega a primeira mão detetada
+                    const hand = predictions[0];
+                    const bbox = hand.bbox; // [x, y, width, height]
+                   
+                    // Calcula o centro da mão na box do vídeo
+                    const handCenterX = bbox[0] + (bbox[2] / 2);
+                    const handCenterY = bbox[1] + (bbox[3] / 2);
+
+                    // Mapeia coordenadas do vídeo para o ecrã
+                    const xRatio = window.innerWidth / video.width;
+                    const yRatio = window.innerHeight / video.height;
+
+                    updateInput(handCenterX * xRatio, handCenterY * yRatio);
+                }
+               
+                if (isVideo) {
+                    requestAnimationFrame(runDetection);
+                }
+            }).catch(err => {
+                console.log("Erro na deteção:", err);
+                if (isVideo) {
+                    requestAnimationFrame(runDetection);
+                }
+            });
+        }
+
+        // --- SISTEMA DE ÁUDIO ---
+        let audioCtx;
+        let masterGain;
+        let droneOsc;
+        let droneGain;
+        let isAudioInit = false;
+        let isMuted = false;
+
+        function initAudio() {
+            if (isAudioInit) return;
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext();
+
+            masterGain = audioCtx.createGain();
+            masterGain.gain.value = 0.5;
+            masterGain.connect(audioCtx.destination);
+
+            droneOsc = audioCtx.createOscillator();
+            droneOsc.type = 'sine';
+            droneOsc.frequency.value = 200;
+
+            droneGain = audioCtx.createGain();
+            droneGain.gain.value = 0;
+
+            droneOsc.connect(droneGain);
+            droneGain.connect(masterGain);
+            droneOsc.start();
+
+            isAudioInit = true;
+        }
+
+        function playSparkleSound() {
+            if (!isAudioInit || isMuted) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'triangle';
+            const freq = 800 + Math.random() * 1200;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+            osc.connect(gain);
+            gain.connect(masterGain);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.5);
+        }
+
+        function updateDrone(speed, xPosition) {
+            if (!isAudioInit || isMuted) return;
+            const targetVol = Math.min(0.15, speed * 0.005);
+            droneGain.gain.setTargetAtTime(targetVol, audioCtx.currentTime, 0.1);
+            const targetFreq = 200 + (xPosition / window.innerWidth) * 200;
+            droneOsc.frequency.setTargetAtTime(targetFreq, audioCtx.currentTime, 0.1);
+        }
+
+        function toggleMute() {
+            isMuted = !isMuted;
+            muteBtn.innerText = isMuted ? "🎵 Som: OFF" : "🎵 Som: ON";
+            if(masterGain) {
+                masterGain.gain.setTargetAtTime(isMuted ? 0 : 0.5, audioCtx.currentTime, 0.2);
+            }
+            if(!isAudioInit) initAudio();
+        }
+
+        // --- INPUT E MOVIMENTO ---
+
+        function updateInput(x, y) {
+            if (!hasInteracted && !isWebcamActive) {
+                hasInteracted = true;
+                initAudio();
+                instruction.style.opacity = '0';
+            }
+
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+
+            targetX = x;
+            targetY = y;
+            createTrail(targetX, targetY);
+        }
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isWebcamActive) updateInput(e.clientX, e.clientY);
+        });
+       
+        window.addEventListener('touchmove', (e) => {
+            if (!isWebcamActive) {
+                e.preventDefault();
+                updateInput(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        }, { passive: false });
+
+        window.addEventListener('mousedown', () => {
+             if(!hasInteracted) updateInput(targetX, targetY);
+        });
+
+        // --- ANIMAÇÃO LOOP ---
+
+        function animate() {
+            const dx = targetX - currentX;
+            const dy = targetY - currentY;
+            const speed = Math.sqrt(dx*dx + dy*dy);
+
+            currentX += dx * ease;
+            currentY += dy * ease;
+
+            updateDrone(speed, currentX);
+
+            const rotateX = Math.max(-25, Math.min(25, -dy * 0.2));
+            const rotateY = Math.max(-25, Math.min(25, dx * 0.2));  
+           
+            const time = Date.now() * 0.003;
+            const floatY = Math.sin(time) * 3;
+
+            card.style.transform = `
+                translate3d(${currentX - 110}px, ${currentY - 170 + floatY}px, 0)
+                perspective(800px)
+                rotateX(${rotateX}deg)
+                rotateY(${rotateY}deg)
+            `;
+
+            requestAnimationFrame(animate);
+        }
+
+        function createTrail(x, y) {
+            const threshold = isWebcamActive ? 0.7 : 0.5;
+            if (Math.random() > threshold) return;
+
+            const dx = Math.abs(targetX - currentX);
+            const dy = Math.abs(targetY - currentY);
+            const speed = Math.sqrt(dx*dx + dy*dy);
+
+            if (speed > 5 && Math.random() > 0.85) {
+                playSparkleSound();
+            }
+
+            const dot = document.createElement('div');
+            dot.classList.add('trail-dot');
+           
+            const offsetX = (Math.random() - 0.5) * 30;
+            const offsetY = (Math.random() - 0.5) * 30;
+
+            dot.style.left = (x + offsetX) + 'px';
+            dot.style.top = (y + offsetY) + 'px';
+           
+            // Alterado para tons de Azul e Vermelho
+            const colors = ['#FF0000', '#0000FF', '#DC143C', '#1E90FF'];
+            dot.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+           
+            document.body.appendChild(dot);
+
+            setTimeout(() => {
+                dot.remove();
+            }, 800);
+        }
+
+        animate();
+
+    </script>
+</body>
+</html>

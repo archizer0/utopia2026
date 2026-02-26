@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice: Fuga Contínua</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Roboto:wght@400;700&display=swap');
+
+        body {
+            background-color: #1a1a1a;
+            color: #fff;
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        canvas {
+            background-color: #2d5a27;
+            border: 8px solid #3e2723;
+            box-shadow: 0 0 50px rgba(0,0,0,0.5);
+            max-width: 95vw;
+            max-height: 70vh;
+        }
+
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            z-index: 100; text-align: center; padding: 20px;
+        }
+
+        .hidden { display: none; }
+       
+        .btn {
+            background: #d32f2f; color: white; padding: 12px 24px;
+            border-radius: 4px; text-transform: uppercase;
+            font-weight: bold; cursor: pointer; margin-top: 20px;
+            transition: transform 0.2s;
+        }
+
+        .btn:hover { transform: scale(1.05); }
+
+        #ui-bar {
+            width: 100%; max-width: 800px;
+            display: flex; justify-content: space-between;
+            padding: 10px; background: rgba(0,0,0,0.5);
+            margin-bottom: 10px; border-radius: 8px;
+        }
+
+        /* Estilo para o grito da Rainha no Canvas */
+        #shout-bubble {
+            position: absolute;
+            background: white;
+            color: black;
+            padding: 5px 10px;
+            border-radius: 10px;
+            font-weight: bold;
+            font-family: 'Cinzel', serif;
+            font-size: 14px;
+            pointer-events: none;
+            display: none;
+            z-index: 50;
+            box-shadow: 0 0 10px gold;
+        }
+        #shout-bubble::after {
+            content: '';
+            position: absolute;
+            bottom: -10px;
+            left: 50%;
+            border-width: 10px 10px 0;
+            border-style: solid;
+            border-color: white transparent transparent;
+            transform: translateX(-50%);
+        }
+    </style>
+</head>
+<body>
+
+<div id="ui-bar">
+    <div class="px-3 py-1 bg-red-900 rounded-full text-sm">👑 Rainha: <span id="queen-status">FURIOSA</span></div>
+    <div class="px-3 py-1 bg-blue-900 rounded-full text-sm">✨ Item: <span id="item-status">Nenhum</span></div>
+    <div class="px-3 py-1 bg-yellow-900 rounded-full text-sm">🗝️ Encontre a Saída</div>
+</div>
+
+<div style="position: relative;">
+    <canvas id="gameCanvas"></canvas>
+    <div id="shout-bubble">CORTEM-LHE A CABEÇA!</div>
+</div>
+
+<!-- Modais -->
+<div id="start-screen" class="overlay">
+    <h1 class="text-5xl font-bold text-red-500 mb-4" style="font-family: 'Cinzel', serif;">FUJA DA RAINHA!</h1>
+    <p class="max-w-md">O movimento é livre. Não deixe que ela te alcance, ou o veredito será cruel!</p>
+    <div class="mt-4 text-sm text-gray-400">Setas ou WASD para mover | 🍪 Bolo | 🧪 Poção</div>
+    <button class="btn" onclick="initGame()">Começar Fuga</button>
+</div>
+
+<div id="game-over" class="overlay hidden">
+    <h2 class="text-6xl font-bold text-red-600 mb-4" style="font-family: 'Cinzel', serif;">SENTENÇA EXECUTADA</h2>
+    <p class="text-xl">A Rainha capturou-te no jardim.</p>
+    <button class="btn" onclick="location.reload()">Tentar Escapar Novamente</button>
+</div>
+
+<div id="win-screen" class="overlay hidden">
+    <h2 class="text-5xl font-bold text-yellow-500 mb-4">LIBERDADE!</h2>
+    <p>Conseguiste atravessar a porta antes da Rainha!</p>
+    <button class="btn" onclick="location.reload()">Jogar de Novo</button>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const shoutBubble = document.getElementById('shout-bubble');
+
+    const GRID_SIZE = 40;
+    const COLS = 19;
+    const ROWS = 13;
+    canvas.width = COLS * GRID_SIZE;
+    canvas.height = ROWS * GRID_SIZE;
+
+    let maze = [];
+    let gameActive = false;
+    let isGameOver = false;
+
+    const alice = {
+        x: GRID_SIZE * 1.5,
+        y: GRID_SIZE * 1.5,
+        radius: 14,
+        speed: 3,
+        emoji: '👧',
+        dx: 0, dy: 0,
+        shrunk: false
+    };
+
+    const queen = {
+        x: canvas.width - GRID_SIZE * 1.5,
+        y: canvas.height - GRID_SIZE * 1.5,
+        radius: 16,
+        speed: 2.3, // Um pouco mais rápida para desafio
+        emoji: '👸'
+    };
+
+    const exit = {
+        x: canvas.width - GRID_SIZE * 1.5,
+        y: canvas.height - GRID_SIZE * 1.5
+    };
+
+    let items = [];
+    const keys = {};
+
+    function generateMaze() {
+        maze = Array(ROWS).fill().map(() => Array(COLS).fill(1));
+        function walk(x, y) {
+            maze[y][x] = 0;
+            const dirs = [[0,2], [0,-2], [2,0], [-2,0]].sort(() => Math.random() - 0.5);
+            for (let [dx, dy] of dirs) {
+                let nx = x + dx, ny = y + dy;
+                if (nx > 0 && nx < COLS - 1 && ny > 0 && ny < ROWS - 1 && maze[ny][nx] === 1) {
+                    maze[y + dy/2][x + dx/2] = 0;
+                    walk(nx, ny);
+                }
+            }
+        }
+        walk(1, 1);
+        for(let i=0; i<35; i++) {
+            let rx = Math.floor(Math.random()*(COLS-2))+1;
+            let ry = Math.floor(Math.random()*(ROWS-2))+1;
+            maze[ry][rx] = 0;
+        }
+        maze[ROWS-2][COLS-2] = 0;
+    }
+
+    function spawnItems() {
+        const types = [{s:'🍪', t:'speed'}, {s:'🧪', t:'ghost'}];
+        for(let i=0; i<4; i++){
+            let rx, ry;
+            do {
+                rx = Math.floor(Math.random()*COLS);
+                ry = Math.floor(Math.random()*ROWS);
+            } while(maze[ry][rx] === 1 || (rx < 3 && ry < 3));
+            items.push({ x: rx*GRID_SIZE + GRID_SIZE/2, y: ry*GRID_SIZE + GRID_SIZE/2, type: types[i%2] });
+        }
+    }
+
+    function checkWallCollision(px, py, radius) {
+        if (alice.shrunk && px === alice.x + alice.dx && py === alice.y + alice.dy) return false;
+
+        const buffer = 2;
+        for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 4) {
+            let checkX = px + Math.cos(angle) * (radius + buffer);
+            let checkY = py + Math.sin(angle) * (radius + buffer);
+            let gridX = Math.floor(checkX / GRID_SIZE);
+            let gridY = Math.floor(checkY / GRID_SIZE);
+
+            if (gridX < 0 || gridX >= COLS || gridY < 0 || gridY >= ROWS || maze[gridY][gridX] === 1) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function updateQueen() {
+        const dx = alice.x - queen.x;
+        const dy = alice.y - queen.y;
+        const angle = Math.atan2(dy, dx);
+       
+        let nextX = queen.x + Math.cos(angle) * queen.speed;
+        let nextY = queen.y + Math.sin(angle) * queen.speed;
+
+        if (checkWallCollision(nextX, nextY, queen.radius)) {
+            if (!checkWallCollision(nextX, queen.y, queen.radius)) queen.x = nextX;
+            else if (!checkWallCollision(queen.x, nextY, queen.radius)) queen.y = nextY;
+        } else {
+            queen.x = nextX;
+            queen.y = nextY;
+        }
+    }
+
+    function update() {
+        if (!gameActive || isGameOver) return;
+
+        // Movimento Alice
+        alice.dx = 0; alice.dy = 0;
+        if (keys['ArrowUp'] || keys['w']) alice.dy = -alice.speed;
+        if (keys['ArrowDown'] || keys['s']) alice.dy = alice.speed;
+        if (keys['ArrowLeft'] || keys['a']) alice.dx = -alice.speed;
+        if (keys['ArrowRight'] || keys['d']) alice.dx = alice.speed;
+
+        if (!checkWallCollision(alice.x + alice.dx, alice.y, alice.radius)) alice.x += alice.dx;
+        if (!checkWallCollision(alice.x, alice.y + alice.dy, alice.radius)) alice.y += alice.dy;
+
+        updateQueen();
+
+        // Verificação de Captura (AQUI é onde a rainha grita)
+        const distToQueen = Math.hypot(alice.x - queen.x, alice.y - queen.y);
+        if (distToQueen < alice.radius + queen.radius) {
+            shoutAndEnd();
+            return;
+        }
+
+        const distToExit = Math.hypot(alice.x - exit.x, alice.y - exit.y);
+        if (distToExit < alice.radius + 15) {
+            endGame(true);
+            return;
+        }
+
+        items = items.filter(item => {
+            const d = Math.hypot(alice.x - item.x, alice.y - item.y);
+            if (d < alice.radius + 15) {
+                applyEffect(item.type.t);
+                return false;
+            }
+            return true;
+        });
+
+        draw();
+        requestAnimationFrame(update);
+    }
+
+    function shoutAndEnd() {
+        isGameOver = true;
+       
+        // Posiciona o balão sobre a rainha
+        const rect = canvas.getBoundingClientRect();
+        shoutBubble.style.left = (queen.x + (rect.left - window.scrollX) - 80) + 'px';
+        shoutBubble.style.top = (queen.y + (rect.top - window.scrollY) - 60) + 'px';
+        shoutBubble.style.display = 'block';
+
+        // Pequena pausa dramática antes do ecrã de game over
+        setTimeout(() => {
+            endGame(false);
+        }, 1500);
+    }
+
+    function applyEffect(type) {
+        if (type === 'speed') {
+            alice.speed *= 1.8;
+            document.getElementById('item-status').innerText = "Veloz!";
+            setTimeout(() => {
+                alice.speed = 3;
+                document.getElementById('item-status').innerText = "Nenhum";
+            }, 4000);
+        } else if (type === 'ghost') {
+            alice.shrunk = true;
+            alice.radius = 8;
+            document.getElementById('item-status').innerText = "FANTASMA";
+            setTimeout(() => {
+                alice.shrunk = false;
+                alice.radius = 14;
+                document.getElementById('item-status').innerText = "Nenhum";
+                if(checkWallCollision(alice.x, alice.y, alice.radius)) endGame(false);
+            }, 4000);
+        }
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        for (let y = 0; y < ROWS; y++) {
+            for (let x = 0; x < COLS; x++) {
+                if (maze[y][x] === 1) {
+                    ctx.fillStyle = '#1b4d16';
+                    ctx.fillRect(x * GRID_SIZE, y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+                    ctx.strokeStyle = '#143d10';
+                    ctx.strokeRect(x * GRID_SIZE, y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+                }
+            }
+        }
+
+        ctx.font = '30px serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🗝️', exit.x, exit.y);
+
+        items.forEach(item => {
+            ctx.fillText(item.type.s, item.x, item.y);
+        });
+
+        ctx.save();
+        if(alice.shrunk) ctx.globalAlpha = 0.6;
+        ctx.font = `${alice.radius * 2.5}px serif`;
+        ctx.fillText(alice.emoji, alice.x, alice.y);
+        ctx.restore();
+
+        ctx.font = '35px serif';
+        ctx.fillText(queen.emoji, queen.x, queen.y);
+    }
+
+    function initGame() {
+        document.getElementById('start-screen').classList.add('hidden');
+        generateMaze();
+        spawnItems();
+        gameActive = true;
+        update();
+    }
+
+    function endGame(win) {
+        gameActive = false;
+        shoutBubble.style.display = 'none';
+        if (win) document.getElementById('win-screen').classList.remove('hidden');
+        else document.getElementById('game-over').classList.remove('hidden');
+    }
+
+    window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+    window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+</script>
+</body>
+</html>

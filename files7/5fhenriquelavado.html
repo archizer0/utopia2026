@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>O Resgate da Alice - Rocket Jump Infinito</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #2c0e37;
+            font-family: 'Press Start 2P', cursive;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        #game-container {
+            position: relative;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            border: 4px solid #e0e0e0;
+        }
+
+        canvas {
+            display: block;
+            background: linear-gradient(to bottom, #4a1c60, #1a0b2e);
+            max-width: 95vw;
+            max-height: 90vh;
+            width: auto;
+            height: auto;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .hud {
+            text-shadow: 2px 2px 0 #000;
+        }
+
+        #start-screen, #game-over-screen, #win-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            pointer-events: auto;
+            z-index: 10;
+        }
+
+        h1 { color: #ff69b4; margin-bottom: 20px; font-size: 24px; line-height: 1.5; }
+        p { color: #ddd; font-size: 12px; margin-bottom: 30px; line-height: 1.6; max-width: 600px; }
+       
+        button {
+            background: #ff69b4;
+            border: 4px solid #fff;
+            color: white;
+            padding: 15px 30px;
+            font-family: 'Press Start 2P', cursive;
+            font-size: 16px;
+            cursor: pointer;
+            text-transform: uppercase;
+            transition: transform 0.1s;
+        }
+
+        button:hover { transform: scale(1.05); background: #ff1493; }
+        button:active { transform: scale(0.95); }
+
+        .hidden { display: none !important; }
+        .controls-hint { color: #ffff00; margin-top: 10px; font-size: 10px; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+   
+    <div id="ui-layer">
+        <div class="hud">Nível: <span id="level-display">1</span></div>
+        <div class="hud">Coelho HP: <span id="hp-display">100</span>%</div>
+    </div>
+
+    <div id="start-screen">
+        <h1>RESGATE NO PAÍS DAS MARAVILHAS</h1>
+        <p>Tu és o Coelho Branco. A Rainha de Copas prendeu a Alice!<br><br>
+           REGRA DE OURO: <strong>Tu não consegues saltar.</strong><br>
+           <strong>NOVO: Segura o Clique para carregar o pulo!</strong><br>
+           Dispara contra o CHÃO debaixo de ti para voares.<br>
+           Usa a mesma arma para destruir os Soldados Carta.<br><br>
+           <strong>Modo Infinito:</strong> Níveis gerados magicamente.</p>
+        <button id="start-btn">COMEÇAR AVENTURA</button>
+        <div class="controls-hint">W/A/D para andar | Segura Clique para Carregar Tiro</div>
+    </div>
+
+    <div id="game-over-screen" class="hidden">
+        <h1 style="color: #ff4444;">FIM DE JOGO</h1>
+        <p>A Rainha de Copas apanhou-te no Nível <span id="final-level"></span>.</p>
+        <button id="restart-btn">TENTAR DE NOVO</button>
+    </div>
+
+    <div id="win-screen" class="hidden">
+        <h1 style="color: #44ff44;">VITÓRIA!</h1>
+        <button id="play-again-btn">JOGAR NOVAMENTE</button>
+    </div>
+</div>
+
+<script>
+/**
+ * LÓGICA DO JOGO - COELHO ROCKET JUMP
+ */
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// Estados do Jogo
+const GAME_STATE = {
+    MENU: 0,
+    PLAYING: 1,
+    GAMEOVER: 2,
+    WIN: 3
+};
+
+let currentState = GAME_STATE.MENU;
+let currentLevel = 1;
+let gravity = 0.5;
+let friction = 0.85;
+
+// Input
+const keys = {
+    a: false,
+    d: false,
+    w: false,
+    r: false
+};
+
+const mouse = { x: 0, y: 0, down: false };
+
+// Classes
+class Entity {
+    constructor(x, y, w, h, color) {
+        this.x = x;
+        this.y = y;
+        this.w = w;
+        this.h = h;
+        this.color = color;
+        this.vx = 0;
+        this.vy = 0;
+        this.grounded = false;
+        this.dead = false;
+    }
+
+    draw() {
+        ctx.fillStyle = this.color;
+        ctx.fillRect(this.x, this.y, this.w, this.h);
+    }
+}
+
+class Player extends Entity {
+    constructor(x, y) {
+        super(x, y, 24, 24, '#ffffff');
+        this.hp = 100;
+        this.maxHp = 100;
+        this.facingRight = true;
+        this.weaponCooldown = 0;
+       
+        // Sistema de Carga
+        this.isCharging = false;
+        this.charge = 0;
+        this.maxCharge = 100;
+    }
+
+    update(platforms) {
+        // Carregamento da Arma
+        if (this.isCharging) {
+            if (this.charge < this.maxCharge) {
+                this.charge += 3; // Velocidade de carregamento
+            }
+        } else {
+            if (this.charge > 0 && !mouse.down) this.charge = 0;
+        }
+
+        // Movimento Horizontal
+        if (keys.a) {
+            this.vx -= 0.5;
+            this.facingRight = false;
+        }
+        if (keys.d) {
+            this.vx += 0.5;
+            this.facingRight = true;
+        }
+
+        this.vx = Math.max(Math.min(this.vx, 8), -8);
+        this.vy += gravity;
+        this.vx *= friction;
+
+        this.x += this.vx;
+        this.y += this.vy;
+
+        // Colisões com Plataformas
+        this.grounded = false;
+        for (let p of platforms) {
+            let dir = colCheck(this, p);
+            if (dir === "b") {
+                this.grounded = true;
+                this.vy = 0;
+            } else if (dir === "t") {
+                this.vy = 0;
+            } else if (dir === "l" || dir === "r") {
+                this.vx = 0;
+            }
+        }
+
+        // Limites
+        if (this.x < 0) this.x = 0;
+        if (this.x + this.w > canvas.width) this.x = canvas.width - this.w;
+        if (this.y > canvas.height + 100) this.hp = 0;
+
+        if (this.weaponCooldown > 0) this.weaponCooldown--;
+    }
+
+    fire() {
+        if (this.weaponCooldown <= 0) {
+            let angle = Math.atan2(mouse.y - (this.y + this.h/2), mouse.x - (this.x + this.w/2));
+           
+            // Força baseada na carga (mínimo 20%, máximo 100%)
+            let power = Math.max(20, this.charge);
+           
+            rockets.push(new Rocket(this.x + this.w/2, this.y + this.h/2, angle, power));
+            this.weaponCooldown = 20;
+           
+            // Recuo visual (pequeno empurrão imediato para dar "feel" de disparo)
+            let recoil = power / 40;
+            this.vx -= Math.cos(angle) * recoil;
+            this.vy -= Math.sin(angle) * recoil;
+           
+            this.charge = 0;
+            this.isCharging = false;
+        }
+    }
+
+    draw() {
+        ctx.save();
+        ctx.fillStyle = this.color;
+        ctx.fillRect(this.x, this.y, this.w, this.h);
+       
+        ctx.fillStyle = '#ffc0cb';
+        ctx.fillRect(this.x + 4, this.y - 10, 6, 10);
+        ctx.fillRect(this.x + 14, this.y - 10, 6, 10);
+
+        ctx.fillStyle = 'red';
+        if (this.facingRight) {
+            ctx.fillRect(this.x + 16, this.y + 6, 4, 4);
+        } else {
+            ctx.fillRect(this.x + 4, this.y + 6, 4, 4);
+        }
+
+        ctx.translate(this.x + this.w/2, this.y + this.h/2);
+        let angle = Math.atan2(mouse.y - (this.y + this.h/2), mouse.x - (this.x + this.w/2));
+        ctx.rotate(angle);
+       
+        let chargeRatio = this.charge / this.maxCharge;
+        ctx.fillStyle = `rgb(255, ${165 * (1-chargeRatio)}, 0)`;
+        ctx.fillRect(0, -4, 20, 8);
+        ctx.fillStyle = '#228B22';
+        ctx.fillRect(-5, -5, 5, 10);
+        ctx.restore();
+
+        if (this.isCharging || this.charge > 0) {
+            ctx.fillStyle = 'black';
+            ctx.fillRect(this.x - 5, this.y - 25, 34, 6);
+            let barColor = chargeRatio > 0.8 ? '#ff0000' : (chargeRatio > 0.5 ? '#ffff00' : '#00ff00');
+            ctx.fillStyle = barColor;
+            ctx.fillRect(this.x - 4, this.y - 24, 32 * chargeRatio, 4);
+        }
+    }
+}
+
+class Rocket {
+    constructor(x, y, angle, power) {
+        this.x = x;
+        this.y = y;
+        this.radius = 4 + (power / 25);
+        this.speed = 10;
+        this.vx = Math.cos(angle) * this.speed;
+        this.vy = Math.sin(angle) * this.speed;
+        this.active = true;
+        this.power = power;
+        this.color = '#FFA500';
+    }
+
+    update(platforms, enemies) {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.vy += 0.1;
+
+        if (Math.random() < 0.5) {
+            particles.push(new Particle(this.x, this.y, 2, '#888', 10));
+        }
+
+        for (let p of platforms) {
+            if (this.x > p.x && this.x < p.x + p.w &&
+                this.y > p.y && this.y < p.y + p.h) {
+                this.explode();
+                return;
+            }
+        }
+
+        if (this.x < 0 || this.x > canvas.width || this.y > canvas.height) {
+            this.explode();
+            return;
+        }
+
+        for (let e of enemies) {
+            if (this.x > e.x && this.x < e.x + e.w &&
+                this.y > e.y && this.y < e.y + e.h) {
+                e.takeDamage(10 + (this.power / 5));
+                this.explode();
+                return;
+            }
+        }
+    }
+
+    explode() {
+        this.active = false;
+        explosions.push(new Explosion(this.x, this.y, this.power));
+        createParticles(this.x, this.y, 10, '#FFA500');
+    }
+
+    draw() {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fillStyle = this.color;
+        ctx.fill();
+        ctx.closePath();
+    }
+}
+
+class Explosion {
+    constructor(x, y, power) {
+        this.x = x;
+        this.y = y;
+        this.radius = 1;
+        this.maxRadius = 70 + (power / 2);
+        this.force = 15 + (power * 0.25);
+        this.active = true;
+        this.life = 10;
+    }
+
+    update() {
+        this.radius += 8;
+        this.life--;
+        if (this.life <= 0) this.active = false;
+
+        if (this.life === 9) {
+            let dx = player.x + player.w/2 - this.x;
+            let dy = player.y + player.h/2 - this.y;
+            let dist = Math.sqrt(dx*dx + dy*dy);
+
+            if (dist < this.maxRadius + 20) {
+                let angle = Math.atan2(dy, dx);
+                let forceMagnitude = this.force * (1 - dist / (this.maxRadius + 40));
+                if (forceMagnitude < 0) forceMagnitude = 0;
+
+                player.vx += Math.cos(angle) * forceMagnitude;
+                player.vy += Math.sin(angle) * forceMagnitude;
+                player.grounded = false;
+            }
+
+            enemies.forEach(e => {
+                let edx = e.x + e.w/2 - this.x;
+                let edy = e.y + e.h/2 - this.y;
+                let edist = Math.sqrt(edx*edx + edy*edy);
+                if (edist < this.maxRadius) {
+                    e.takeDamage(50);
+                    let angle = Math.atan2(edy, edx);
+                    e.vx += Math.cos(angle) * 5;
+                    e.vy += Math.sin(angle) * 5;
+                }
+            });
+        }
+    }
+
+    draw() {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255, 165, 0, ${this.life / 10})`;
+        ctx.fill();
+        ctx.closePath();
+    }
+}
+
+class Enemy extends Entity {
+    constructor(x, y, patrolDist) {
+        super(x, y, 30, 40, '#cf1020');
+        this.originX = x;
+        this.patrolDist = patrolDist;
+        this.speed = 2 + Math.random();
+        this.dir = Math.random() < 0.5 ? 1 : -1;
+        this.hp = 30;
+    }
+
+    takeDamage(amount) {
+        this.hp -= amount;
+        if (this.hp <= 0) {
+            this.dead = true;
+            createParticles(this.x + this.w/2, this.y + this.h/2, 20, '#cf1020');
+        } else {
+            this.color = '#fff';
+            setTimeout(() => this.color = '#cf1020', 100);
+        }
+    }
+
+    update(platforms) {
+        this.vy += gravity;
+        this.x += this.speed * this.dir;
+
+        if (this.x > this.originX + this.patrolDist) this.dir = -1;
+        if (this.x < this.originX) this.dir = 1;
+
+        this.y += this.vy;
+        let onGround = false;
+       
+        for (let p of platforms) {
+            let dir = colCheck(this, p);
+            if (dir === "b") {
+                this.vy = 0;
+                onGround = true;
+            }
+        }
+       
+        if (!this.dead && checkRectCollision(this, player)) {
+            player.hp -= 1;
+            if (player.x < this.x) player.vx = -5;
+            else player.vx = 5;
+            player.vy = -3;
+        }
+       
+        if(this.y > canvas.height + 200) this.dead = true;
+    }
+
+    draw() {
+        ctx.fillStyle = this.color;
+        ctx.fillRect(this.x, this.y, this.w, this.h);
+        ctx.fillStyle = 'white';
+        ctx.fillRect(this.x + 5, this.y + 5, this.w - 10, this.h - 10);
+        ctx.fillStyle = 'red';
+        ctx.font = '20px Arial';
+        ctx.fillText('♥', this.x + 8, this.y + 28);
+    }
+}
+
+class Particle {
+    constructor(x, y, size, color, life) {
+        this.x = x;
+        this.y = y;
+        this.size = size;
+        this.color = color;
+        this.life = life;
+        this.vx = (Math.random() - 0.5) * 4;
+        this.vy = (Math.random() - 0.5) * 4;
+    }
+    update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.life--;
+        this.size *= 0.9;
+    }
+    draw() {
+        ctx.fillStyle = this.color;
+        ctx.fillRect(this.x, this.y, this.size, this.size);
+    }
+}
+
+class Goal {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.w = 30;
+        this.h = 40;
+    }
+    draw() {
+        ctx.fillStyle = '#3498db';
+        ctx.fillRect(this.x, this.y, this.w, this.h);
+        ctx.fillStyle = '#f1c27d';
+        ctx.fillRect(this.x + 5, this.y - 10, 20, 10);
+        ctx.fillStyle = '#ffd700';
+        ctx.fillRect(this.x + 3, this.y - 12, 24, 6);
+    }
+}
+
+// Variáveis Globais
+let player;
+let platforms = [];
+let rockets = [];
+let explosions = [];
+let enemies = [];
+let particles = [];
+let goal;
+
+/**
+ * GERADOR DE NÍVEIS PROCEDURAL CORRIGIDO PARA ECRÃ FIXO
+ */
+function generateLevelData(levelNum) {
+    const startX = 50;
+    const startY = 400; // Posição de começo segura
+   
+    let allPlatforms = [];
+   
+    // 1. CHÃO INICIAL (Garantido para não cair direto)
+    allPlatforms.push({x: 0, y: 550, w: 200, h: 50, color: '#4b0082'});
+
+    // 2. GERADOR DE CAMINHO
+    // Garante que o nível inteiro cabe entre o Y 50 (topo) e o Y 550 (chão)
+    let steps = 4 + Math.floor(levelNum / 2);
+    if (steps > 10) steps = 10; // Limite máximo para não encher demasiado o ecrã
+
+    let spacingY = 450 / steps; // Divide o ecrã verticalmente para criar degraus regulares
+    let currentY = 550;
+    let currentX = 100;
+   
+    for(let i = 0; i < steps; i++) {
+        currentY -= spacingY; // Sobe um degrau
+       
+        // Mover para a esquerda ou direita em zig-zag
+        let moveX = (Math.random() > 0.5 ? 1 : -1) * (100 + Math.random() * 150);
+        currentX += moveX;
+       
+        // Forçar a plataforma a ficar dentro dos limites do ecrã (0 a 800)
+        if (currentX < 50) currentX = 50 + Math.random() * 100;
+        if (currentX > 650) currentX = 650 - Math.random() * 100;
+       
+        // Plataformas ficam mais pequenas consoante o nível
+        let w = Math.max(60, 200 - (levelNum * 10));
+       
+        allPlatforms.push({
+            x: currentX,
+            y: currentY,
+            w: w,
+            h: 20,
+            color: '#6a0dad'
+        });
+    }
+
+    // 3. INIMIGOS
+    let generatedEnemies = [];
+    const numEnemies = 1 + Math.floor(levelNum / 2);
+   
+    for(let i=0; i<numEnemies; i++) {
+        if (allPlatforms.length > 2) {
+            let platIndex = 1 + Math.floor(Math.random() * (allPlatforms.length - 1));
+            let plat = allPlatforms[platIndex];
+            generatedEnemies.push({
+                x: plat.x + 10,
+                y: plat.y - 45,
+                patrol: plat.w
+            });
+        }
+    }
+
+    // 4. OBJETIVO (Alice)
+    // Sempre na última plataforma gerada (que estará no topo do ecrã)
+    let lastPlat = allPlatforms[allPlatforms.length - 1];
+    let goalX = lastPlat.x + (lastPlat.w / 2) - 15;
+    let goalY = lastPlat.y - 45;
+
+    return {
+        playerStart: {x: startX, y: startY},
+        platforms: allPlatforms,
+        enemies: generatedEnemies,
+        goal: {x: goalX, y: goalY}
+    };
+}
+
+function initLevel(levelIndex) {
+    let data = generateLevelData(levelIndex);
+   
+    player = new Player(data.playerStart.x, data.playerStart.y);
+    goal = new Goal(data.goal.x, data.goal.y);
+    platforms = data.platforms;
+    enemies = [];
+    data.enemies.forEach(e => enemies.push(new Enemy(e.x, e.y, e.patrol)));
+
+    rockets = [];
+    explosions = [];
+    particles = [];
+   
+    document.getElementById('level-display').innerText = levelIndex;
+}
+
+function startGame() {
+    currentLevel = 1;
+    document.getElementById('start-screen').classList.add('hidden');
+    document.getElementById('game-over-screen').classList.add('hidden');
+    document.getElementById('win-screen').classList.add('hidden');
+    currentState = GAME_STATE.PLAYING;
+    initLevel(currentLevel);
+    loop();
+}
+
+function gameOver() {
+    currentState = GAME_STATE.GAMEOVER;
+    document.getElementById('final-level').innerText = currentLevel;
+    document.getElementById('game-over-screen').classList.remove('hidden');
+}
+
+function createParticles(x, y, count, color) {
+    for (let i = 0; i < count; i++) {
+        particles.push(new Particle(x, y, Math.random() * 5 + 2, color, 20));
+    }
+}
+
+// Loop Principal
+function loop() {
+    if (currentState !== GAME_STATE.PLAYING) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Objetivo
+    goal.draw();
+    if (checkRectCollision(player, goal)) {
+        currentLevel++;
+        createParticles(player.x, player.y, 50, '#3498db');
+        initLevel(currentLevel);
+       
+        // BUG CORRIGIDO AQUI: Temos que chamar o requestAnimationFrame
+        // antes do return para não quebrar o ciclo do jogo!
+        requestAnimationFrame(loop);
+        return;
+    }
+
+    // Plataformas
+    platforms.forEach(p => {
+        ctx.fillStyle = p.color;
+        ctx.fillRect(p.x, p.y, p.w, p.h);
+    });
+
+    // Inimigos
+    enemies.forEach((e, i) => {
+        e.update(platforms);
+        e.draw();
+        if (e.dead) enemies.splice(i, 1);
+    });
+
+    // Mísseis
+    rockets.forEach((r, i) => {
+        r.update(platforms, enemies);
+        r.draw();
+        if (!r.active) rockets.splice(i, 1);
+    });
+
+    // Explosões
+    explosions.forEach((e, i) => {
+        e.update();
+        e.draw();
+        if (!e.active) explosions.splice(i, 1);
+    });
+
+    // Partículas
+    particles.forEach((p, i) => {
+        p.update();
+        p.draw();
+        if (p.life <= 0) particles.splice(i, 1);
+    });
+
+    // Jogador
+    player.update(platforms);
+    player.draw();
+   
+    // UI HP
+    document.getElementById('hp-display').innerText = Math.ceil(player.hp);
+    if (player.hp <= 0) {
+        gameOver();
+    }
+
+    requestAnimationFrame(loop);
+}
+
+// Helpers de Colisão
+function checkRectCollision(r1, r2) {
+    return (r1.x < r2.x + r2.w &&
+            r1.x + r1.w > r2.x &&
+            r1.y < r2.y + r2.h &&
+            r1.y + r1.h > r2.y);
+}
+
+function colCheck(shapeA, shapeB) {
+    let vX = (shapeA.x + (shapeA.w / 2)) - (shapeB.x + (shapeB.w / 2)),
+        vY = (shapeA.y + (shapeA.h / 2)) - (shapeB.y + (shapeB.h / 2)),
+        hWidths = (shapeA.w / 2) + (shapeB.w / 2),
+        hHeights = (shapeA.h / 2) + (shapeB.h / 2),
+        colDir = null;
+
+    if (Math.abs(vX) < hWidths && Math.abs(vY) < hHeights) {
+        let oX = hWidths - Math.abs(vX),
+            oY = hHeights - Math.abs(vY);
+        if (oX >= oY) {
+            if (vY > 0) {
+                colDir = "t";
+                shapeA.y += oY;
+            } else {
+                colDir = "b";
+                shapeA.y -= oY;
+            }
+        } else {
+            if (vX > 0) {
+                colDir = "l";
+                shapeA.x += oX;
+            } else {
+                colDir = "r";
+                shapeA.x -= oX;
+            }
+        }
+    }
+    return colDir;
+}
+
+// Event Listeners
+window.addEventListener('keydown', (e) => {
+    if (e.key === 'a' || e.key === 'A') keys.a = true;
+    if (e.key === 'd' || e.key === 'D') keys.d = true;
+    if (e.key === 'w' || e.key === 'W') keys.w = true;
+});
+
+window.addEventListener('keyup', (e) => {
+    if (e.key === 'a' || e.key === 'A') keys.a = false;
+    if (e.key === 'd' || e.key === 'D') keys.d = false;
+    if (e.key === 'w' || e.key === 'W') keys.w = false;
+});
+
+canvas.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    mouse.x = (e.clientX - rect.left) * scaleX;
+    mouse.y = (e.clientY - rect.top) * scaleY;
+});
+
+canvas.addEventListener('mousedown', (e) => {
+    if (currentState !== GAME_STATE.PLAYING) return;
+   
+    mouse.down = true;
+   
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    mouse.x = (e.clientX - rect.left) * scaleX;
+    mouse.y = (e.clientY - rect.top) * scaleY;
+
+    if (player.weaponCooldown <= 0) {
+        player.isCharging = true;
+    }
+});
+
+canvas.addEventListener('mouseup', (e) => {
+    mouse.down = false;
+    if (currentState === GAME_STATE.PLAYING && player.isCharging) {
+        player.fire();
+    }
+});
+
+// Botões da UI
+document.getElementById('start-btn').addEventListener('click', startGame);
+document.getElementById('restart-btn').addEventListener('click', startGame);
+document.getElementById('play-again-btn').addEventListener('click', startGame);
+
+</script>
+</body>
+</html>
