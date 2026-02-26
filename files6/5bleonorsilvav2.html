@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice: Coelho vs Gato</title>
+   
+    <!-- Importar Bibliotecas MediaPipe -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #0d0221;
+            color: #fff;
+            font-family: 'Georgia', serif;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            background: #000;
+        }
+
+        canvas {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            transform: scaleX(-1);
+            object-fit: cover;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 20;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 15px 25px;
+            border-radius: 15px;
+            border: 2px solid #d4af37;
+            box-shadow: 0 0 15px rgba(212, 175, 55, 0.5);
+            pointer-events: none;
+            display: none;
+        }
+
+        h1 { margin: 0; font-size: 1.2rem; color: #d4af37; text-transform: uppercase; }
+
+        #score-display {
+            font-size: 3rem;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 0 0 10px #d4af37;
+            margin: 5px 0;
+        }
+
+        #start-screen, #loading-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #2c003e 0%, #000000 100%);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            transition: opacity 0.5s ease;
+        }
+       
+        #loading-screen { z-index: 90; display: none; background: rgba(0,0,0,0.8); }
+
+        .instructions {
+            font-size: 1.2rem;
+            max-width: 600px;
+            margin-bottom: 40px;
+            line-height: 1.6;
+            color: #ddd;
+        }
+
+        .bad-instruction {
+            color: #ff6b6b;
+            font-weight: bold;
+            text-shadow: 0 0 5px rgba(255, 0, 0, 0.5);
+        }
+
+        .btn-start {
+            padding: 15px 40px;
+            font-size: 1.5rem;
+            background: #d4af37;
+            color: #1a0b2e;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            font-family: 'Georgia', serif;
+            font-weight: bold;
+            box-shadow: 0 0 20px rgba(212, 175, 55, 0.6);
+            transition: transform 0.2s;
+        }
+
+        .btn-start:hover { transform: scale(1.05); background: #fff; }
+
+        .loader {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #d4af37;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .input_video { display: none; }
+    </style>
+</head>
+<body>
+
+    <!-- Ecrã Inicial -->
+    <div id="start-screen">
+        <div style="font-size: 5rem; margin-bottom: 10px;">🐇 😼</div>
+        <h1>Alice: Apanha & Foge</h1>
+        <div class="instructions">
+            <p><strong>Mão Esquerda:</strong> Sons Graves (Baixo)</p>
+            <p><strong>Mão Direita:</strong> Sons Agudos (Melodia)</p>
+            <p>Toque no <strong>Coelho (🐇)</strong> para ganhar pontos.</p>
+            <p class="bad-instruction">Evite o Gato (😼)! Ele tira pontos!</p>
+        </div>
+        <button class="btn-start" onclick="startExperience()">Entrar na Toca</button>
+    </div>
+
+    <!-- Ecrã de Carregamento -->
+    <div id="loading-screen">
+        <div class="loader"></div>
+        <h2>A invocar personagens...</h2>
+        <p>Por favor permite o acesso à câmara.</p>
+    </div>
+
+    <!-- UI do Jogo -->
+    <div id="ui-layer">
+        <h1>Pontuação</h1>
+        <div id="score-display">0</div>
+    </div>
+
+    <video class="input_video" playsinline></video>
+    <div class="container">
+        <canvas class="output_canvas"></canvas>
+    </div>
+
+<script>
+    const videoElement = document.querySelector('.input_video');
+    const canvasElement = document.querySelector('.output_canvas');
+    const canvasCtx = canvasElement.getContext('2d');
+    const scoreElement = document.getElementById('score-display');
+    const startScreen = document.getElementById('start-screen');
+    const loadingScreen = document.getElementById('loading-screen');
+    const uiLayer = document.getElementById('ui-layer');
+
+    let audioCtx;
+    let score = 0;
+    let isLoaded = false;
+   
+    // --- PERSONAGENS (Agora com velocidade vx e vy) ---
+    let rabbit = {
+        x: 0.7,
+        y: 0.5,
+        vx: 0.015, // Velocidade X (rápido)
+        vy: 0.010, // Velocidade Y
+        emoji: "🐇"
+    };
+
+    let cat = {
+        x: 0.3,
+        y: 0.5,
+        vx: 0.008, // Velocidade X (mais lento)
+        vy: 0.008, // Velocidade Y
+        emoji: "😼"
+    };
+
+    // --- ÁUDIO ---
+    const oscillators = {};
+
+    function initAudio() {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContext();
+    }
+
+    function createHandSound(handIndex) {
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        osc.type = handIndex === 0 ? 'triangle' : 'sine';
+        gainNode.gain.value = 0;
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        osc.start();
+        return { osc, gainNode };
+    }
+
+    function updateSound(handIndex, yPos) {
+        if (!oscillators[handIndex]) oscillators[handIndex] = createHandSound(handIndex);
+        const sound = oscillators[handIndex];
+        const now = audioCtx.currentTime;
+       
+        sound.gainNode.gain.setTargetAtTime(0.1, now, 0.1);
+       
+        let minFreq = handIndex === 0 ? 100 : 300;
+        let maxFreq = handIndex === 0 ? 300 : 1000;
+        let frequency = minFreq + ((1 - yPos) * (maxFreq - minFreq));
+        sound.osc.frequency.setTargetAtTime(frequency, now, 0.1);
+    }
+
+    function silenceHand(handIndex) {
+        if (oscillators[handIndex]) {
+            oscillators[handIndex].gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
+        }
+    }
+
+    // Som de Vitória (Coelho)
+    function playScoreSound() {
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.frequency.setValueAtTime(1200, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(2000, audioCtx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.5);
+    }
+
+    // Som de Derrota (Gato)
+    function playFailSound() {
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sawtooth'; // Som mais agressivo
+        osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+        osc.frequency.linearRampToValueAtTime(50, audioCtx.currentTime + 0.3); // "Slide" para baixo
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.3);
+    }
+
+    // --- LÓGICA DO JOGO ---
+   
+    // Atualizar posição das personagens (Movimento)
+    function updatePositions() {
+        // Mover Coelho
+        rabbit.x += rabbit.vx;
+        rabbit.y += rabbit.vy;
+
+        // Ricochete nas bordas (com margem de 0.05)
+        if (rabbit.x <= 0.05 || rabbit.x >= 0.95) rabbit.vx *= -1;
+        if (rabbit.y <= 0.05 || rabbit.y >= 0.95) rabbit.vy *= -1;
+
+        // Mover Gato
+        cat.x += cat.vx;
+        cat.y += cat.vy;
+
+        // Ricochete Gato
+        if (cat.x <= 0.05 || cat.x >= 0.95) cat.vx *= -1;
+        if (cat.y <= 0.05 || cat.y >= 0.95) cat.vy *= -1;
+    }
+
+    function moveRabbit() {
+        rabbit.x = 0.1 + Math.random() * 0.8;
+        rabbit.y = 0.1 + Math.random() * 0.8;
+        // Mudar direção aleatoriamente ao reaparecer
+        rabbit.vx = (Math.random() > 0.5 ? 1 : -1) * (0.01 + Math.random() * 0.01);
+        rabbit.vy = (Math.random() > 0.5 ? 1 : -1) * (0.01 + Math.random() * 0.01);
+    }
+
+    function moveCat() {
+        cat.x = 0.1 + Math.random() * 0.8;
+        cat.y = 0.1 + Math.random() * 0.8;
+        // Mudar direção aleatoriamente
+        cat.vx = (Math.random() > 0.5 ? 1 : -1) * 0.008;
+        cat.vy = (Math.random() > 0.5 ? 1 : -1) * 0.008;
+    }
+
+    function checkCollision(handX, handY) {
+        // Verificar COELHO (Bom)
+        const distRabbit = Math.sqrt(Math.pow(handX - rabbit.x, 2) + Math.pow(handY - rabbit.y, 2));
+        if (distRabbit < 0.08) {
+            score++;
+            scoreElement.innerText = score;
+            scoreElement.style.color = "#d4af37"; // Dourado
+            playScoreSound();
+            moveRabbit();
+            // Flash Branco Bonito
+            canvasElement.style.filter = "brightness(1.5)";
+            setTimeout(() => canvasElement.style.filter = "none", 100);
+        }
+
+        // Verificar GATO (Mau)
+        const distCat = Math.sqrt(Math.pow(handX - cat.x, 2) + Math.pow(handY - cat.y, 2));
+        if (distCat < 0.08) {
+            score--;
+            scoreElement.innerText = score;
+            scoreElement.style.color = "#ff6b6b"; // Vermelho
+            playFailSound();
+            moveCat();
+            // Efeito visual de erro (Rotação de cores caótica)
+            canvasElement.style.filter = "hue-rotate(180deg) sepia(1)";
+            setTimeout(() => canvasElement.style.filter = "none", 200);
+        }
+    }
+
+    // --- LOOP PRINCIPAL ---
+    function onResults(results) {
+        if (!isLoaded) {
+            loadingScreen.style.display = 'none';
+            uiLayer.style.display = 'block';
+            isLoaded = true;
+        }
+
+        canvasElement.width = window.innerWidth;
+        canvasElement.height = window.innerHeight;
+
+        canvasCtx.save();
+        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+       
+        // 1. Imagem da Câmara
+        canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+        canvasCtx.fillStyle = 'rgba(20, 0, 40, 0.4)'; // Filtro mais escuro para destacar emojis
+        canvasCtx.fillRect(0,0, canvasElement.width, canvasElement.height);
+
+        // Função auxiliar para desenhar emoji com sombra
+        function drawEmoji(char, x, y, size) {
+            const screenX = x * canvasElement.width;
+            const screenY = y * canvasElement.height;
+            canvasCtx.font = `${size}px Arial`;
+            canvasCtx.textAlign = "center";
+            canvasCtx.textBaseline = "middle";
+            canvasCtx.shadowColor = "white";
+            canvasCtx.shadowBlur = 20;
+            canvasCtx.fillText(char, screenX, screenY);
+            canvasCtx.shadowBlur = 0;
+        }
+
+        // 2. Desenhar Personagens
+        updatePositions(); // Atualizar movimento a cada frame
+        drawEmoji(rabbit.emoji, rabbit.x, rabbit.y, 80);
+        drawEmoji(cat.emoji, cat.x, cat.y, 80);
+
+        // 3. Processar Mãos
+        let activeHands = [false, false];
+
+        if (results.multiHandLandmarks) {
+            for (const [index, landmarks] of results.multiHandLandmarks.entries()) {
+                const handIdx = index % 2;
+                activeHands[handIdx] = true;
+
+                // Esqueleto
+                if (window.drawConnectors && window.drawLandmarks) {
+                    drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 4});
+                    drawLandmarks(canvasCtx, landmarks, {color: '#FFFFFF', lineWidth: 2, radius: 6});
+                }
+
+                // Indicador (Cursor)
+                const indexFinger = landmarks[8];
+                const x = indexFinger.x;
+                const y = indexFinger.y;
+
+                // Desenhar Cursor
+                const pX = x * canvasElement.width;
+                const pY = y * canvasElement.height;
+               
+                canvasCtx.beginPath();
+                canvasCtx.arc(pX, pY, 15, 0, 2 * Math.PI);
+                canvasCtx.fillStyle = "#d4af37";
+                canvasCtx.strokeStyle = "white";
+                canvasCtx.lineWidth = 3;
+                canvasCtx.fill();
+                canvasCtx.stroke();
+
+                updateSound(handIdx, y);
+                checkCollision(x, y);
+            }
+        }
+
+        if (!activeHands[0]) silenceHand(0);
+        if (!activeHands[1]) silenceHand(1);
+
+        canvasCtx.restore();
+    }
+
+    // --- INICIALIZAÇÃO ---
+    const hands = new Hands({locateFile: (file) => {
+        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+    }});
+
+    hands.setOptions({
+        maxNumHands: 2,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+    });
+
+    hands.onResults(onResults);
+
+    function startExperience() {
+        initAudio();
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+
+        startScreen.style.display = 'none';
+        loadingScreen.style.display = 'flex';
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({image: videoElement});
+            },
+            width: 1280,
+            height: 720
+        });
+        camera.start().catch(err => {
+            console.error(err);
+            alert("Erro na câmara. Verifica permissões.");
+        });
+       
+        moveRabbit();
+        moveCat();
+    }
+
+    window.addEventListener('resize', () => {
+        canvasElement.width = window.innerWidth;
+        canvasElement.height = window.innerHeight;
+    });
+
+</script>
+</body>
+</html>

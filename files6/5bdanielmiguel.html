@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice: Experiência Sonora & IA Mágica</title>
+    <!-- MediaPipe Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: linear-gradient(135deg, #ffc2cd 0%, #d6aaff 50%, #fff9c4 100%);
+            background-size: 200% 200%;
+            animation: gradientAnim 10s ease infinite;
+            font-family: 'Courier New', Courier, monospace;
+        }
+
+        @keyframes gradientAnim {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        canvas {
+            border-radius: 15px;
+            box-shadow: 0 0 40px rgba(255, 255, 255, 0.8);
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+
+        /* Overlay Inicial */
+        #overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 194, 205, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 200;
+            transition: opacity 1s;
+        }
+
+        h1 {
+            font-size: 3rem;
+            color: #5e35b1;
+            text-shadow: 2px 2px 0px #fff9c4;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        p {
+            font-size: 1.2rem;
+            color: #4a148c;
+            max-width: 600px;
+            text-align: center;
+            line-height: 1.5;
+            margin-bottom: 30px;
+        }
+
+        /* Botões */
+        .magic-btn {
+            padding: 15px 30px;
+            font-size: 1.2rem;
+            background: #fff9c4;
+            color: #5e35b1;
+            border: 3px solid #d6aaff;
+            border-radius: 50px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            margin: 10px;
+            font-family: inherit;
+        }
+
+        .magic-btn:hover {
+            transform: scale(1.05) rotate(-1deg);
+            background: #ffe082;
+            box-shadow: 0 8px 20px rgba(94, 53, 177, 0.2);
+        }
+
+        .magic-btn:disabled {
+            background: #e0e0e0;
+            border-color: #bdbdbd;
+            color: #9e9e9e;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Painel de IA */
+        #ai-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 300px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 20px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            z-index: 100;
+            border: 2px solid #d6aaff;
+            transform: translateX(340px); /* Escondido inicialmente */
+            transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        #ai-panel.visible {
+            transform: translateX(0);
+        }
+
+        #ai-toggle {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 101;
+            font-size: 1.5rem;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            border: none;
+            background: #d6aaff;
+            color: white;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        }
+
+        .ai-result-box {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f3e5f5;
+            border-radius: 10px;
+            min-height: 80px;
+            font-size: 0.95rem;
+            color: #4a148c;
+            border: 1px dashed #ab47bc;
+            position: relative;
+        }
+
+        .loader {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #d6aaff;
+            border-bottom-color: transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 10px auto;
+        }
+
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .instruction-box {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.8);
+            padding: 10px 20px;
+            border-radius: 20px;
+            color: #5e35b1;
+            font-weight: bold;
+            pointer-events: none;
+            z-index: 50;
+        }
+
+        .input_video { display: none; }
+       
+        /* Input do API Key (Opcional visualmente se quiser esconder, mas útil para demo) */
+        .api-input {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #d6aaff;
+            border-radius: 5px;
+            font-family: inherit;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- UI Overlay de Início -->
+    <div id="overlay">
+        <h1>Alice no País dos Sons</h1>
+        <p>
+            🖐️ <b>Mão Esquerda:</b> Controla o sintetizador mágico.<br>
+            ☝️ <b>Mão Direita:</b> Toca nos ícones para sons.<br>
+            ✨ <b>Botão Mágico:</b> Pede enigmas à IA.
+        </p>
+        <button id="startBtn" class="magic-btn" disabled>A Carregar Magia...</button>
+        <div style="margin-top: 15px; font-size: 0.9rem;">Permite o uso da câmara e microfone.</div>
+    </div>
+
+    <!-- Botão Toggle do Painel IA -->
+    <button id="ai-toggle" onclick="toggleAIPanel()">✨</button>
+
+    <!-- Painel Lateral de IA -->
+    <div id="ai-panel">
+        <h3 style="margin-top:0; color:#4a148c;">Magia do Chapeleiro ✨</h3>
+        <p style="font-size:0.8rem; color:#666;">Powered by Gemini API</p>
+       
+        <!-- Botões de Ação IA -->
+        <button onclick="askHatter()" class="magic-btn" style="width:100%; margin: 5px 0;">🎩 Pedir Enigma</button>
+        <button onclick="drinkPotion()" class="magic-btn" style="width:100%; margin: 5px 0;">🧪 Beber Poção</button>
+
+        <!-- Área de Resultados -->
+        <div class="ai-result-box">
+            <div id="ai-loader" class="loader"></div>
+            <div id="ai-text">O Chapeleiro está à espera...</div>
+        </div>
+    </div>
+
+    <!-- Canvas Principal -->
+    <div id="container">
+        <video class="input_video"></video>
+        <canvas class="output_canvas"></canvas>
+        <div class="instruction-box">Use auscultadores 🎧 | Clique ✨ para IA</div>
+    </div>
+
+<script>
+    // --- CONFIGURAÇÃO GEMINI API ---
+    // A chave será injetada pelo ambiente ou pode ser deixada vazia para testar UI
+    const apiKey = "";
+
+    async function callGemini(promptText) {
+        if (!apiKey) {
+            // Fallback simulado se não houver chave (para garantir que a UI funciona)
+            console.warn("Sem API Key. A simular resposta...");
+            await new Promise(r => setTimeout(r, 1500));
+            return "Ah! Precisas de uma chave mágica (API Key) para ouvir o Chapeleiro verdadeiramente. Mas imagina que eu disse algo muito filosófico sobre corvos e escrivaninhas!";
+        }
+
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+       
+        const payload = {
+            contents: [{ parts: [{ text: promptText }] }]
+        };
+
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) throw new Error(`Erro API: ${response.status}`);
+           
+            const data = await response.json();
+            return data.candidates[0].content.parts[0].text;
+        } catch (error) {
+            console.error(error);
+            return "O Gato de Cheshire comeu a resposta... (Erro na ligação)";
+        }
+    }
+
+    // --- FUNÇÕES DE INTERAÇÃO COM IA ---
+   
+    function showLoader() {
+        document.getElementById('ai-loader').style.display = 'block';
+        document.getElementById('ai-text').style.opacity = '0.5';
+    }
+
+    function hideLoader() {
+        document.getElementById('ai-loader').style.display = 'none';
+        document.getElementById('ai-text').style.opacity = '1';
+    }
+
+    function speakText(text) {
+        if ('speechSynthesis' in window) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'pt-PT'; // Português de Portugal
+            utterance.pitch = 1.2; // Um pouco mais agudo (Chapeleiro/Alice)
+            utterance.rate = 1.1;
+            window.speechSynthesis.speak(utterance);
+        }
+    }
+
+    async function askHatter() {
+        showLoader();
+        const prompt = "Age como o Chapeleiro Louco da Alice no País das Maravilhas. Dá-me um enigma muito curto, absurdo e filosófico em Português de Portugal. Máximo 2 frases.";
+       
+        const response = await callGemini(prompt);
+       
+        hideLoader();
+        const textBox = document.getElementById('ai-text');
+        textBox.innerText = response;
+        speakText(response);
+    }
+
+    async function drinkPotion() {
+        showLoader();
+        const prompt = "Inventa um efeito colateral mágico e divertido de beber uma poção desconhecida no País das Maravilhas. Exemplo: 'Ficas com o pescoço de uma girafa!'. Sê criativo e breve. Em Português de Portugal.";
+       
+        const response = await callGemini(prompt);
+       
+        hideLoader();
+        const textBox = document.getElementById('ai-text');
+        textBox.innerText = response;
+       
+        // Efeito sonoro de beber
+        playOneShot('potion');
+        speakText(response);
+    }
+
+    function toggleAIPanel() {
+        document.getElementById('ai-panel').classList.toggle('visible');
+    }
+
+    // --- ESTADO GLOBAL (Código Original Mantido/Atualizado) ---
+    const state = {
+        audioStarted: false,
+        cameraActive: false,
+        width: 1280,
+        height: 720
+    };
+
+    const videoElement = document.querySelector('.input_video');
+    const canvasElement = document.querySelector('.output_canvas');
+    const ctx = canvasElement.getContext('2d');
+    const startBtn = document.getElementById('startBtn');
+    const overlay = document.getElementById('overlay');
+
+    canvasElement.width = state.width;
+    canvasElement.height = state.height;
+
+    // Objetos
+    let gameObjects = [
+        { id: 'tea', icon: '🫖', x: 0.2, y: 0.3, size: 80, playing: false, color: '#ffecb3' },
+        { id: 'cat', icon: '😺', x: 0.8, y: 0.3, size: 80, playing: false, color: '#e1bee7' },
+        { id: 'hat', icon: '🎩', x: 0.5, y: 0.2, size: 90, playing: false, color: '#ffc2cd' },
+        { id: 'rose', icon: '🌹', x: 0.5, y: 0.8, size: 70, playing: false, color: '#ff8a80' }
+    ];
+
+    // --- ÁUDIO ---
+    let audioCtx;
+    let mainGain, delayNode, feedbackNode;
+    let synthOsc, synthGain, synthFilter;
+
+    function initAudio() {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContext();
+
+        mainGain = audioCtx.createGain();
+        mainGain.gain.value = 0.8;
+       
+        delayNode = audioCtx.createDelay();
+        delayNode.delayTime.value = 0.4;
+        feedbackNode = audioCtx.createGain();
+        feedbackNode.gain.value = 0.3;
+
+        mainGain.connect(audioCtx.destination);
+        mainGain.connect(delayNode);
+        delayNode.connect(feedbackNode);
+        feedbackNode.connect(delayNode);
+        delayNode.connect(audioCtx.destination);
+
+        synthOsc = audioCtx.createOscillator();
+        synthGain = audioCtx.createGain();
+        synthFilter = audioCtx.createBiquadFilter();
+
+        synthOsc.type = 'sine';
+        synthGain.gain.value = 0;
+        synthFilter.type = 'lowpass';
+        synthFilter.frequency.value = 1000;
+
+        synthOsc.connect(synthFilter);
+        synthFilter.connect(synthGain);
+        synthGain.connect(mainGain);
+       
+        synthOsc.start();
+        state.audioStarted = true;
+    }
+
+    function playOneShot(type) {
+        if (!state.audioStarted) return;
+       
+        const osc = audioCtx.createOscillator();
+        const env = audioCtx.createGain();
+       
+        osc.connect(env);
+        env.connect(mainGain);
+
+        const now = audioCtx.currentTime;
+
+        if (type === 'potion') {
+            // Som de "glug glug" mágico
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(400, now);
+            osc.frequency.linearRampToValueAtTime(800, now + 0.2);
+            osc.frequency.linearRampToValueAtTime(300, now + 0.4);
+            env.gain.setValueAtTime(0.3, now);
+            env.gain.linearRampToValueAtTime(0, now + 0.6);
+            osc.start(now);
+            osc.stop(now + 0.6);
+            return;
+        }
+
+        switch (type) {
+            case 'tea':
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(2000, now);
+                osc.frequency.exponentialRampToValueAtTime(1000, now + 0.5);
+                env.gain.setValueAtTime(0.3, now);
+                env.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+                osc.start(now);
+                osc.stop(now + 0.5);
+                break;
+            case 'cat':
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(200, now);
+                osc.frequency.linearRampToValueAtTime(400, now + 1);
+                env.gain.setValueAtTime(0.1, now);
+                env.gain.linearRampToValueAtTime(0, now + 1);
+                osc.start(now);
+                osc.stop(now + 1);
+                break;
+            case 'hat':
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(100, now);
+                osc.frequency.linearRampToValueAtTime(300, now + 0.2);
+                env.gain.setValueAtTime(0.3, now);
+                env.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+                osc.start(now);
+                osc.stop(now + 0.5);
+                break;
+            case 'rose':
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(440, now);
+                env.gain.setValueAtTime(0.2, now);
+                env.gain.linearRampToValueAtTime(0, now + 1.5);
+                osc.start(now);
+                osc.stop(now + 1.5);
+                break;
+        }
+    }
+
+    // --- MEDIAPIPE ---
+    function onResults(results) {
+        ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+        ctx.save();
+        ctx.translate(canvasElement.width, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+        ctx.restore();
+
+        ctx.fillStyle = "rgba(255, 194, 205, 0.2)";
+        ctx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+
+        ctx.font = "80px Arial";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+
+        gameObjects.forEach(obj => {
+            const x = obj.x * canvasElement.width;
+            const y = obj.y * canvasElement.height;
+
+            if (obj.playing) {
+                ctx.shadowColor = obj.color;
+                ctx.shadowBlur = 40;
+                ctx.fillStyle = "#fff";
+                ctx.globalAlpha = 1;
+                const jitter = Math.random() * 5 - 2.5;
+                ctx.fillText(obj.icon, x + jitter, y + jitter);
+            } else {
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
+                ctx.fillText(obj.icon, x, y);
+            }
+            obj.playing = false;
+        });
+        ctx.shadowBlur = 0;
+
+        if (results.multiHandLandmarks) {
+            for (const [index, landmarks] of results.multiHandLandmarks.entries()) {
+                const handedness = results.multiHandedness[index].label;
+                const indexFinger = landmarks[8];
+               
+                const pixelX = (1 - indexFinger.x) * canvasElement.width;
+                const pixelY = indexFinger.y * canvasElement.height;
+
+                ctx.beginPath();
+                ctx.arc(pixelX, pixelY, 15, 0, 2 * Math.PI);
+                const color = handedness === 'Left' ? '#d6aaff' : '#ffc2cd';
+                ctx.fillStyle = color;
+                ctx.fill();
+                ctx.strokeStyle = "white";
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                if (handedness === 'Right') {
+                    // Texto de ajuda (Mão Direita)
+                    ctx.fillStyle = "white";
+                    ctx.font = "20px Arial";
+                    ctx.fillText("Tocar", pixelX, pixelY - 30);
+
+                    gameObjects.forEach(obj => {
+                        const objX = obj.x * canvasElement.width;
+                        const objY = obj.y * canvasElement.height;
+                        const dist = Math.hypot(pixelX - objX, pixelY - objY);
+
+                        if (dist < 60) {
+                            obj.playing = true;
+                            if (Math.random() < 0.15) {
+                                playOneShot(obj.id);
+                            }
+                        }
+                    });
+                }
+
+                if (handedness === 'Left') {
+                    // Texto de ajuda (Mão Esquerda)
+                    ctx.fillStyle = "white";
+                    ctx.font = "20px Arial";
+                    ctx.fillText("Magia", pixelX, pixelY - 30);
+
+                    if (state.audioStarted) {
+                        const normY = 1 - indexFinger.y;
+                        const freq = 200 + (normY * 600);
+                        const vol = 0.3;
+
+                        synthOsc.frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.1);
+                        synthGain.gain.setTargetAtTime(vol, audioCtx.currentTime, 0.1);
+                       
+                        ctx.beginPath();
+                        ctx.moveTo(0, pixelY);
+                        ctx.lineTo(canvasElement.width, pixelY);
+                        ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
+                        ctx.stroke();
+                    }
+                }
+            }
+           
+            const leftHandPresent = results.multiHandedness.some(h => h.label === 'Left');
+            if (!leftHandPresent && state.audioStarted) {
+                synthGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.2);
+            }
+        }
+    }
+
+    // --- SETUP ---
+    const hands = new Hands({locateFile: (file) => {
+        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+    }});
+
+    hands.setOptions({
+        maxNumHands: 2,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+    });
+
+    hands.onResults(onResults);
+
+    const camera = new Camera(videoElement, {
+        onFrame: async () => {
+            await hands.send({image: videoElement});
+        },
+        width: 1280,
+        height: 720
+    });
+
+    window.onload = () => {
+        startBtn.textContent = "Pronto a iniciar ✨";
+        startBtn.disabled = false;
+        startBtn.style.animation = "pulse 1.5s infinite";
+        // Mostrar painel de IA após 2 segundos para o utilizador saber que existe
+        setTimeout(() => {
+            document.getElementById('ai-panel').classList.add('visible');
+        }, 2000);
+    };
+
+    startBtn.addEventListener('click', async () => {
+        startBtn.textContent = "A abrir o portal...";
+        startBtn.disabled = true;
+
+        try {
+            initAudio();
+            if (audioCtx.state === 'suspended') {
+                await audioCtx.resume();
+            }
+            await camera.start();
+            overlay.style.opacity = 0;
+            setTimeout(() => { overlay.style.display = 'none'; }, 1000);
+        } catch (err) {
+            console.error(err);
+            startBtn.textContent = "Erro na Câmara :(";
+            alert("Erro: Permite o acesso à câmara.");
+        }
+    });
+
+</script>
+</body>
+</html>

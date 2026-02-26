@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cascata das Maravilhas - Interação com Webcam</title>
+   
+    <!-- Bibliotecas do MediaPipe para Visão Computacional -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        :root {
+            --color-pink: #ffb7b2;
+            --color-lilac: #e0bbe4;
+            --color-yellow: #fff29e;
+            --color-dark: #2d3436;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Georgia', serif;
+            background-color: var(--color-dark);
+            color: white;
+        }
+
+        /* O canvas ocupa todo o ecrã */
+        #output-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 1;
+        }
+
+        /* Elemento de vídeo escondido (usado apenas para capturar a imagem) */
+        #input-video {
+            display: none;
+        }
+
+        /* Interface de Interface de Utilizador (UI) sobreposta */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(45, 52, 54, 0.85);
+            backdrop-filter: blur(10px);
+            z-index: 10;
+            text-align: center;
+            transition: opacity 0.5s ease;
+        }
+
+        #ui-layer h1 {
+            color: var(--color-pink);
+            font-size: 3rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 0px var(--color-lilac);
+        }
+
+        #ui-layer p {
+            font-size: 1.2rem;
+            max-width: 600px;
+            margin-bottom: 30px;
+            line-height: 1.5;
+            color: var(--color-yellow);
+        }
+
+        #start-btn {
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            background: var(--color-lilac);
+            color: var(--color-dark);
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            font-weight: bold;
+            box-shadow: 0 5px 15px rgba(224, 187, 228, 0.4);
+            transition: transform 0.2s, background 0.2s;
+        }
+
+        #start-btn:hover {
+            transform: scale(1.05);
+            background: #d4a5d8;
+        }
+
+        #loading-text {
+            display: none;
+            font-size: 1.2rem;
+            color: var(--color-pink);
+            margin-top: 20px;
+            animation: pulse 1.5s infinite alternate;
+        }
+
+        @keyframes pulse {
+            from { opacity: 0.5; }
+            to { opacity: 1; }
+        }
+
+        /* Moldura mágica ao redor do ecrã */
+        #magic-frame {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: 15px solid transparent;
+            border-image: linear-gradient(to bottom right, var(--color-pink), var(--color-lilac), var(--color-yellow)) 1;
+            box-sizing: border-box;
+            z-index: 5;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <video id="input-video" autoplay playsinline></video>
+    <canvas id="output-canvas"></canvas>
+    <div id="magic-frame"></div>
+
+    <div id="ui-layer">
+        <h1>O Espelho de Alice</h1>
+        <p>Ativa a tua webcam para entrares no País das Maravilhas. <br> Usa as tuas <b>mãos</b> e o teu <b>rosto</b> para empurrar os objetos mágicos que caem!</p>
+        <button id="start-btn">Despertar a Magia (Ativar Câmara)</button>
+        <div id="loading-text">A preparar os feitiços e a ler as tuas feições... (Pode demorar uns segundos)</div>
+    </div>
+
+    <script>
+        const videoElement = document.getElementById('input-video');
+        const canvasElement = document.getElementById('output-canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const uiLayer = document.getElementById('ui-layer');
+        const startBtn = document.getElementById('start-btn');
+        const loadingText = document.getElementById('loading-text');
+
+        // Configurações do Canvas
+        let canvasWidth, canvasHeight;
+        function resizeCanvas() {
+            canvasWidth = window.innerWidth;
+            canvasHeight = window.innerHeight;
+            canvasElement.width = canvasWidth;
+            canvasElement.height = canvasHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Variáveis de Estado
+        let handsLandmarks = [];
+        let faceLandmarks = [];
+        let wonderlandItems = [];
+
+        // Emojis Temáticos do País das Maravilhas
+        const EMOJIS = ['🐇', '🎩', '☕', '🍄', '⏱️', '🃏', '♥️', '♠️', '🧪', '🐛'];
+
+        // --- MOTOR DE FÍSICA E OBJETOS ---
+
+        class WonderlandItem {
+            constructor() {
+                this.reset(true);
+            }
+
+            reset(randomY = false) {
+                this.emoji = EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
+                this.size = Math.random() * 40 + 30; // Tamanho entre 30 e 70
+                this.x = Math.random() * canvasWidth;
+                // Começa no topo ou distribuído aleatoriamente no início
+                this.y = randomY ? Math.random() * canvasHeight : -this.size - (Math.random() * 200);
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = Math.random() * 2 + 1; // Velocidade de queda inicial
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.1;
+            }
+
+            update() {
+                // Gravidade suave
+                this.vy += 0.05;
+               
+                // Atrito no ar para não cair muito rápido
+                this.vx *= 0.98;
+                this.vy *= 0.99;
+
+                this.x += this.vx;
+                this.y += this.vy;
+                this.rotation += this.rotationSpeed;
+
+                // Limites da tela (ressalto nas paredes laterais)
+                if (this.x < 0) { this.x = 0; this.vx *= -0.8; }
+                if (this.x > canvasWidth) { this.x = canvasWidth; this.vx *= -0.8; }
+
+                // Se cair abaixo da tela, reinicia no topo
+                if (this.y > canvasHeight + this.size) {
+                    this.reset();
+                }
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                ctx.font = `${this.size}px Arial`;
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                // Sombra mágica
+                ctx.shadowColor = "rgba(255, 255, 255, 0.5)";
+                ctx.shadowBlur = 10;
+                ctx.fillText(this.emoji, 0, 0);
+                ctx.restore();
+            }
+
+            // Aplica força repulsiva baseada em pontos (ex: nós das mãos ou rosto)
+            applyForce(points, radius, power) {
+                for (let i = 0; i < points.length; i++) {
+                    const p = points[i];
+                    // MediaPipe retorna coordenadas normalizadas (0 a 1).
+                    // Como espelhamos o vídeo, invertemos o X.
+                    const px = (1 - p.x) * canvasWidth;
+                    const py = p.y * canvasHeight;
+
+                    const dx = this.x - px;
+                    const dy = this.y - py;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < radius) {
+                        // Calcula a força (mais forte perto do centro)
+                        const force = (radius - dist) / radius;
+                        this.vx += (dx / dist) * force * power;
+                        this.vy += (dy / dist) * force * power;
+                       
+                        // Rotação extra ao bater
+                        this.rotationSpeed += (Math.random() - 0.5) * 0.2;
+                    }
+                }
+            }
+        }
+
+        // Inicializar os objetos
+        for (let i = 0; i < 30; i++) {
+            wonderlandItems.push(new WonderlandItem());
+        }
+
+        // --- CONFIGURAÇÃO DO MEDIAPIPE ---
+
+        // Configurar Deteção de Mãos
+        const hands = new Hands({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }});
+        hands.setOptions({
+            maxNumHands: 2,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+        hands.onResults((results) => {
+            handsLandmarks = results.multiHandLandmarks || [];
+        });
+
+        // Configurar Deteção de Rosto
+        const faceMesh = new FaceMesh({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+        }});
+        faceMesh.setOptions({
+            maxNumFaces: 1,
+            refineLandmarks: false,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+        faceMesh.onResults((results) => {
+            faceLandmarks = results.multiFaceLandmarks || [];
+        });
+
+        // --- CICLO PRINCIPAL (DESENHO E CÂMARA) ---
+
+        let isMagicalWorldActive = false;
+
+        async function cameraLoop() {
+            if (!isMagicalWorldActive) return;
+
+            // Enviar frame de vídeo para os modelos do MediaPipe
+            if (videoElement.readyState >= 2) {
+                await hands.send({image: videoElement});
+                await faceMesh.send({image: videoElement});
+            }
+
+            // Limpar Canvas
+            canvasCtx.clearRect(0, 0, canvasWidth, canvasHeight);
+
+            // 1. Desenhar o Feed de Vídeo Espelhado
+            canvasCtx.save();
+            canvasCtx.translate(canvasWidth, 0);
+            canvasCtx.scale(-1, 1); // Espelha horizontalmente
+            // Para manter a proporção da câmara e cobrir a tela:
+            const vRatio = (canvasWidth / videoElement.videoWidth) * videoElement.videoHeight;
+            const ratio = Math.max(canvasWidth / videoElement.videoWidth, canvasHeight / videoElement.videoHeight);
+            const centerShift_x = (canvasWidth - videoElement.videoWidth * ratio) / 2;
+            const centerShift_y = (canvasHeight - videoElement.videoHeight * ratio) / 2;  
+           
+            // Fundo escuro tintado com as cores maravilhosas
+            canvasCtx.globalAlpha = 0.8;
+            canvasCtx.drawImage(videoElement, 0, 0, videoElement.videoWidth, videoElement.videoHeight,
+                               centerShift_x, centerShift_y, videoElement.videoWidth * ratio, videoElement.videoHeight * ratio);
+            canvasCtx.restore();
+
+            // Tintura Mágica (Filtro por cima da câmara)
+            canvasCtx.fillStyle = "rgba(224, 187, 228, 0.2)"; // Lilás transparente
+            canvasCtx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+            // 2. Extrair Pontos de Interação
+            let interactionPoints = [];
+
+            // Pontos das mãos (usamos todos os pontos da mão para um campo de força sólido)
+            handsLandmarks.forEach(hand => {
+                // Desenhar ligações mágicas entre os dedos (opcional, para visual)
+                drawMagicalHand(hand);
+                interactionPoints.push(...hand);
+            });
+
+            // Pontos do Rosto (usamos alguns pontos principais para não pesar)
+            faceLandmarks.forEach(face => {
+                // Selecionamos nariz (1), testa (10), queixo (152), bochechas (234, 454)
+                const keyPoints = [face[1], face[10], face[152], face[234], face[454]];
+                interactionPoints.push(...keyPoints);
+               
+                // Desenhar um brilho no nariz (opcional)
+                const nx = (1 - face[1].x) * canvasWidth;
+                const ny = face[1].y * canvasHeight;
+                drawGlow(nx, ny, 30, "rgba(255, 242, 158, 0.5)"); // Amarelo
+            });
+
+            // 3. Atualizar e Desenhar os Objetos (Cascata)
+            wonderlandItems.forEach(item => {
+                // Raio de repulsão de 80px para as mãos/rosto, Força 3
+                item.applyForce(interactionPoints, 80, 2);
+                item.update();
+                item.draw(canvasCtx);
+            });
+
+            // Loop
+            requestAnimationFrame(cameraLoop);
+        }
+
+        // Função auxiliar para desenhar a mão como magia
+        function drawMagicalHand(landmarks) {
+            canvasCtx.save();
+            canvasCtx.strokeStyle = "rgba(255, 183, 178, 0.8)"; // Rosa
+            canvasCtx.lineWidth = 3;
+            canvasCtx.shadowColor = "var(--color-yellow)";
+            canvasCtx.shadowBlur = 15;
+           
+            // Ligar os nós principais (Simplificado)
+            const connections = [
+                [0,1,2,3,4], [0,5,6,7,8], [5,9,10,11,12], [9,13,14,15,16], [13,17,18,19,20], [0,17]
+            ];
+
+            canvasCtx.beginPath();
+            connections.forEach(line => {
+                for(let i=0; i<line.length-1; i++){
+                    const p1 = landmarks[line[i]];
+                    const p2 = landmarks[line[i+1]];
+                    canvasCtx.moveTo((1 - p1.x) * canvasWidth, p1.y * canvasHeight);
+                    canvasCtx.lineTo((1 - p2.x) * canvasWidth, p2.y * canvasHeight);
+                }
+            });
+            canvasCtx.stroke();
+
+            // Pontos nas pontas dos dedos
+            [4, 8, 12, 16, 20].forEach(tip => {
+                const p = landmarks[tip];
+                drawGlow((1 - p.x) * canvasWidth, p.y * canvasHeight, 15, "rgba(255, 255, 255, 0.9)");
+            });
+
+            canvasCtx.restore();
+        }
+
+        // Função auxiliar para criar brilhos
+        function drawGlow(x, y, radius, color) {
+            canvasCtx.beginPath();
+            canvasCtx.arc(x, y, radius, 0, 2 * Math.PI);
+            canvasCtx.fillStyle = color;
+            canvasCtx.fill();
+        }
+
+        // --- INICIALIZAÇÃO ---
+
+        startBtn.addEventListener('click', async () => {
+            startBtn.style.display = 'none';
+            loadingText.style.display = 'block';
+
+            try {
+                // Pedir permissão para a câmara
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 640, height: 480 }
+                });
+                videoElement.srcObject = stream;
+
+                // Aguardar que o vídeo comece a reproduzir
+                await new Promise((resolve) => {
+                    videoElement.onloadedmetadata = () => {
+                        resolve(videoElement);
+                    };
+                });
+                videoElement.play();
+
+                // Fazer um teste inicial aos modelos para forçar o download
+                await hands.send({image: videoElement});
+                await faceMesh.send({image: videoElement});
+
+                // Iniciar a Magia
+                isMagicalWorldActive = true;
+                uiLayer.style.opacity = '0';
+                setTimeout(() => uiLayer.style.display = 'none', 500);
+               
+                cameraLoop();
+
+            } catch (error) {
+                console.error("Erro ao aceder à câmara ou aos modelos:", error);
+                loadingText.innerText = "Oh não! Ocorreu um erro. Verifique se deu permissão à câmara.";
+                startBtn.style.display = 'inline-block';
+                startBtn.innerText = "Tentar Novamente";
+            }
+        });
+
+    </script>
+</body>
+</html>
