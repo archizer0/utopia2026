@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jogo da Memória</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Estilos 3D para as cartas */
+        .perspective-1000 {
+            perspective: 1000px;
+        }
+       
+        .card-wrapper {
+            cursor: pointer;
+            aspect-ratio: 3 / 4;
+            transform: scale(1);
+            transition: transform 0.2s;
+        }
+
+        .card-wrapper:hover {
+            transform: scale(1.02);
+        }
+       
+        .card-inner {
+            width: 100%;
+            height: 100%;
+            transition: transform 0.6s cubic-bezier(0.4, 0.2, 0.2, 1);
+            transform-style: preserve-3d;
+            position: relative;
+        }
+       
+        .card-wrapper.flipped .card-inner {
+            transform: rotateY(180deg);
+        }
+       
+        .card-face {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            border-radius: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+        }
+       
+        .card-front {
+            background: linear-gradient(135deg, #4f46e5, #312e81);
+            border: 3px solid #818cf8;
+        }
+       
+        /* O verso da carta é a face de jogo (background com padrão e ponto de interrogação) */
+        .card-front::after {
+            content: '?';
+            font-size: 4rem;
+            color: rgba(255, 255, 255, 0.4);
+            font-weight: bold;
+        }
+       
+        .card-back {
+            background: #ffffff;
+            transform: rotateY(180deg);
+            border: 3px solid #e5e7eb;
+        }
+
+        /* Animação de pulso para o botão de start */
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 15px rgba(234, 179, 8, 0.5); }
+            50% { box-shadow: 0 0 30px rgba(234, 179, 8, 0.8); }
+        }
+       
+        .btn-glow {
+            animation: pulse-glow 2s infinite;
+        }
+    </style>
+</head>
+<body class="bg-indigo-950 text-white font-sans overflow-hidden">
+
+    <!-- Slide 1: Ecrã Inicial -->
+    <div id="start-screen" class="flex flex-col items-center justify-center h-screen w-screen absolute top-0 left-0 z-10 transition-opacity duration-500">
+        <h1 class="text-5xl md:text-7xl font-extrabold mb-12 text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-yellow-500 drop-shadow-lg text-center px-4">
+            Jogo da Memória
+        </h1>
+        <button id="start-btn" class="px-10 py-5 bg-gradient-to-r from-yellow-400 to-yellow-500 text-indigo-950 text-3xl font-black rounded-full hover:scale-105 transition-transform duration-300 btn-glow uppercase tracking-wider">
+            Start
+        </button>
+    </div>
+
+    <!-- Slide 2: Ecrã do Jogo -->
+    <div id="game-screen" class="hidden flex-col items-center justify-center h-screen w-screen opacity-0 transition-opacity duration-500 p-4">
+        <h2 id="game-status" class="text-3xl md:text-4xl font-bold mb-8 text-yellow-400 h-10 text-center drop-shadow-md">
+            Memorize as cartas!
+        </h2>
+       
+        <div id="game-board" class="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 w-full max-w-3xl">
+            <!-- As cartas serão injetadas aqui pelo JavaScript -->
+        </div>
+       
+        <button id="restart-btn" class="hidden mt-10 px-8 py-3 bg-white text-indigo-900 font-bold text-xl rounded-full hover:bg-gray-200 transition-colors shadow-lg">
+            Jogar Novamente
+        </button>
+    </div>
+
+    <script>
+        // Definição das imagens (SVGs desenhados de acordo com as instruções)
+        const SVGs = {
+            rabbit: `
+                <svg viewBox="0 0 100 100" fill="none" class="w-3/4 h-3/4 drop-shadow-md">
+                    <!-- Orelhas -->
+                    <ellipse cx="35" cy="30" rx="10" ry="25" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="2"/>
+                    <ellipse cx="35" cy="30" rx="5" ry="18" fill="#FBCFE8"/>
+                    <ellipse cx="65" cy="30" rx="10" ry="25" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="2"/>
+                    <ellipse cx="65" cy="30" rx="5" ry="18" fill="#FBCFE8"/>
+                    <!-- Cabeça -->
+                    <circle cx="50" cy="65" r="28" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="2"/>
+                    <!-- Olhos -->
+                    <circle cx="40" cy="58" r="4" fill="#1F2937"/>
+                    <circle cx="60" cy="58" r="4" fill="#1F2937"/>
+                    <!-- Focinho -->
+                    <circle cx="50" cy="66" r="4" fill="#F472B6"/>
+                    <!-- Boca -->
+                    <path d="M44 72 Q50 78 56 72" stroke="#1F2937" stroke-width="2" stroke-linecap="round" fill="none"/>
+                </svg>
+            `,
+            girl: `
+                <svg viewBox="0 0 100 100" fill="none" class="w-3/4 h-3/4 drop-shadow-md">
+                    <!-- Braços -->
+                    <path d="M50 50 L30 65 L70 65 Z" fill="#FDBA74" stroke="#FDBA74" stroke-width="6" stroke-linecap="round"/>
+                    <!-- Pernas -->
+                    <rect x="40" y="75" width="6" height="15" fill="#FDBA74"/>
+                    <rect x="54" y="75" width="6" height="15" fill="#FDBA74"/>
+                    <!-- Sapatos Vermelhos -->
+                    <path d="M38 90 L46 90 L46 86 Q42 84 38 86 Z" fill="#DC2626"/>
+                    <path d="M54 90 L62 90 L62 86 Q58 84 54 86 Z" fill="#DC2626"/>
+                    <!-- Vestido Azul -->
+                    <path d="M35 50 L20 80 Q50 85 80 80 L65 50 Z" fill="#2563EB"/>
+                    <!-- Cabeça -->
+                    <circle cx="50" cy="30" r="16" fill="#FDBA74"/>
+                    <!-- Cabelo e Olhos -->
+                    <path d="M34 30 Q50 5 66 30 L66 45 Q50 30 34 45 Z" fill="#78350F"/>
+                    <circle cx="44" cy="28" r="2.5" fill="#1F2937"/>
+                    <circle cx="56" cy="28" r="2.5" fill="#1F2937"/>
+                    <path d="M47 35 Q50 38 53 35" stroke="#1F2937" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+                </svg>
+            `,
+            hat: `
+                <svg viewBox="0 0 100 100" fill="none" class="w-3/4 h-3/4 drop-shadow-md">
+                    <!-- Aba do Chapéu -->
+                    <ellipse cx="50" cy="80" rx="40" ry="10" fill="#111827"/>
+                    <ellipse cx="50" cy="78" rx="40" ry="10" fill="#1F2937"/>
+                    <!-- Corpo do Chapéu -->
+                    <path d="M25 80 L30 25 Q50 20 70 25 L75 80 Z" fill="#1F2937"/>
+                    <!-- Fita Vermelha -->
+                    <path d="M26.5 65 L73.5 65 L74.5 75 L25.5 75 Z" fill="#DC2626"/>
+                    <!-- Estrela Mágica -->
+                    <polygon points="50,35 53,42 60,42 54,47 56,54 50,49 44,54 46,47 40,42 47,42" fill="#FBBF24"/>
+                    <!-- Brilhos -->
+                    <circle cx="20" cy="30" r="3" fill="#FEF08A"/>
+                    <circle cx="80" cy="40" r="2" fill="#FEF08A"/>
+                    <circle cx="30" cy="15" r="2.5" fill="#FEF08A"/>
+                </svg>
+            `
+        };
+
+        // Estrutura das 6 cartas (3 pares)
+        const baseCards = [
+            { name: 'rabbit', svg: SVGs.rabbit },
+            { name: 'rabbit', svg: SVGs.rabbit },
+            { name: 'girl', svg: SVGs.girl },
+            { name: 'girl', svg: SVGs.girl },
+            { name: 'hat', svg: SVGs.hat },
+            { name: 'hat', svg: SVGs.hat }
+        ];
+
+        // Elementos do DOM
+        const startScreen = document.getElementById('start-screen');
+        const gameScreen = document.getElementById('game-screen');
+        const gameBoard = document.getElementById('game-board');
+        const gameStatus = document.getElementById('game-status');
+        const startBtn = document.getElementById('start-btn');
+        const restartBtn = document.getElementById('restart-btn');
+
+        // Variáveis de Estado do Jogo
+        let firstCard = null;
+        let secondCard = null;
+        let lockBoard = false;
+        let matches = 0;
+
+        // Iniciar transição de ecrã
+        startBtn.addEventListener('click', () => {
+            startScreen.style.opacity = '0';
+            setTimeout(() => {
+                startScreen.classList.add('hidden');
+                gameScreen.classList.remove('hidden');
+                gameScreen.classList.add('flex');
+               
+                // Pequeno delay para a transição suave
+                setTimeout(() => {
+                    gameScreen.style.opacity = '1';
+                    initGame();
+                }, 100);
+            }, 500);
+        });
+
+        // Reiniciar Jogo
+        restartBtn.addEventListener('click', initGame);
+
+        function initGame() {
+            // Limpar estado
+            gameBoard.innerHTML = '';
+            matches = 0;
+            firstCard = null;
+            secondCard = null;
+            lockBoard = true; // Bloqueado enquanto memorizam
+            gameStatus.textContent = "Memorize as cartas!";
+            gameStatus.classList.remove('text-green-400');
+            gameStatus.classList.add('text-yellow-400');
+            restartBtn.classList.add('hidden');
+
+            // Baralhar as cartas (Shuffle)
+            const shuffledCards = [...baseCards].sort(() => Math.random() - 0.5);
+
+            // Criar e renderizar as cartas
+            shuffledCards.forEach(card => {
+                const cardElement = document.createElement('div');
+                cardElement.classList.add('card-wrapper', 'perspective-1000');
+                cardElement.dataset.name = card.name;
+
+                cardElement.innerHTML = `
+                    <div class="card-inner">
+                        <div class="card-face card-front"></div>
+                        <div class="card-face card-back">
+                            ${card.svg}
+                        </div>
+                    </div>
+                `;
+
+                // Começam viradas para cima para o jogador ver
+                cardElement.classList.add('flipped');
+
+                cardElement.addEventListener('click', () => flipCard(cardElement));
+                gameBoard.appendChild(cardElement);
+            });
+
+            // Virar as cartas para baixo após 3.5 segundos
+            setTimeout(() => {
+                document.querySelectorAll('.card-wrapper').forEach(card => {
+                    card.classList.remove('flipped');
+                });
+                gameStatus.textContent = "Encontre os pares!";
+                lockBoard = false; // Desbloqueia para o jogador começar
+            }, 3500);
+        }
+
+        function flipCard(card) {
+            // Impede cliques se o tabuleiro estiver bloqueado,
+            // se a mesma carta for clicada duas vezes, ou se já estiver combinada
+            if (lockBoard) return;
+            if (card === firstCard) return;
+            if (card.classList.contains('matched')) return;
+
+            // Vira a carta
+            card.classList.add('flipped');
+
+            // É a primeira carta a ser virada?
+            if (!firstCard) {
+                firstCard = card;
+                return;
+            }
+
+            // É a segunda carta
+            secondCard = card;
+            checkForMatch();
+        }
+
+        function checkForMatch() {
+            // Verifica se os nomes das imagens coincidem
+            let isMatch = firstCard.dataset.name === secondCard.dataset.name;
+
+            if (isMatch) {
+                disableCards();
+            } else {
+                unflipCards();
+            }
+        }
+
+        function disableCards() {
+            // Marca como combinadas
+            firstCard.classList.add('matched');
+            secondCard.classList.add('matched');
+
+            matches += 1;
+           
+            // Condição de Vitória (3 pares = 6 cartas)
+            if (matches === 3) {
+                setTimeout(() => {
+                    gameStatus.textContent = "Parabéns! Ganhaste! 🎉";
+                    gameStatus.classList.remove('text-yellow-400');
+                    gameStatus.classList.add('text-green-400');
+                    restartBtn.classList.remove('hidden');
+                }, 500);
+            }
+
+            resetBoard();
+        }
+
+        function unflipCards() {
+            lockBoard = true; // Bloqueia o tabuleiro enquanto as cartas viram de volta
+
+            // Vira as cartas para baixo após 1 segundo
+            setTimeout(() => {
+                firstCard.classList.remove('flipped');
+                secondCard.classList.remove('flipped');
+                resetBoard();
+            }, 1000);
+        }
+
+        function resetBoard() {
+            firstCard = null;
+            secondCard = null;
+            lockBoard = false;
+        }
+    </script>
+</body>
+</html>
