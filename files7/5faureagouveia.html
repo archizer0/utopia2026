@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Gato de Cheshire vs O Exército de Copas</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Creepster&family=Roboto:wght@400;700&display=swap');
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #1a0b2e;
+            font-family: 'Roboto', sans-serif;
+            touch-action: none; /* Previne zoom e scroll no mobile */
+        }
+
+        #gameCanvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .hud-text {
+            color: #fff;
+            text-shadow: 0 0 10px #ff00de, 2px 2px 0 #000;
+            font-family: 'Creepster', cursive;
+            font-size: 24px;
+        }
+
+        #score-container {
+            text-align: right;
+        }
+
+        #health-bar-container {
+            width: 300px;
+            height: 20px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 2px solid #fff;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 10px;
+            position: relative;
+        }
+
+        #health-bar {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, #ff00de, #9900ff);
+            transition: width 0.2s;
+        }
+
+        #boss-health-container {
+            position: absolute;
+            top: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60%;
+            height: 30px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 3px solid #ff0000;
+            border-radius: 15px;
+            display: none; /* Escondido até o boss aparecer */
+            overflow: hidden;
+        }
+
+        #boss-health-bar {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, #ff0000, #ff6600);
+        }
+
+        #start-screen, #game-over-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(20, 10, 40, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: auto;
+            z-index: 10;
+        }
+
+        h1 {
+            font-family: 'Creepster', cursive;
+            font-size: 60px;
+            color: #b300ff;
+            text-shadow: 0 0 20px #fff;
+            margin: 0 0 20px 0;
+            text-align: center;
+        }
+
+        p {
+            color: #ddd;
+            font-size: 18px;
+            max-width: 600px;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        button {
+            background: linear-gradient(45deg, #b300ff, #ff00de);
+            border: none;
+            padding: 15px 40px;
+            font-size: 24px;
+            color: white;
+            font-family: 'Creepster', cursive;
+            cursor: pointer;
+            border-radius: 50px;
+            box-shadow: 0 0 20px rgba(179, 0, 255, 0.6);
+            transition: transform 0.1s;
+        }
+
+        button:hover {
+            transform: scale(1.1);
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        #debug-btn {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            font-size: 12px;
+            padding: 5px 10px;
+            background: #333;
+            opacity: 0.5;
+            pointer-events: auto;
+        }
+       
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="ui-layer">
+        <div>
+            <div class="hud-text">Gato de Cheshire (HP)</div>
+            <div id="health-bar-container">
+                <div id="health-bar"></div>
+            </div>
+        </div>
+        <div id="score-container">
+            <div class="hud-text">Inimigos Restantes</div>
+            <div class="hud-text" id="enemy-count" style="font-size: 40px; color: #ffeb3b;">10000</div>
+        </div>
+    </div>
+
+    <div id="boss-health-container">
+        <div id="boss-health-bar"></div>
+    </div>
+
+    <div id="start-screen">
+        <h1>O País das Maravilhas<br>em Guerra</h1>
+        <p>Use o mouse ou o dedo para controlar o Gato. Seu sorriso mágico dispara automaticamente. Derrote o exército de cartas para enfrentar a Rainha!</p>
+        <button id="start-btn">Começar Loucura</button>
+    </div>
+
+    <div id="game-over-screen" class="hidden">
+        <h1 id="go-title">Fim de Jogo</h1>
+        <p id="go-msg">Sua cabeça foi cortada.</p>
+        <button id="restart-btn">Tentar Novamente</button>
+    </div>
+
+    <button id="debug-btn">INVOCAR RAINHA AGORA (DEBUG)</button>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+       
+        // Elementos UI
+        const startScreen = document.getElementById('start-screen');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const enemyCountDisplay = document.getElementById('enemy-count');
+        const healthBar = document.getElementById('health-bar');
+        const bossContainer = document.getElementById('boss-health-container');
+        const bossBar = document.getElementById('boss-health-bar');
+        const goTitle = document.getElementById('go-title');
+        const goMsg = document.getElementById('go-msg');
+
+        // Configurações do Jogo
+        let width, height;
+        let gameActive = false;
+        let frames = 0;
+        let score = 0;
+        const TARGET_KILLS = 10000;
+        let remainingEnemies = TARGET_KILLS;
+        let bossSpawned = false;
+
+        // Mouse/Touch Input
+        const mouse = { x: 0, y: 0 };
+       
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            // Centraliza o mouse no início se não moveu
+            if (!gameActive) {
+                mouse.x = width / 2;
+                mouse.y = height / 2;
+            }
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Listeners de Movimento
+        window.addEventListener('mousemove', e => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+        window.addEventListener('touchmove', e => {
+            e.preventDefault(); // Previne scroll
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+        }, { passive: false });
+        window.addEventListener('touchstart', e => {
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+        });
+
+        // Classes
+        class Player {
+            constructor() {
+                this.x = width / 2;
+                this.y = height / 2;
+                this.radius = 25;
+                this.color = '#b300ff';
+                this.hp = 100;
+                this.maxHp = 100;
+                this.lastShot = 0;
+                this.fireRate = 10; // Frames entre tiros
+                this.angle = 0;
+            }
+
+            update() {
+                // Movimento suave (Lerp) em direção ao mouse
+                this.x += (mouse.x - this.x) * 0.15;
+                this.y += (mouse.y - this.y) * 0.15;
+
+                // Rotacionar sorriso
+                this.angle += 0.05;
+
+                // Atirar automaticamente
+                if (frames - this.lastShot > this.fireRate) {
+                    this.shoot();
+                    this.lastShot = frames;
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+               
+                // Brilho
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = this.color;
+
+                // Cabeça
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+
+                // Sorriso (O clássico do Gato de Cheshire)
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(0, -5, 15, 0.2, Math.PI - 0.2);
+                ctx.stroke();
+
+                // Olhos
+                ctx.fillStyle = '#ffff00';
+                ctx.beginPath();
+                ctx.ellipse(-8, -10, 4, 8, 0, 0, Math.PI * 2);
+                ctx.ellipse(8, -10, 4, 8, 0, 0, Math.PI * 2);
+                ctx.fill();
+               
+                // Pupilas (seguem inimigos levemente ou giram)
+                ctx.fillStyle = '#000';
+                ctx.beginPath();
+                ctx.arc(-8 + Math.cos(frames*0.1)*2, -10, 2, 0, Math.PI*2);
+                ctx.arc(8 + Math.cos(frames*0.1)*2, -10, 2, 0, Math.PI*2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+
+            shoot() {
+                // Encontrar inimigo mais próximo
+                let nearest = null;
+                let minDist = Infinity;
+               
+                const targets = bossSpawned ? [boss] : enemies;
+
+                targets.forEach(enemy => {
+                    const dx = enemy.x - this.x;
+                    const dy = enemy.y - this.y;
+                    const dist = Math.hypot(dx, dy);
+                    if (dist < minDist) {
+                        minDist = dist;
+                        nearest = enemy;
+                    }
+                });
+
+                if (nearest) {
+                    const angle = Math.atan2(nearest.y - this.y, nearest.x - this.x);
+                    // Dispara projétil
+                    projectiles.push(new Projectile(this.x, this.y, angle));
+                    // Dispara mais dois se for boss (power up mental)
+                    if(bossSpawned) {
+                        projectiles.push(new Projectile(this.x, this.y, angle + 0.2));
+                        projectiles.push(new Projectile(this.x, this.y, angle - 0.2));
+                    }
+                } else if (!bossSpawned) {
+                    // Se não tiver ninguém, atira aleatório
+                    const angle = Math.random() * Math.PI * 2;
+                    projectiles.push(new Projectile(this.x, this.y, angle));
+                }
+            }
+
+            takeDamage(amount) {
+                this.hp -= amount;
+                healthBar.style.width = `${(this.hp / this.maxHp) * 100}%`;
+                if (this.hp <= 0) endGame(false);
+               
+                // Feedback visual de dano
+                ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
+                ctx.fillRect(0, 0, width, height);
+            }
+        }
+
+        class Projectile {
+            constructor(x, y, angle, isEnemy = false) {
+                this.x = x;
+                this.y = y;
+                this.radius = isEnemy ? 6 : 4;
+                this.speed = isEnemy ? 6 : 12;
+                this.angle = angle;
+                this.dx = Math.cos(angle) * this.speed;
+                this.dy = Math.sin(angle) * this.speed;
+                this.color = isEnemy ? '#ff0000' : '#00ffff';
+                this.isEnemy = isEnemy;
+                this.markedForDeletion = false;
+            }
+
+            update() {
+                this.x += this.dx;
+                this.y += this.dy;
+
+                // Remover se sair da tela
+                if (this.x < 0 || this.x > width || this.y < 0 || this.y > height) {
+                    this.markedForDeletion = true;
+                }
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = this.color;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        class Enemy {
+            constructor() {
+                // Spawnar nas bordas
+                if (Math.random() < 0.5) {
+                    this.x = Math.random() < 0.5 ? -30 : width + 30;
+                    this.y = Math.random() * height;
+                } else {
+                    this.x = Math.random() * width;
+                    this.y = Math.random() < 0.5 ? -30 : height + 30;
+                }
+               
+                this.width = 30;
+                this.height = 40;
+                this.color = Math.random() < 0.5 ? '#ff0000' : '#000000'; // Copas/Ouros ou Espadas/Paus
+                this.speed = 2 + Math.random() * 2;
+                this.markedForDeletion = false;
+                this.type = Math.floor(Math.random() * 4); // 0: Copas, 1: Espadas, etc.
+            }
+
+            update() {
+                const angle = Math.atan2(player.y - this.y, player.x - this.x);
+                this.x += Math.cos(angle) * this.speed;
+                this.y += Math.sin(angle) * this.speed;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+               
+                // Desenhar Carta
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(-this.width/2, -this.height/2, this.width, this.height);
+               
+                // Naipe
+                ctx.fillStyle = this.color;
+                ctx.font = '20px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                let symbol = '♥';
+                if(this.color === '#000000') symbol = '♠';
+               
+                ctx.fillText(symbol, 0, 0);
+
+                // Bordas decorativas
+                ctx.strokeStyle = '#ccc';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(-this.width/2, -this.height/2, this.width, this.height);
+
+                ctx.restore();
+            }
+        }
+
+        class Boss {
+            constructor() {
+                this.x = width / 2;
+                this.y = -100;
+                this.radius = 60;
+                this.hp = 2000;
+                this.maxHp = 2000;
+                this.phase = 0; // 0: Entrada, 1: Ataque
+                this.angle = 0;
+            }
+
+            update() {
+                // Entrada dramática
+                if (this.y < 150) {
+                    this.y += 2;
+                } else {
+                    // Movimento lateral
+                    this.x += Math.cos(frames * 0.02) * 4;
+                   
+                    // Lógica de ataque
+                    if (frames % 40 === 0) {
+                        // Tiro em leque
+                        for (let i = -2; i <= 2; i++) {
+                            const angle = Math.atan2(player.y - this.y, player.x - this.x) + (i * 0.2);
+                            projectiles.push(new Projectile(this.x, this.y, angle, true));
+                        }
+                    }
+                    if (frames % 100 === 0) {
+                        // Tiro circular
+                        for (let i = 0; i < 12; i++) {
+                            const angle = (Math.PI * 2 / 12) * i + frames * 0.1;
+                            projectiles.push(new Projectile(this.x, this.y, angle, true));
+                        }
+                    }
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+               
+                // Aura
+                ctx.shadowBlur = 30;
+                ctx.shadowColor = '#ff0000';
+
+                // Corpo
+                ctx.fillStyle = '#aa0000';
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Coroa
+                ctx.fillStyle = 'gold';
+                ctx.beginPath();
+                ctx.moveTo(-30, -40);
+                ctx.lineTo(-20, -70);
+                ctx.lineTo(0, -50);
+                ctx.lineTo(20, -70);
+                ctx.lineTo(30, -40);
+                ctx.fill();
+
+                // Rosto irritado
+                ctx.fillStyle = '#fff';
+                ctx.font = '40px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.shadowBlur = 0;
+                ctx.fillText('👑', 0, -50);
+                ctx.fillText('😠', 0, 10);
+
+                ctx.restore();
+            }
+
+            takeDamage(amount) {
+                this.hp -= amount;
+                bossBar.style.width = `${(this.hp / this.maxHp) * 100}%`;
+                if (this.hp <= 0) endGame(true);
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.radius = Math.random() * 3;
+                this.color = color;
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 4;
+                this.dx = Math.cos(angle) * speed;
+                this.dy = Math.sin(angle) * speed;
+                this.alpha = 1;
+            }
+
+            update() {
+                this.x += this.dx;
+                this.y += this.dy;
+                this.alpha -= 0.02;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        // Variáveis de Estado
+        let player;
+        let projectiles = [];
+        let enemies = [];
+        let particles = [];
+        let boss = null;
+        let animationId;
+
+        function init() {
+            player = new Player();
+            projectiles = [];
+            enemies = [];
+            particles = [];
+            boss = null;
+            bossSpawned = false;
+            remainingEnemies = TARGET_KILLS;
+            frames = 0;
+            score = 0;
+           
+            healthBar.style.width = '100%';
+            bossContainer.style.display = 'none';
+            enemyCountDisplay.innerText = remainingEnemies;
+           
+            gameActive = true;
+            animate();
+        }
+
+        function createExplosion(x, y, color) {
+            for (let i = 0; i < 8; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        function spawnBoss() {
+            bossSpawned = true;
+            boss = new Boss();
+            bossContainer.style.display = 'block';
+            bossBar.style.width = '100%';
+            // Matar inimigos restantes
+            enemies.forEach(e => createExplosion(e.x, e.y, '#fff'));
+            enemies = [];
+            enemyCountDisplay.innerText = "BOSS";
+            enemyCountDisplay.style.color = "#ff0000";
+        }
+
+        function animate() {
+            if (!gameActive) return;
+            animationId = requestAnimationFrame(animate);
+            frames++;
+
+            // Limpar tela com efeito rastro
+            ctx.fillStyle = 'rgba(26, 11, 46, 0.3)';
+            ctx.fillRect(0, 0, width, height);
+
+            // Spawnar inimigos
+            if (!bossSpawned && remainingEnemies > 0) {
+                // Aumenta a dificuldade com o tempo
+                let spawnRate = 30;
+                if(remainingEnemies < 9000) spawnRate = 20;
+                if(remainingEnemies < 5000) spawnRate = 10;
+                if(remainingEnemies < 1000) spawnRate = 5;
+
+                if (frames % spawnRate === 0) {
+                    // Spawnar múltiplos para chegar a 10000 mais rápido
+                    const batch = Math.min(5, remainingEnemies);
+                    for(let i=0; i<batch; i++) enemies.push(new Enemy());
+                }
+            } else if (!bossSpawned && remainingEnemies <= 0) {
+                spawnBoss();
+            }
+
+            // Atualizar Player
+            player.update();
+            player.draw();
+
+            // Atualizar Projéteis
+            projectiles.forEach((proj, index) => {
+                proj.update();
+                proj.draw();
+               
+                // Colisão Projétil Inimigo vs Player
+                if (proj.isEnemy) {
+                    const dist = Math.hypot(player.x - proj.x, player.y - proj.y);
+                    if (dist < player.radius + proj.radius) {
+                        player.takeDamage(5);
+                        proj.markedForDeletion = true;
+                        createExplosion(proj.x, proj.y, '#ff0000');
+                    }
+                }
+
+                if (proj.markedForDeletion) projectiles.splice(index, 1);
+            });
+
+            // Atualizar Inimigos
+            enemies.forEach((enemy, eIndex) => {
+                enemy.update();
+                enemy.draw();
+
+                // Colisão com Player
+                const distPlayer = Math.hypot(player.x - enemy.x, player.y - enemy.y);
+                if (distPlayer < player.radius + enemy.width/2) {
+                    player.takeDamage(10);
+                    enemy.markedForDeletion = true;
+                    createExplosion(enemy.x, enemy.y, '#fff');
+                }
+
+                // Colisão com Projéteis do Player
+                projectiles.forEach((proj, pIndex) => {
+                    if (!proj.isEnemy) {
+                        const distProj = Math.hypot(proj.x - enemy.x, proj.y - enemy.y);
+                        if (distProj < enemy.width/2 + proj.radius) {
+                            enemy.markedForDeletion = true;
+                            proj.markedForDeletion = true;
+                            createExplosion(enemy.x, enemy.y, enemy.color);
+                           
+                            // Diminuir contador
+                            remainingEnemies--;
+                            if(remainingEnemies < 0) remainingEnemies = 0;
+                            enemyCountDisplay.innerText = remainingEnemies;
+                        }
+                    }
+                });
+
+                if (enemy.markedForDeletion) enemies.splice(eIndex, 1);
+            });
+
+            // Boss Logic
+            if (boss) {
+                boss.update();
+                boss.draw();
+
+                // Colisão Projéteis Player vs Boss
+                projectiles.forEach((proj) => {
+                    if (!proj.isEnemy) {
+                        const dist = Math.hypot(proj.x - boss.x, proj.y - boss.y);
+                        if (dist < boss.radius + proj.radius) {
+                            boss.takeDamage(5); // Dano no boss
+                            proj.markedForDeletion = true;
+                            createExplosion(proj.x, proj.y, '#ff00de');
+                        }
+                    }
+                });
+
+                // Colisão Boss vs Player (se encostar morre rápido)
+                const distBoss = Math.hypot(player.x - boss.x, player.y - boss.y);
+                if (distBoss < boss.radius + player.radius) {
+                    player.takeDamage(2);
+                }
+            }
+
+            // Partículas
+            particles.forEach((p, index) => {
+                p.update();
+                p.draw();
+                if (p.alpha <= 0) particles.splice(index, 1);
+            });
+        }
+
+        function endGame(win) {
+            gameActive = false;
+            cancelAnimationFrame(animationId);
+            gameOverScreen.classList.remove('hidden');
+            if (win) {
+                goTitle.innerText = "VITÓRIA ABSOLUTA!";
+                goTitle.style.color = "#00ff00";
+                goMsg.innerText = "A Rainha foi deposta! O País das Maravilhas é seu.";
+            } else {
+                goTitle.innerText = "FIM DE JOGO";
+                goTitle.style.color = "#ff0000";
+                goMsg.innerText = `Você derrotou ${TARGET_KILLS - remainingEnemies} cartas, mas a Rainha venceu.`;
+            }
+        }
+
+        // Controles de Tela
+        document.getElementById('start-btn').addEventListener('click', () => {
+            startScreen.classList.add('hidden');
+            init();
+        });
+
+        document.getElementById('restart-btn').addEventListener('click', () => {
+            gameOverScreen.classList.add('hidden');
+            init();
+        });
+
+        // Debug / Cheat para ver o boss
+        document.getElementById('debug-btn').addEventListener('click', () => {
+            if(gameActive && !bossSpawned) {
+                remainingEnemies = 0;
+                enemyCountDisplay.innerText = 0;
+            }
+        });
+
+    </script>
+</body>
+</html>
