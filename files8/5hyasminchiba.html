@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice no País das Maravilhas - Wonderland Run</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #1a0b2e;
+            font-family: 'Press+Start+2P', cursive;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 400px;
+            background: linear-gradient(to bottom, #2d1b4e 0%, #5b21b6 100%);
+            border-bottom: 8px solid #3d1c02;
+            overflow: hidden;
+            touch-action: none;
+            transition: filter 0.5s ease;
+        }
+
+        /* Chão infinito com paralaxe */
+        .floor {
+            position: absolute;
+            bottom: 0;
+            width: 200%;
+            height: 12px;
+            background: repeating-linear-gradient(90deg, #8b5cf6, #8b5cf6 40px, #7c3aed 40px, #7c3aed 80px);
+            animation: moveFloor 2s linear infinite;
+        }
+
+        @keyframes moveFloor {
+            from { transform: translateX(0); }
+            to { transform: translateX(-80px); }
+        }
+
+        #alice {
+            position: absolute;
+            bottom: 12px;
+            left: 50px;
+            width: 44px;
+            height: 60px;
+            z-index: 10;
+            transition: transform 0.05s;
+        }
+
+        /* Efeito de rasto quando está rápido ou invencível */
+        .ghost {
+            position: absolute;
+            opacity: 0.4;
+            pointer-events: none;
+            z-index: 9;
+            animation: ghostFade 0.3s forwards;
+        }
+
+        @keyframes ghostFade {
+            to { opacity: 0; transform: scale(1.2); }
+        }
+
+        .obstacle, .powerup {
+            position: absolute;
+            z-index: 5;
+        }
+
+        #score-container {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: #f472b6;
+            text-align: right;
+            font-size: 14px;
+            text-shadow: 2px 2px #000;
+            z-index: 100;
+        }
+
+        #message-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            padding: 40px;
+            border: 6px double #f472b6;
+            text-align: center;
+            color: white;
+            display: none;
+            z-index: 1000;
+            border-radius: 20px;
+            box-shadow: 0 0 50px rgba(244, 114, 182, 0.3);
+        }
+
+        .particle {
+            position: absolute;
+            pointer-events: none;
+            z-index: 100;
+            animation: particleFade 0.6s cubic-bezier(0.12, 0, 0.39, 0) forwards;
+        }
+
+        @keyframes particleFade {
+            to { transform: translate(var(--x), var(--y)) rotate(360deg); opacity: 0; }
+        }
+
+        .alice-invincible {
+            filter: drop-shadow(0 0 15px #fff) brightness(1.5);
+            animation: rainbow 2s linear infinite;
+        }
+
+        @keyframes rainbow {
+            0% { filter: hue-rotate(0deg) drop-shadow(0 0 10px #fff); }
+            100% { filter: hue-rotate(360deg) drop-shadow(0 0 10px #fff); }
+        }
+
+        .controls-hint {
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 10px;
+            letter-spacing: 1px;
+        }
+
+        /* Balões de texto divertidos */
+        .onomatopoeia {
+            position: absolute;
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+            pointer-events: none;
+            animation: floatUp 1s ease-out forwards;
+            z-index: 200;
+            text-shadow: 2px 2px #000;
+        }
+
+        @keyframes floatUp {
+            0% { transform: translateY(0) scale(1); opacity: 1; }
+            100% { transform: translateY(-100px) scale(1.5); opacity: 0; }
+        }
+
+        .shake {
+            animation: shakeEffect 0.2s ease-in-out;
+        }
+
+        @keyframes shakeEffect {
+            0%, 100% { transform: translate(0, 0); }
+            25% { transform: translate(5px, 5px); }
+            50% { transform: translate(-5px, -5px); }
+            75% { transform: translate(5px, -5px); }
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen">
+
+    <div id="game-container" class="w-full max-w-4xl shadow-2xl border-4 border-purple-900 rounded-lg">
+        <div id="score-container">
+            RECORD: <span id="high-score">00000</span><br>
+            PONTOS: <span id="current-score">00000</span>
+        </div>
+
+        <div class="floor"></div>
+        <div class="controls-hint">Pressiona [ESPAÇO] para saltar e divertir-te!</div>
+
+        <!-- Personagem Alice -->
+        <div id="alice">
+            <div id="alice-svg-wrapper">
+                <svg viewBox="0 0 50 70" width="100%" height="100%">
+                    <rect x="10" y="5" width="30" height="20" fill="#fbbf24" rx="2" />
+                    <rect x="15" y="10" width="20" height="15" fill="#fecaca" />
+                    <path d="M10 30 L40 30 L45 60 L5 60 Z" fill="#3b82f6" />
+                    <rect x="15" y="32" width="20" height="20" fill="white" fill-opacity="0.6" />
+                    <rect x="16" y="60" width="6" height="10" fill="#fecaca" />
+                    <rect x="28" y="60" width="6" height="10" fill="#fecaca" />
+                </svg>
+            </div>
+        </div>
+
+        <div id="message-overlay">
+            <h2 class="text-3xl mb-2 text-pink-400">CURIOUS!</h2>
+            <p class="mb-6 text-sm text-gray-300">Caíste na toca do coelho...</p>
+            <div class="text-xl mb-6" id="final-score">PONTOS: 0</div>
+            <button onclick="resetGame()" class="bg-pink-500 hover:bg-pink-600 px-8 py-3 rounded-full font-bold transition-all border-b-4 border-pink-800 active:transform active:translate-y-1 active:border-b-0">
+                TENTAR NOVAMENTE
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const alice = document.getElementById('alice');
+        const aliceWrapper = document.getElementById('alice-svg-wrapper');
+        const container = document.getElementById('game-container');
+        const scoreEl = document.getElementById('current-score');
+        const highEl = document.getElementById('high-score');
+        const overlay = document.getElementById('message-overlay');
+
+        let gameActive = true;
+        let score = 0;
+        let highScore = localStorage.getItem('wonderlandHigh') || 0;
+        let gameSpeed = 6;
+        let aliceY = 0;
+        let yVelocity = 0;
+        let isJumping = false;
+        let isCrouching = false;
+        let isInvincible = false;
+        let aliceScale = 1;
+       
+        const gravity = 0.75;
+        const jumpForce = 15;
+        let entities = [];
+        let spawnTimer = 0;
+
+        highEl.innerText = highScore.toString().padStart(5, '0');
+
+        function update() {
+            if (!gameActive) return;
+
+            score++;
+            const displayScore = Math.floor(score / 5);
+            scoreEl.innerText = displayScore.toString().padStart(5, '0');
+           
+            // Dificuldade e Mudança de "Mundo"
+            if (score % 1000 === 0) {
+                gameSpeed += 0.4;
+                showOnomatopoeia("MAIS RÁPIDO!", 100, 200);
+                // Efeito visual de distorção de cor conforme avança
+                container.style.filter = `hue-rotate(${displayScore / 10}deg) brightness(${1 + Math.sin(score/100) * 0.1})`;
+            }
+
+            // Física de Salto
+            if (isJumping) {
+                yVelocity -= gravity;
+                aliceY += yVelocity;
+               
+                if (aliceY <= 0) {
+                    aliceY = 0;
+                    isJumping = false;
+                    yVelocity = 0;
+                    if (gameActive) createParticles(70, 390, '#fff', 5); // Poeira ao cair
+                }
+            }
+           
+            // Efeito de Ghosting (rasto) quando está rápido
+            if (score % 5 === 0 && (isInvincible || gameSpeed > 8)) {
+                createGhost();
+            }
+
+            const crouchScale = isCrouching ? 0.5 : 1;
+            alice.style.transform = `translateY(${-aliceY}px) scale(${aliceScale}) scaleY(${crouchScale})`;
+
+            // Gerar Obstáculos
+            spawnTimer++;
+            if (spawnTimer > Math.max(30, 110 - gameSpeed * 4)) {
+                spawnEntity();
+                spawnTimer = 0;
+            }
+
+            // Mover Entidades
+            for (let i = entities.length - 1; i >= 0; i--) {
+                let ent = entities[i];
+                let x = parseFloat(ent.el.style.left);
+                x -= gameSpeed;
+                ent.el.style.left = x + 'px';
+
+                if (checkCollision(ent)) {
+                    if (ent.type === 'powerup') {
+                        applyPowerUp(ent);
+                    } else if (!isInvincible) {
+                        gameOver();
+                    }
+                }
+
+                if (x < -150) {
+                    ent.el.remove();
+                    entities.splice(i, 1);
+                }
+            }
+
+            requestAnimationFrame(update);
+        }
+
+        function spawnEntity() {
+            const rand = Math.random();
+            let type = 'obstacle';
+            let name = '';
+            let bottom = 12; // Acima do chão
+            let svg = '';
+
+            if (rand < 0.15) {
+                type = 'powerup';
+                const pRand = Math.random();
+                if (pRand > 0.5) {
+                    name = 'eatme';
+                    svg = `<svg width="40" height="40"><circle cx="20" cy="20" r="18" fill="#f472b6" stroke="white" stroke-width="2"/><text x="10" y="25" fill="white" font-size="8">EAT</text></svg>`;
+                } else {
+                    name = 'drinkme';
+                    svg = `<svg width="35" height="45"><rect x="5" y="10" width="25" height="35" fill="#60a5fa" rx="5" stroke="white"/><rect x="12" y="5" width="11" height="5" fill="#444"/></svg>`;
+                }
+                bottom = 100 + Math.random() * 100;
+            } else {
+                const oRand = Math.random();
+                if (oRand < 0.4) {
+                    name = 'card';
+                    svg = `<svg width="45" height="65"><rect width="45" height="65" fill="white" stroke="red" rx="5" stroke-width="2"/><text x="12" y="45" fill="red" font-size="28">A</text><text x="28" y="58" fill="red" font-size="15">♥</text></svg>`;
+                } else if (oRand < 0.7) {
+                    name = 'mushroom';
+                    svg = `<svg width="55" height="45"><path d="M2 35 Q27 0 53 35 Z" fill="#ef4444" stroke="white"/><rect x="22" y="35" width="11" height="10" fill="#fef3c7" stroke="#92400e"/></svg>`;
+                } else {
+                    name = 'cat';
+                    bottom = 70;
+                    svg = `<svg width="70" height="50"><ellipse cx="35" cy="25" rx="32" ry="20" fill="#9333ea" fill-opacity="0.9"/><path d="M10 20 Q35 50 60 20" stroke="white" stroke-width="4" fill="none"/><circle cx="20" cy="15" r="3" fill="yellow"/><circle cx="50" cy="15" r="3" fill="yellow"/></svg>`;
+                }
+            }
+
+            const el = document.createElement('div');
+            el.className = type;
+            el.style.left = container.offsetWidth + 'px';
+            el.style.bottom = bottom + 'px';
+            el.innerHTML = svg;
+            container.appendChild(el);
+            entities.push({ el, type, name, bottom });
+        }
+
+        function checkCollision(ent) {
+            const aRect = alice.getBoundingClientRect();
+            const eRect = ent.el.getBoundingClientRect();
+            const p = 15; // Padding para hitbox amigável
+           
+            return !(aRect.right - p < eRect.left || aRect.left + p > eRect.right ||
+                     aRect.bottom - p < eRect.top || aRect.top + p > eRect.bottom);
+        }
+
+        function applyPowerUp(ent) {
+            const label = ent.name === 'eatme' ? "GIGANTE!" : "MINI!";
+            showOnomatopoeia(label, 70, container.offsetHeight - ent.bottom - 50);
+            createParticles(ent.el.offsetLeft, container.offsetHeight - ent.bottom, '#f472b6', 15);
+            ent.el.remove();
+            entities = entities.filter(e => e !== ent);
+
+            if (ent.name === 'eatme') {
+                aliceScale = 2;
+                isInvincible = true;
+                alice.classList.add('alice-invincible');
+                setTimeout(() => {
+                    aliceScale = 1;
+                    isInvincible = false;
+                    alice.classList.remove('alice-invincible');
+                }, 6000);
+            } else {
+                aliceScale = 0.4;
+                setTimeout(() => aliceScale = 1, 6000);
+            }
+        }
+
+        function gameOver() {
+            gameActive = false;
+            container.classList.add('shake');
+            setTimeout(() => container.classList.remove('shake'), 200);
+           
+            overlay.style.display = 'block';
+            const finalScoreVal = Math.floor(score / 5);
+            document.getElementById('final-score').innerText = `PONTOS: ${finalScoreVal}`;
+           
+            if (finalScoreVal > highScore) {
+                highScore = finalScoreVal;
+                localStorage.setItem('wonderlandHigh', highScore);
+                highEl.innerText = highScore.toString().padStart(5, '0');
+            }
+        }
+
+        function resetGame() {
+            entities.forEach(e => e.el.remove());
+            entities = [];
+            score = 0;
+            gameSpeed = 6;
+            aliceY = 0;
+            aliceScale = 1;
+            isInvincible = false;
+            alice.classList.remove('alice-invincible');
+            gameActive = true;
+            overlay.style.display = 'none';
+            container.style.filter = 'none';
+            update();
+        }
+
+        function createParticles(x, y, color, count = 10) {
+            for (let i = 0; i < count; i++) {
+                const p = document.createElement('div');
+                p.className = 'particle';
+                p.style.left = x + 'px';
+                p.style.top = y + 'px';
+                p.style.width = Math.random() * 8 + 4 + 'px';
+                p.style.height = p.style.width;
+                p.style.background = color;
+                p.style.setProperty('--x', (Math.random() - 0.5) * 150 + 'px');
+                p.style.setProperty('--y', (Math.random() - 0.5) * 150 + 'px');
+                container.appendChild(p);
+                setTimeout(() => p.remove(), 600);
+            }
+        }
+
+        function createGhost() {
+            const ghost = alice.cloneNode(true);
+            ghost.id = "";
+            ghost.className = "ghost";
+            ghost.style.left = alice.offsetLeft + "px";
+            ghost.style.bottom = alice.style.bottom;
+            ghost.style.transform = alice.style.transform;
+            container.appendChild(ghost);
+            setTimeout(() => ghost.remove(), 300);
+        }
+
+        function showOnomatopoeia(text, x, y) {
+            const el = document.createElement('div');
+            el.className = 'onomatopoeia';
+            el.innerText = text;
+            el.style.left = x + 'px';
+            el.style.top = y + 'px';
+            container.appendChild(el);
+            setTimeout(() => el.remove(), 1000);
+        }
+
+        function handleJump() {
+            if (!gameActive) return;
+            if (!isJumping) {
+                isJumping = true;
+                yVelocity = jumpForce;
+                showOnomatopoeia("UP!", 60, 300 - aliceY);
+            }
+        }
+
+        window.addEventListener('keydown', e => {
+            if (e.code === 'Space' || e.code === 'ArrowUp') {
+                e.preventDefault();
+                handleJump();
+            }
+            if (e.code === 'ArrowDown') {
+                isCrouching = true;
+                if (!isJumping) showOnomatopoeia("DUCK!", 60, 350);
+            }
+        });
+
+        window.addEventListener('keyup', e => {
+            if (e.code === 'ArrowDown') isCrouching = false;
+        });
+
+        container.addEventListener('mousedown', handleJump);
+        container.addEventListener('touchstart', e => {
+            e.preventDefault();
+            handleJump();
+        });
+
+        update();
+    </script>
+</body>
+</html>
