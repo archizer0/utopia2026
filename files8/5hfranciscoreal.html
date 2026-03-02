@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="pt-pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice: Dia no Jardim das Maravilhas</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Garamond', serif; background-color: #87ceeb; }
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #2d5a27;
+            text-shadow: 0px 1px 2px rgba(255,255,255,0.8);
+            pointer-events: none;
+            z-index: 10;
+        }
+        .bar-container {
+            width: 200px;
+            height: 12px;
+            background: rgba(255,255,255,0.5);
+            border: 1px solid rgba(0,0,0,0.2);
+            margin-top: 5px;
+            overflow: hidden;
+            border-radius: 6px;
+        }
+        #health-bar { width: 100%; height: 100%; background: #ff4d4d; transition: width 0.2s; }
+        #stamina-bar { width: 100%; height: 100%; background: #4dff88; transition: width 0.1s; }
+        #stats {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: #2d5a27;
+            font-size: 1rem;
+            font-weight: bold;
+            z-index: 10;
+            background: rgba(255,255,255,0.6);
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid rgba(0,0,0,0.1);
+        }
+        #message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #d32f2f;
+            font-size: 3rem;
+            font-weight: bold;
+            text-align: center;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 20;
+            transition: opacity 0.5s;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        #damage-flash {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: red;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 5;
+            transition: opacity 0.15s;
+        }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+
+    <div id="damage-flash"></div>
+
+    <div id="ui">
+        <h1 style="margin:0; font-size: 1.5rem; letter-spacing: 1px;">JARDIM ENSOLARADO</h1>
+        <div style="font-size: 0.8rem; margin-top: 10px;">ENERGIA VITAL</div>
+        <div class="bar-container"><div id="health-bar"></div></div>
+        <div style="font-size: 0.8rem; margin-top: 5px;">FÔLEGO (STAMINA)</div>
+        <div class="bar-container"><div id="stamina-bar"></div></div>
+    </div>
+
+    <div id="stats">FRAGMENTOS RECOLHIDOS: <span id="score">0</span></div>
+    <div id="message"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        let scene, camera, renderer, clock;
+        let keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false, Space: false };
+        let alice, aliceGroup;
+        let velocity = new THREE.Vector3();
+        let aliceScale = 1.0;
+        let targetScale = 1.0;
+        let health = 100;
+        let stamina = 100;
+        let score = 0;
+        let collectibles = [];
+        let enemies = [];
+        let isDead = false;
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87ceeb); // Céu azul
+            scene.fog = new THREE.Fog(0x87ceeb, 20, 150); // Nevoeiro de distância suave
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+           
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.body.appendChild(renderer.domElement);
+
+            clock = new THREE.Clock();
+
+            // Iluminação Diurna Natural
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const sunLight = new THREE.DirectionalLight(0xfff5e1, 1.0);
+            sunLight.position.set(50, 100, 50);
+            sunLight.castShadow = true;
+            sunLight.shadow.mapSize.width = 2048;
+            sunLight.shadow.mapSize.height = 2048;
+            sunLight.shadow.camera.left = -100;
+            sunLight.shadow.camera.right = 100;
+            sunLight.shadow.camera.top = 100;
+            sunLight.shadow.camera.bottom = -100;
+            scene.add(sunLight);
+
+            createAlice();
+            createGarden();
+            spawnEnemies(12);
+            setupControls();
+
+            window.addEventListener('resize', onWindowResize, false);
+           
+            animate();
+        }
+
+        function createAlice() {
+            aliceGroup = new THREE.Group();
+            const dress = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.1, 0.5, 1, 12),
+                new THREE.MeshStandardMaterial({ color: 0x4a90e2, roughness: 0.5 })
+            );
+            dress.position.y = 0.5;
+            dress.castShadow = true;
+            aliceGroup.add(dress);
+
+            const head = new THREE.Mesh(
+                new THREE.SphereGeometry(0.24, 16, 16),
+                new THREE.MeshStandardMaterial({ color: 0xffdbac })
+            );
+            head.position.y = 1.1;
+            head.castShadow = true;
+            aliceGroup.add(head);
+
+            scene.add(aliceGroup);
+            alice = aliceGroup;
+        }
+
+        function createGarden() {
+            // Chão verde vibrante
+            const ground = new THREE.Mesh(
+                new THREE.PlaneGeometry(1000, 1000),
+                new THREE.MeshStandardMaterial({ color: 0x567d46, roughness: 0.8 })
+            );
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            // Obstáculos (Árvores estilizadas e Arbustos)
+            for (let i = 0; i < 300; i++) {
+                const x = (Math.random() - 0.5) * 600;
+                const z = (Math.random() - 0.5) * 600;
+                if (Math.sqrt(x*x + z*z) < 15) continue;
+               
+                const type = Math.random();
+                if (type > 0.5) {
+                    // Árvore
+                    const trunkH = 1 + Math.random() * 2;
+                    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.3, trunkH), new THREE.MeshStandardMaterial({color: 0x5d4037}));
+                    trunk.position.set(x, trunkH/2, z);
+                    trunk.castShadow = true;
+                    scene.add(trunk);
+
+                    const leaves = new THREE.Mesh(new THREE.SphereGeometry(1.2, 8, 8), new THREE.MeshStandardMaterial({color: 0x2e7d32}));
+                    leaves.position.set(x, trunkH + 0.8, z);
+                    leaves.castShadow = true;
+                    scene.add(leaves);
+                } else {
+                    // Arbusto/Caixa
+                    const h = 0.8 + Math.random() * 1.5;
+                    const obs = new THREE.Mesh(new THREE.BoxGeometry(1.5, h, 1.5), new THREE.MeshStandardMaterial({ color: 0x1b5e20 }));
+                    obs.position.set(x, h/2, z);
+                    obs.castShadow = true;
+                    scene.add(obs);
+                }
+            }
+
+            for (let i = 0; i < 35; i++) {
+                createCrystal((Math.random() - 0.5) * 500, (Math.random() - 0.5) * 500);
+            }
+        }
+
+        function createCrystal(x, z) {
+            const crystal = new THREE.Mesh(
+                new THREE.OctahedronGeometry(0.6, 0),
+                new THREE.MeshStandardMaterial({
+                    color: 0xffecb3,
+                    emissive: 0xffb300,
+                    emissiveIntensity: 0.4,
+                    metalness: 0.8,
+                    roughness: 0.2
+                })
+            );
+            crystal.position.set(x, 1.2, z);
+            scene.add(crystal);
+            collectibles.push(crystal);
+        }
+
+        function spawnEnemies(count) {
+            for(let i=0; i<count; i++) {
+                const isElite = Math.random() > 0.7;
+                const group = new THREE.Group();
+                const card = new THREE.Mesh(
+                    new THREE.BoxGeometry(1.2, 1.8, 0.2),
+                    new THREE.MeshStandardMaterial({
+                        color: isElite ? 0x212121 : 0xffffff,
+                        metalness: 0.3
+                    })
+                );
+                card.position.y = 0.9;
+                card.castShadow = true;
+                group.add(card);
+
+                // Detalhe de Coração/Espadas
+                const icon = new THREE.Mesh(new THREE.SphereGeometry(0.25, 4, 4), new THREE.MeshStandardMaterial({color: isElite ? 0x000000 : 0xd32f2f}));
+                icon.position.set(0, 1.2, 0.12);
+                group.add(icon);
+
+                const x = (Math.random() - 0.5) * 500;
+                const z = (Math.random() - 0.5) * 500;
+                group.position.set(x, 0, z);
+               
+                scene.add(group);
+                enemies.push({
+                    mesh: group,
+                    speed: isElite ? 0.2 : 0.12,
+                    range: isElite ? 30 : 20,
+                    isElite: isElite
+                });
+            }
+        }
+
+        function setupControls() {
+            window.addEventListener('keydown', (e) => { if (keys.hasOwnProperty(e.code)) keys[e.code] = true; });
+            window.addEventListener('keyup', (e) => { if (keys.hasOwnProperty(e.code)) keys[e.code] = false; });
+        }
+
+        function takeDamage(amount) {
+            if (isDead) return;
+            health -= amount;
+            document.getElementById('health-bar').style.width = Math.max(0, health) + "%";
+            document.getElementById('damage-flash').style.opacity = 0.4;
+            setTimeout(() => {
+                if (!isDead) document.getElementById('damage-flash').style.opacity = 0;
+            }, 150);
+
+            if (health <= 0) {
+                isDead = true;
+                document.getElementById('message').innerText = "FIM DO SONHO";
+                document.getElementById('message').style.opacity = 1;
+                setTimeout(() => location.reload(), 3000);
+            }
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function updateAlice(delta) {
+            if (isDead) return;
+
+            // Stamina
+            const isMoving = keys.ArrowUp || keys.ArrowDown;
+            if (isMoving && stamina > 0) {
+                stamina -= 0.25;
+            } else if (!isMoving && stamina < 100) {
+                stamina += 0.4;
+            }
+            document.getElementById('stamina-bar').style.width = stamina + "%";
+
+            const currentSpeed = (stamina > 5 ? 0.22 : 0.06) * aliceScale;
+           
+            if (keys.ArrowUp) alice.translateZ(currentSpeed);
+            if (keys.ArrowDown) alice.translateZ(-currentSpeed);
+            if (keys.ArrowLeft) alice.rotation.y += 0.08;
+            if (keys.ArrowRight) alice.rotation.y -= 0.08;
+
+            velocity.y -= 0.015;
+            alice.position.y += velocity.y;
+            if (alice.position.y < 0) {
+                alice.position.y = 0;
+                velocity.y = 0;
+                if (keys.Space && stamina > 25) {
+                    velocity.y = 0.28;
+                    stamina -= 20;
+                }
+            }
+
+            if (Math.abs(aliceScale - targetScale) > 0.01) {
+                aliceScale += (targetScale - aliceScale) * 0.06;
+                alice.scale.set(aliceScale, aliceScale, aliceScale);
+            }
+
+            const camOffset = new THREE.Vector3(0, 5 * aliceScale, -14 * aliceScale);
+            camera.position.lerp(camOffset.applyMatrix4(alice.matrixWorld), 0.1);
+            camera.lookAt(alice.position.x, alice.position.y + 1, alice.position.z);
+        }
+
+        function updateEnemies(delta) {
+            enemies.forEach(en => {
+                const dist = en.mesh.position.distanceTo(alice.position);
+               
+                // Na luz do dia, os inimigos detetam-te melhor de longe
+                const detectMod = (velocity.y > 0 || stamina < 80) ? 1.4 : 1.0;
+
+                if (dist < en.range * detectMod) {
+                    const dir = alice.position.clone().sub(en.mesh.position).normalize();
+                    en.mesh.position.add(dir.multiplyScalar(en.speed));
+                    en.mesh.lookAt(alice.position.x, 0, alice.position.z);
+                   
+                    if (dist < 1.5 * aliceScale) {
+                        takeDamage(1.2); // Dano ligeiramente maior de dia
+                    }
+                }
+            });
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            updateAlice(delta);
+            updateEnemies(delta);
+           
+            collectibles.forEach((c, i) => {
+                c.rotation.y += 0.06;
+                if (alice.position.distanceTo(c.position) < 2 * aliceScale) {
+                    scene.remove(c);
+                    collectibles.splice(i, 1);
+                    score++;
+                    document.getElementById('score').innerText = score;
+                    targetScale = Math.random() > 0.5 ? 2.2 : 0.5;
+                }
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
