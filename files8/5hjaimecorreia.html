@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice e o Chá Maluco - Jogo com Webcam</title>
+   
+    <!-- Importar MediaPipe Hands -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600&family=Mountains+of+Christmas:wght@700&display=swap');
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #1a0b2e;
+            font-family: 'Mountains of Christmas', cursive;
+            color: white;
+            user-select: none;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* O vídeo da webcam fica invisível, usamos apenas para processamento */
+        #webcam-video {
+            display: none;
+        }
+
+        /* O canvas onde o jogo e o vídeo espelhado serão desenhados */
+        #game-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 1;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            padding: 20px 40px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+        }
+
+        .score-box {
+            font-size: 32px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px 20px;
+            border-radius: 15px;
+            border: 2px solid #d4af37;
+        }
+
+        .lives-box {
+            font-size: 32px;
+            color: #ff3366;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px 20px;
+            border-radius: 15px;
+            border: 2px solid #d4af37;
+        }
+
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(26, 11, 46, 0.9);
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            pointer-events: auto;
+        }
+
+        h1 {
+            font-size: 64px;
+            margin-bottom: 10px;
+            color: #d4af37;
+            text-shadow: 0 0 20px rgba(212, 175, 55, 0.6);
+        }
+
+        p {
+            font-size: 24px;
+            max-width: 600px;
+            margin-bottom: 30px;
+            font-family: 'Cinzel', serif;
+        }
+
+        button {
+            background: #d4af37;
+            color: #1a0b2e;
+            border: none;
+            padding: 15px 40px;
+            font-size: 28px;
+            font-family: 'Mountains of Christmas', cursive;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: transform 0.2s, background 0.2s;
+            box-shadow: 0 4px 15px rgba(212, 175, 55, 0.4);
+        }
+
+        button:hover {
+            transform: scale(1.1);
+            background: #f1c40f;
+        }
+
+        button:disabled {
+            background: #555;
+            color: #888;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .loading-spinner {
+            border: 6px solid rgba(255,255,255,0.1);
+            border-top: 6px solid #d4af37;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        #instructions {
+            color: #a89f91;
+            font-size: 18px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <video id="webcam-video" autoplay playsinline></video>
+    <canvas id="game-canvas"></canvas>
+   
+    <div id="ui-layer" style="display: none;">
+        <div class="header">
+            <div class="score-box">Chávenas: <span id="score">0</span></div>
+            <div class="lives-box">Vidas: <span id="lives">❤️❤️❤️</span></div>
+        </div>
+    </div>
+
+    <div id="overlay">
+        <h1>Alice e o Chá Maluco</h1>
+        <p>Use a sua mão na frente da webcam para guiar a Alice. Pegue as chávenas de chá caindo do céu e evite as perigosas Cartas da Rainha de Copas!</p>
+       
+        <div id="loading-area">
+            <div class="loading-spinner"></div>
+            <p style="font-size: 20px;">Carregando a Magia do País das Maravilhas... (Permita o acesso à câmara)</p>
+        </div>
+
+        <button id="start-btn" style="display: none;">Entrar na Toca do Coelho</button>
+        <p id="instructions" style="display: none;">Mova a sua mão direita ou esquerda em frente à câmara para jogar.</p>
+    </div>
+</div>
+
+<script>
+    const videoElement = document.getElementById('webcam-video');
+    const canvasElement = document.getElementById('game-canvas');
+    const canvasCtx = canvasElement.getContext('2d');
+    const overlay = document.getElementById('overlay');
+    const loadingArea = document.getElementById('loading-area');
+    const startBtn = document.getElementById('start-btn');
+    const instructions = document.getElementById('instructions');
+    const uiLayer = document.getElementById('ui-layer');
+    const scoreEl = document.getElementById('score');
+    const livesEl = document.getElementById('lives');
+
+    // Variáveis do Jogo
+    let gameState = 'loading'; // loading, ready, playing, gameover
+    let score = 0;
+    let lives = 3;
+    let playerX = window.innerWidth / 2;
+    let playerY = window.innerHeight - 100;
+    let playerTargetX = window.innerWidth / 2;
+    let playerTargetY = window.innerHeight - 100;
+   
+    // Entidades do jogo
+    let items = [];
+    let lastTime = 0;
+    let spawnTimer = 0;
+    let spawnRate = 1500; // Tempo em ms para surgir um novo item
+    let gameSpeedMultiplier = 1;
+
+    // Redimensionar Canvas
+    function resizeCanvas() {
+        canvasElement.width = window.innerWidth;
+        canvasElement.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // Inicializar MediaPipe Hands
+    const hands = new Hands({locateFile: (file) => {
+        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+    }});
+
+    hands.setOptions({
+        maxNumHands: 1,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.6,
+        minTrackingConfidence: 0.6
+    });
+
+    hands.onResults(onResults);
+
+    // Processamento da Webcam e Hand Tracking
+    function onResults(results) {
+        if (gameState !== 'playing') return;
+
+        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+            // Pegar a ponta do dedo indicador (landmark 8) ou o centro da palma (landmark 9)
+            const landmark = results.multiHandLandmarks[0][9]; // Usando o meio da mão para mais estabilidade
+           
+            // Espelhar o X (1 - x) porque a webcam está espelhada para conforto
+            playerTargetX = (1 - landmark.x) * canvasElement.width;
+            playerTargetY = landmark.y * canvasElement.height;
+        }
+    }
+
+    let cameraStream = null;
+
+    async function setupCamera() {
+        try {
+            cameraStream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: "user", width: 640, height: 480 }
+            });
+            videoElement.srcObject = cameraStream;
+           
+            return new Promise((resolve) => {
+                videoElement.onloadedmetadata = () => {
+                    resolve(videoElement);
+                };
+            });
+        } catch (error) {
+            console.error("Erro ao acessar a webcam:", error);
+            loadingArea.innerHTML = "<p style='color: #ff3366;'>Erro: Não foi possível acessar a webcam. Verifique as permissões.</p>";
+        }
+    }
+
+    async function init() {
+        await setupCamera();
+        videoElement.play();
+       
+        // Fazer uma detecção inicial forçada para carregar os modelos na memória
+        await hands.send({image: videoElement});
+       
+        // Modelos carregados, pronto para jogar
+        gameState = 'ready';
+        loadingArea.style.display = 'none';
+        startBtn.style.display = 'block';
+        instructions.style.display = 'block';
+       
+        // Iniciar loop de rastreamento de vídeo
+        processVideo();
+    }
+
+    let lastVideoTime = -1;
+    async function processVideo() {
+        if (videoElement.readyState >= 2 && videoElement.currentTime !== lastVideoTime) {
+            lastVideoTime = videoElement.currentTime;
+            if(gameState === 'playing') {
+                await hands.send({image: videoElement});
+            }
+        }
+        requestAnimationFrame(processVideo);
+    }
+
+    // Iniciar jogo
+    startBtn.addEventListener('click', () => {
+        if (gameState === 'ready' || gameState === 'gameover') {
+            startGame();
+        }
+    });
+
+    function startGame() {
+        overlay.style.display = 'none';
+        uiLayer.style.display = 'flex';
+        score = 0;
+        lives = 3;
+        items = [];
+        spawnRate = 1500;
+        gameSpeedMultiplier = 1;
+        updateUI();
+        gameState = 'playing';
+        lastTime = performance.now();
+        gameLoop(lastTime);
+    }
+
+    function gameOver() {
+        gameState = 'gameover';
+        overlay.style.display = 'flex';
+        uiLayer.style.display = 'none';
+        document.querySelector('#overlay h1').innerText = "Fim do Chá!";
+        document.querySelector('#overlay p').innerText = `Você coletou ${score} chávenas antes da Rainha te alcançar!`;
+        startBtn.innerText = "Jogar Novamente";
+        startBtn.style.display = 'block';
+        loadingArea.style.display = 'none';
+        instructions.style.display = 'none';
+    }
+
+    function updateUI() {
+        scoreEl.innerText = score;
+        let livesHtml = '';
+        for(let i=0; i<lives; i++) livesHtml += '❤️';
+        livesEl.innerText = livesHtml;
+        if(lives <= 0) gameOver();
+    }
+
+    // Loop do Jogo (Renderização e Lógica)
+    function gameLoop(timestamp) {
+        if (gameState !== 'playing') return;
+       
+        const deltaTime = timestamp - lastTime;
+        lastTime = timestamp;
+
+        updateLogic(deltaTime);
+        drawGame();
+
+        requestAnimationFrame(gameLoop);
+    }
+
+    function updateLogic(deltaTime) {
+        // Suavizar movimento do jogador (Lerp)
+        playerX += (playerTargetX - playerX) * 0.15;
+        playerY += (playerTargetY - playerY) * 0.15;
+
+        // Limites de tela para o jogador
+        playerX = Math.max(30, Math.min(canvasElement.width - 30, playerX));
+        playerY = Math.max(30, Math.min(canvasElement.height - 30, playerY));
+
+        // Sistema de Spawning (Gerar itens)
+        spawnTimer += deltaTime;
+        if (spawnTimer >= spawnRate) {
+            spawnTimer = 0;
+            spawnItem();
+            // Aumentar dificuldade gradualmente
+            if(spawnRate > 500) spawnRate -= 15;
+            gameSpeedMultiplier += 0.01;
+        }
+
+        // Atualizar itens e checar colisões
+        const playerRadius = 40; // Tamanho do hitbox da Alice
+       
+        for (let i = items.length - 1; i >= 0; i--) {
+            let item = items[i];
+           
+            // Movimentar item para baixo
+            item.y += item.speed * gameSpeedMultiplier * (deltaTime / 16); // Normalizado para 60fps
+           
+            // Checar colisão
+            const dx = playerX - item.x;
+            const dy = playerY - item.y;
+            const distance = Math.sqrt(dx*dx + dy*dy);
+           
+            if (distance < playerRadius + item.radius) {
+                // Colisão!
+                if (item.type === 'teacup') {
+                    score += 1;
+                    createParticles(item.x, item.y, '#fff');
+                } else if (item.type === 'card') {
+                    lives -= 1;
+                    createParticles(item.x, item.y, '#ff3366');
+                    // Efeito de tela vermelha
+                    canvasCtx.fillStyle = 'rgba(255, 0, 0, 0.3)';
+                    canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+                }
+                updateUI();
+                items.splice(i, 1);
+                continue;
+            }
+
+            // Remover se sair da tela
+            if (item.y - item.radius > canvasElement.height) {
+                items.splice(i, 1);
+            }
+        }
+       
+        updateParticles(deltaTime);
+    }
+
+    function spawnItem() {
+        const isCard = Math.random() > 0.65; // 35% de chance de ser uma carta ruim
+        const radius = isCard ? 30 : 25;
+        items.push({
+            x: Math.random() * (canvasElement.width - radius*2) + radius,
+            y: -50,
+            type: isCard ? 'card' : 'teacup',
+            speed: isCard ? (3 + Math.random() * 3) : (2 + Math.random() * 2), // Cartas caem um pouco mais rápido
+            radius: radius,
+            rotation: Math.random() * Math.PI * 2,
+            rotSpeed: (Math.random() - 0.5) * 0.1
+        });
+    }
+
+    // Efeitos de Partículas
+    let particles = [];
+    function createParticles(x, y, color) {
+        for(let i=0; i<10; i++) {
+            particles.push({
+                x: x, y: y,
+                vx: (Math.random() - 0.5) * 10,
+                vy: (Math.random() - 0.5) * 10,
+                life: 1.0,
+                color: color
+            });
+        }
+    }
+   
+    function updateParticles(dt) {
+        for(let i=particles.length-1; i>=0; i--) {
+            let p = particles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.life -= 0.05 * (dt/16);
+            if(p.life <= 0) particles.splice(i, 1);
+        }
+    }
+
+    // Desenho na Tela
+    function drawGame() {
+        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+        // 1. Desenhar a Webcam como Fundo (Espelhada e com opacidade baixa)
+        canvasCtx.save();
+        canvasCtx.globalAlpha = 0.3; // Deixa o vídeo meio transparente para não atrapalhar
+        canvasCtx.translate(canvasElement.width, 0); // Espelhar horizontalmente
+        canvasCtx.scale(-1, 1);
+        // Calcula a proporção para cobrir a tela sem distorcer
+        const videoRatio = videoElement.videoWidth / videoElement.videoHeight;
+        const canvasRatio = canvasElement.width / canvasElement.height;
+        let drawWidth, drawHeight, drawX, drawY;
+       
+        if (canvasRatio > videoRatio) {
+            drawWidth = canvasElement.width;
+            drawHeight = canvasElement.width / videoRatio;
+            drawX = 0;
+            drawY = (canvasElement.height - drawHeight) / 2;
+        } else {
+            drawHeight = canvasElement.height;
+            drawWidth = canvasElement.height * videoRatio;
+            drawY = 0;
+            drawX = (canvasElement.width - drawWidth) / 2;
+        }
+        canvasCtx.drawImage(videoElement, drawX, drawY, drawWidth, drawHeight);
+        canvasCtx.restore();
+
+        // 2. Desenhar Chão do País das Maravilhas (Xadrez) na parte inferior
+        canvasCtx.save();
+        canvasCtx.globalAlpha = 0.4;
+        const tileSize = 60;
+        const rows = 4;
+        const startY = canvasElement.height - (tileSize * rows);
+        for(let r=0; r<rows; r++) {
+            for(let c=0; c<canvasElement.width/tileSize; c++) {
+                if((r+c)%2 === 0) canvasCtx.fillStyle = '#000000';
+                else canvasCtx.fillStyle = '#ffffff';
+               
+                // Perspectiva simples espremendo a altura do xadrez no fundo
+                const perspectiveHeight = tileSize * (1 - (r * 0.15));
+                const yPos = canvasElement.height - (rows - r) * perspectiveHeight;
+               
+                canvasCtx.fillRect(c * tileSize, yPos, tileSize, perspectiveHeight);
+            }
+        }
+        canvasCtx.restore();
+
+        // 3. Desenhar Itens
+        for (let item of items) {
+            canvasCtx.save();
+            canvasCtx.translate(item.x, item.y);
+           
+            // Fazer girar
+            item.rotation += item.rotSpeed;
+            canvasCtx.rotate(item.rotation);
+
+            if (item.type === 'teacup') {
+                drawTeacup(canvasCtx, item.radius);
+            } else {
+                drawCard(canvasCtx, item.radius);
+            }
+            canvasCtx.restore();
+        }
+
+        // 4. Desenhar Partículas
+        for(let p of particles) {
+            canvasCtx.globalAlpha = Math.max(0, p.life);
+            canvasCtx.fillStyle = p.color;
+            canvasCtx.beginPath();
+            canvasCtx.arc(p.x, p.y, 4, 0, Math.PI*2);
+            canvasCtx.fill();
+        }
+        canvasCtx.globalAlpha = 1.0;
+
+        // 5. Desenhar o Boneco (Alice)
+        drawAlice(canvasCtx, playerX, playerY);
+    }
+
+    function drawTeacup(ctx, r) {
+        // Sombra / brilho sutil
+        ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
+        ctx.shadowBlur = 10;
+       
+        ctx.fillStyle = '#f0f0f0';
+        ctx.strokeStyle = '#d4af37'; // Detalhe dourado
+        ctx.lineWidth = 2;
+
+        // Corpo da chávena (meia lua)
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI, false);
+        ctx.lineTo(-r, 0);
+        ctx.fill();
+        ctx.stroke();
+
+        // Pega da chávena
+        ctx.beginPath();
+        ctx.arc(r, 0, r/2, -Math.PI/2, Math.PI/2, false);
+        ctx.stroke();
+
+        ctx.shadowBlur = 0;
+    }
+
+    function drawCard(ctx, r) {
+        ctx.shadowColor = 'rgba(255, 51, 102, 0.8)';
+        ctx.shadowBlur = 15;
+
+        // Fundo branco da carta
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(-r, -r*1.4, r*2, r*2.8);
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(-r, -r*1.4, r*2, r*2.8);
+
+        // Coração vermelho no meio
+        ctx.fillStyle = '#ff3366';
+        ctx.font = `${r}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('♥', 0, 0);
+
+        ctx.shadowBlur = 0;
+    }
+
+    function drawAlice(ctx, x, y) {
+        ctx.save();
+        ctx.translate(x, y);
+
+        // Brilho para destacar a mão/personagem
+        ctx.shadowColor = 'rgba(100, 200, 255, 0.8)';
+        ctx.shadowBlur = 20;
+
+        // Vestido Azul (Triângulo)
+        ctx.fillStyle = '#4da6ff';
+        ctx.beginPath();
+        ctx.moveTo(0, -10);
+        ctx.lineTo(30, 40);
+        ctx.lineTo(-30, 40);
+        ctx.fill();
+
+        // Avental Branco
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.moveTo(-15, 10);
+        ctx.lineTo(15, 10);
+        ctx.lineTo(20, 35);
+        ctx.lineTo(-20, 35);
+        ctx.fill();
+
+        // Cabeça (Rosto)
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#ffe0cc'; // Tom de pele
+        ctx.beginPath();
+        ctx.arc(0, -20, 15, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Cabelo Loiro
+        ctx.fillStyle = '#ffd633';
+        ctx.beginPath();
+        ctx.arc(0, -20, 16, Math.PI, Math.PI*2); // Franja
+        ctx.fill();
+       
+        // Laço Preto no Cabelo
+        ctx.fillStyle = '#222';
+        ctx.beginPath();
+        ctx.moveTo(-5, -35);
+        ctx.lineTo(5, -35);
+        ctx.lineTo(10, -42);
+        ctx.lineTo(0, -38);
+        ctx.lineTo(-10, -42);
+        ctx.fill();
+
+        ctx.restore();
+    }
+
+    // Inicializar a rotina de setup assim que a página carrega
+    window.addEventListener('load', init);
+
+</script>
+</body>
+</html>
