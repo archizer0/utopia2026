@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="pt-pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice - Experiência Rítmica de Movimento</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Quicksand:wght@400;600&display=swap');
+       
+        body {
+            font-family: 'Quicksand', sans-serif;
+            background-color: #000;
+            color: #fff;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        #game-viewport {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            background-image: url('https://images.unsplash.com/photo-1518531933037-91b2f5f229cc?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80');
+            background-size: cover;
+            background-position: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: filter 0.1s linear;
+        }
+
+        #alice {
+            position: absolute;
+            font-size: 5rem;
+            z-index: 100;
+            pointer-events: none;
+            filter: drop-shadow(0 0 30px rgba(255,255,255,0.9));
+        }
+
+        /* Efeito de pulso no ritmo */
+        .pulse {
+            animation: pulse-beat 0.5s ease-out;
+        }
+
+        @keyframes pulse-beat {
+            0% { transform: scale(1); filter: brightness(1.5); }
+            100% { transform: scale(1.1); filter: brightness(1); }
+        }
+
+        #video-preview {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 160px;
+            height: 120px;
+            border: 2px solid #e84393;
+            border-radius: 10px;
+            transform: scaleX(-1);
+            z-index: 200;
+            opacity: 0.5;
+        }
+
+        #brightness-indicator {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 10px 25px;
+            background: rgba(0,0,0,0.7);
+            border-radius: 30px;
+            border: 1px solid #e84393;
+            font-family: 'Cinzel', serif;
+            z-index: 150;
+        }
+
+        #speech-bubble {
+            position: fixed;
+            bottom: 120px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(232, 67, 147, 0.2);
+            backdrop-filter: blur(5px);
+            padding: 15px 30px;
+            border-radius: 50px;
+            border: 2px solid rgba(232, 67, 147, 0.5);
+            font-style: italic;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 120;
+            text-align: center;
+        }
+
+        .beat-dot {
+            width: 10px;
+            height: 10px;
+            background: #e84393;
+            border-radius: 50%;
+            display: inline-block;
+            margin: 0 5px;
+            opacity: 0.3;
+        }
+
+        .beat-active {
+            opacity: 1;
+            box-shadow: 0 0 10px #e84393;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-viewport">
+        <div id="alice">👱🏻‍♀️</div>
+       
+        <div id="brightness-indicator">
+            Sincronia Rítmica: <span id="glow-val">0</span>%
+            <div class="block mt-1">
+                <span class="beat-dot" id="dot-0"></span>
+                <span class="beat-dot" id="dot-1"></span>
+                <span class="beat-dot" id="dot-2"></span>
+                <span class="beat-dot" id="dot-3"></span>
+            </div>
+        </div>
+       
+        <div id="speech-bubble">"Tic-tac... o tempo foge!"</div>
+
+        <div id="setup-screen" class="absolute inset-0 z-[300] flex flex-col items-center justify-center p-8 text-center bg-black/90 backdrop-blur-xl">
+            <h1 class="text-6xl font-bold text-pink-500 mb-6 font-['Cinzel']">Ritmo do País das Maravilhas</h1>
+            <p class="text-xl max-w-2xl mb-8 text-gray-300">
+                O Coelho Branco está com pressa! Segue o ritmo com as tuas <b>mãos</b>.<br>
+                Cada movimento acelera o tempo e intensifica a batida mística.
+            </p>
+            <button id="btn-start" class="bg-pink-600 hover:bg-pink-500 text-white px-12 py-5 rounded-full font-bold text-2xl shadow-[0_0_30px_#e84393] transition-all transform hover:scale-105">
+                OUVIR O RITMO E ENTRAR
+            </button>
+        </div>
+    </div>
+
+    <video id="video-preview" autoplay playsinline></video>
+
+    <script>
+        const videoElement = document.getElementById('video-preview');
+        const viewport = document.getElementById('game-viewport');
+        const aliceEl = document.getElementById('alice');
+        const glowValEl = document.getElementById('glow-val');
+        const setupScreen = document.getElementById('setup-screen');
+        const btnStart = document.getElementById('btn-start');
+        const bubble = document.getElementById('speech-bubble');
+
+        let alicePos = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+        let targetPos = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+        let lastHandPos = { x: 0, y: 0 };
+        let handSpeed = 0;
+        let brightness = 100;
+       
+        // Audio Variables
+        let audioCtx, masterGain;
+        let bpm = 110;
+        let currentBeat = 0;
+
+        const quotes = [
+            "Estou atrasado! Estou atrasado!",
+            "Cortem-lhe a cabeça!",
+            "Somos todos loucos por aqui.",
+            "Tic-tac, tic-tac!",
+            "Curioso... muito curioso!",
+            "O tempo é um senhor muito estranho.",
+            "Bebeste o chá?"
+        ];
+
+        // Escala melódica: Am, G, F, E (clássico tom de mistério)
+        const melodyLine = [220, 196, 174.6, 164.8];
+
+        // --- MOTOR DE ÁUDIO RÍTMICO ---
+        function createKick(time) {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(masterGain);
+
+            osc.frequency.setValueAtTime(150, time);
+            osc.frequency.exponentialRampToValueAtTime(0.01, time + 0.5);
+            gain.gain.setValueAtTime(0.4, time);
+            gain.gain.exponentialRampToValueAtTime(0.01, time + 0.5);
+
+            osc.start(time);
+            osc.stop(time + 0.5);
+        }
+
+        function createSynth(time, freq, type = 'triangle', duration = 0.5) {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, time);
+           
+            osc.connect(gain);
+            gain.connect(masterGain);
+
+            gain.gain.setValueAtTime(0, time);
+            gain.gain.linearRampToValueAtTime(0.15, time + 0.05);
+            gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
+
+            osc.start(time);
+            osc.stop(time + duration);
+        }
+
+        function createTick(time) {
+            const noise = audioCtx.createBufferSource();
+            const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.05, audioCtx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+           
+            noise.buffer = buffer;
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = 'highpass';
+            filter.frequency.value = 5000;
+           
+            const gain = audioCtx.createGain();
+            noise.connect(filter);
+            filter.connect(gain);
+            gain.connect(masterGain);
+
+            gain.gain.setValueAtTime(0.1, time);
+            gain.gain.exponentialRampToValueAtTime(0.01, time + 0.05);
+
+            noise.start(time);
+        }
+
+        function scheduler() {
+            const lookahead = 0.1;
+            const nextBeatTime = audioCtx.currentTime + lookahead;
+           
+            // Ritmo Base
+            createKick(nextBeatTime);
+           
+            // Baixo melódico (no beat principal)
+            const rootFreq = melodyLine[Math.floor(currentBeat / 4) % melodyLine.length];
+            createSynth(nextBeatTime, rootFreq / 2, 'sine', 1);
+
+            // Arpejos místicos (off-beats)
+            if (currentBeat % 2 === 0) {
+                createTick(nextBeatTime + 0.25);
+                createSynth(nextBeatTime + 0.25, rootFreq * 1.5, 'triangle', 0.3);
+            }
+           
+            // Visual feedback do beat
+            document.querySelectorAll('.beat-dot').forEach(d => d.classList.remove('beat-active'));
+            document.getElementById(`dot-${currentBeat % 4}`).classList.add('beat-active');
+           
+            // Pulso visual na Alice
+            aliceEl.classList.remove('pulse');
+            void aliceEl.offsetWidth;
+            aliceEl.classList.add('pulse');
+
+            // Gatilho de voz rítmica
+            if (currentBeat % 8 === 0 && handSpeed > 100) {
+                speakQuote();
+            }
+
+            currentBeat++;
+            setTimeout(scheduler, (60 / bpm) * 1000);
+        }
+
+        function initAudio() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            masterGain = audioCtx.createGain();
+            masterGain.connect(audioCtx.destination);
+            masterGain.gain.value = 0.5;
+            scheduler();
+        }
+
+        function speakQuote() {
+            if (!window.speechSynthesis) return;
+            window.speechSynthesis.cancel();
+            const text = quotes[Math.floor(Math.random() * quotes.length)];
+            const msg = new SpeechSynthesisUtterance(text);
+            const voices = window.speechSynthesis.getVoices();
+            msg.voice = voices.find(v => v.lang.includes('pt')) || voices[0];
+           
+            msg.rate = 1.1;
+            msg.pitch = 1.2;
+           
+            bubble.innerText = text;
+            bubble.style.opacity = 1;
+            window.speechSynthesis.speak(msg);
+            setTimeout(() => { bubble.style.opacity = 0; }, 2000);
+        }
+
+        // --- SISTEMA DE VISÃO ---
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.6,
+            minTrackingConfidence: 0.6
+        });
+
+        hands.onResults((results) => {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const hand = results.multiHandLandmarks[0];
+                const x = (1 - hand[9].x) * window.innerWidth;
+                const y = hand[9].y * window.innerHeight;
+
+                targetPos.x = x;
+                targetPos.y = y;
+
+                const dx = x - lastHandPos.x;
+                const dy = y - lastHandPos.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+               
+                handSpeed = handSpeed * 0.8 + dist * 0.2;
+                lastHandPos = { x, y };
+            } else {
+                handSpeed *= 0.9;
+            }
+        });
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => { await hands.send({ image: videoElement }); },
+            width: 640, height: 480
+        });
+
+        function animate() {
+            alicePos.x += (targetPos.x - alicePos.x) * 0.12;
+            alicePos.y += (targetPos.y - alicePos.y) * 0.12;
+
+            aliceEl.style.left = `${alicePos.x - 50}px`;
+            aliceEl.style.top = `${alicePos.y - 50}px`;
+           
+            const tilt = (targetPos.x - alicePos.x) * 0.2;
+            aliceEl.style.transform = `rotate(${tilt}deg) scale(${1 + (handSpeed / 500)})`;
+
+            const targetBrightness = 100 + (handSpeed * 2.5);
+            brightness = brightness * 0.9 + targetBrightness * 0.1;
+           
+            const beatFlash = (currentBeat % 1 === 0) ? 15 : 0;
+            viewport.style.filter = `brightness(${brightness + beatFlash}%) saturate(${1 + handSpeed/150})`;
+           
+            glowValEl.innerText = Math.floor(Math.min(100, handSpeed / 4.5));
+
+            requestAnimationFrame(animate);
+        }
+
+        btnStart.onclick = async () => {
+            setupScreen.style.opacity = '0';
+            setTimeout(() => setupScreen.remove(), 1000);
+            try {
+                await camera.start();
+                initAudio();
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                animate();
+            } catch (err) {
+                alert("Erro: Verifica as permissões da câmara.");
+            }
+        };
+
+        window.addEventListener('resize', () => {
+            targetPos = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+        });
+    </script>
+</body>
+</html>
