@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Alice: Operação Salve a Rainha</title>
+    <style>
+        body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background: #1a1a1a; font-family: 'Courier New', Courier, monospace; overflow: hidden; }
+        canvas { background: #6ab7ff; border: 5px solid #fff; box-shadow: 0 0 30px rgba(0,0,0,0.8); cursor: none; }
+        .ui { position: absolute; top: 20px; color: white; text-shadow: 2px 2px #000; text-align: center; pointer-events: none; width: 100%; }
+    </style>
+</head>
+<body>
+    <div class="ui">
+        <h1>ALICE vs AS PEDRAS</h1>
+        <p>USE AS SETAS | PEGUE O COGUMELO PARA CRESCER!</p>
+    </div>
+    <canvas id="game"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+canvas.width = 800;
+canvas.height = 500;
+
+// Estado do Jogo
+let score = 0;
+let gameOver = false;
+let powerUpTimer = 0;
+
+const alice = {
+    x: 100, y: 400, w: 30, h: 60,
+    speed: 6, color: "#3498db",
+    isBig: false, pushForce: 5
+};
+
+const queen = { x: 400, y: 390, w: 45, h: 70, color: "#e74c3c" };
+const rocks = [];
+const mushrooms = [];
+const keys = {};
+
+window.onkeydown = (e) => keys[e.code] = true;
+window.onkeyup = (e) => keys[e.code] = false;
+
+function update() {
+    if (gameOver) return;
+
+    // Movimento Alice
+    let currentSpeed = alice.isBig ? alice.speed * 1.5 : alice.speed;
+    if (keys["ArrowLeft"] && alice.x > 0) alice.x -= currentSpeed;
+    if (keys["ArrowRight"] && alice.x < canvas.width - alice.w) alice.x += currentSpeed;
+
+    // Power-up Logic
+    if (alice.isBig) {
+        powerUpTimer--;
+        if (powerUpTimer <= 0) {
+            alice.isBig = false;
+            alice.w = 30; alice.h = 60; alice.y = 400;
+        }
+    }
+
+    // Colisão Alice e Rainha
+    if (alice.x < queen.x + queen.w && alice.x + alice.w > queen.x) {
+        let force = alice.isBig ? 10 : 5;
+        if (alice.x < queen.x) queen.x += force;
+        else queen.x -= force;
+    }
+   
+    // Limites da Rainha
+    if (queen.x < 0) queen.x = 0;
+    if (queen.x > canvas.width - queen.w) queen.x = canvas.width - queen.w;
+
+    // Gerar Pedras e Cogumelos
+    if (Math.random() < 0.03) rocks.push({x: Math.random()*canvas.width, y: -50, r: 15, s: 3 + Math.random()*4});
+    if (!alice.isBig && Math.random() < 0.005) mushrooms.push({x: Math.random()*canvas.width, y: -30, w: 25, h: 25});
+
+    // Processar Pedras
+    rocks.forEach((r, i) => {
+        r.y += r.s;
+        // Colisão com Rainha
+        if (r.x > queen.x && r.x < queen.x + queen.w && r.y > queen.y) {
+            gameOver = true;
+            setTimeout(() => location.reload(), 2000);
+        }
+        if (r.y > canvas.height) { rocks.splice(i, 1); score++; }
+    });
+
+    // Processar Cogumelos
+    mushrooms.forEach((m, i) => {
+        m.y += 2;
+        if (alice.x < m.x + m.w && alice.x + alice.w > m.x && alice.y < m.y + m.h) {
+            mushrooms.splice(i, 1);
+            alice.isBig = true;
+            alice.w = 50; alice.h = 100; alice.y = 360;
+            powerUpTimer = 300; // aprox 5 segundos
+        }
+    });
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Chão
+    ctx.fillStyle = "#27ae60";
+    ctx.fillRect(0, 460, canvas.width, 40);
+
+    // Desenhar Alice (Pisca se o tempo estiver acabando)
+    if (!alice.isBig || powerUpTimer > 60 || Math.floor(Date.now()/100)%2) {
+        ctx.fillStyle = alice.color;
+        ctx.fillRect(alice.x, alice.y, alice.w, alice.h);
+        ctx.fillStyle = "white"; ctx.fillRect(alice.x, alice.y + alice.h/2, alice.w, 10);
+    }
+
+    // Rainha
+    ctx.fillStyle = queen.color;
+    ctx.fillRect(queen.x, queen.y, queen.w, queen.h);
+    ctx.fillStyle = "gold"; ctx.fillRect(queen.x + 5, queen.y - 10, queen.w - 10, 10);
+
+    // Pedras
+    ctx.fillStyle = "#555";
+    rocks.forEach(r => {
+        ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, 7); ctx.fill();
+    });
+
+    // Cogumelos
+    ctx.fillStyle = "#ff4757";
+    mushrooms.forEach(m => {
+        ctx.fillRect(m.x, m.y, m.w, m.h/2);
+        ctx.fillStyle = "white"; ctx.fillRect(m.x + m.w/3, m.y + m.h/2, m.w/3, m.h/2);
+        ctx.fillStyle = "#ff4757";
+    });
+
+    // Pontos
+    ctx.fillStyle = "white"; ctx.font = "25px Arial";
+    ctx.fillText(`PONTOS: ${score}`, 20, 40);
+    if (alice.isBig) ctx.fillText(`SUPER ALICE: ${Math.ceil(powerUpTimer/60)}s`, 20, 70);
+
+    if (gameOver) {
+        ctx.fillStyle = "black"; ctx.fillRect(0, 200, canvas.width, 100);
+        ctx.fillStyle = "red"; ctx.textAlign = "center";
+        ctx.fillText("A RAINHA FOI ESMAGADA!", canvas.width/2, 260);
+    }
+
+    update();
+    requestAnimationFrame(draw);
+}
+draw();
+</script>
+</body>
+</html>
