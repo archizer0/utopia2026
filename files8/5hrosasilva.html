@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>O Julgamento da Rainha de Copas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #1a0505;
+            font-family: 'Palatino', serif;
+        }
+        canvas {
+            display: block;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #ff4d4d;
+            pointer-events: none;
+            text-shadow: 2px 2px #000;
+        }
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            z-index: 100;
+        }
+        .hidden { display: none; }
+        .card {
+            box-shadow: 0 0 20px rgba(255, 0, 0, 0.5);
+            border: 2px solid #ff4d4d;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <h1 class="text-3xl font-bold italic">Sanidade: <span id="sanity-meter">100</span>%</h1>
+        <p class="text-xl">Cartas Coletadas: <span id="score">0</span></p>
+    </div>
+
+    <div id="start-screen" class="overlay">
+        <h1 class="text-6xl mb-4 text-red-600 uppercase tracking-widest font-bold">CORTEM AS CABEÇAS!</h1>
+        <p class="mb-8 text-xl italic text-gray-300">Fuja da Rainha. Colete as cartas. Não perca a razão.</p>
+        <button onclick="startGame()" class="px-8 py-4 bg-red-700 hover:bg-red-500 text-white font-bold rounded-full transition-all transform hover:scale-110 card">
+            ENTRAR NA TOCA DO COELHO
+        </button>
+    </div>
+
+    <div id="game-over" class="overlay hidden">
+        <h1 class="text-6xl mb-4 text-red-600">SENTENÇA EXECUTADA!</h1>
+        <p id="final-score" class="text-2xl mb-8 font-serif"></p>
+        <button onclick="location.reload()" class="px-8 py-4 bg-white text-black font-bold rounded-full hover:bg-gray-200 transition-all card">
+            RENASCER NO CHÁ DAS CINCO
+        </button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const sanityMeter = document.getElementById('sanity-meter');
+        const scoreDisplay = document.getElementById('score');
+
+        let gameActive = false;
+        let score = 0;
+        let sanity = 100;
+        let frameCount = 0;
+
+        // Configurações do Mundo
+        const world = {
+            gravity: 0.15,
+            friction: 0.98,
+            width: window.innerWidth,
+            height: window.innerHeight
+        };
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            world.width = canvas.width;
+            world.height = canvas.height;
+        });
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // Alice (Jogador)
+        const alice = {
+            x: 100,
+            y: 100,
+            vx: 0,
+            vy: 0,
+            size: 30,
+            color: '#87CEEB',
+            jumping: false,
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+               
+                // Efeito de oscilação surrealista
+                const pulse = Math.sin(frameCount * 0.05) * 5;
+               
+                // Vestido
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.moveTo(-15 - pulse, 20);
+                ctx.lineTo(15 + pulse, 20);
+                ctx.lineTo(0, -20);
+                ctx.fill();
+
+                // Cabeça (alvo da Rainha)
+                ctx.fillStyle = '#ffe0bd';
+                ctx.beginPath();
+                ctx.arc(0, -25, 10, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Avental branco
+                ctx.fillStyle = 'white';
+                ctx.fillRect(-5, -5, 10, 15);
+
+                ctx.restore();
+            },
+            update() {
+                this.vy += world.gravity;
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vx *= world.friction;
+
+                // Colisão Chão (Surreal: o chão pode sumir ou ser o teto)
+                if (this.y + this.size > world.height) {
+                    this.y = world.height - this.size;
+                    this.vy = 0;
+                    this.jumping = false;
+                }
+               
+                // Limites laterais
+                if (this.x < 0) this.x = world.width;
+                if (this.x > world.width) this.x = 0;
+            }
+        };
+
+        // A Rainha de Copas (Inimigo)
+        class Queen {
+            constructor() {
+                this.x = world.width + 100;
+                this.y = Math.random() * world.height;
+                this.speed = 2 + Math.random() * 3;
+                this.angle = 0;
+            }
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                this.angle += 0.1;
+                ctx.rotate(Math.sin(this.angle) * 0.2);
+
+                // Corpo de Coração
+                ctx.fillStyle = '#d40000';
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.bezierCurveTo(-20, -20, -40, 10, 0, 40);
+                ctx.bezierCurveTo(40, 10, 20, -20, 0, 0);
+                ctx.fill();
+
+                // Coroa de Ouro
+                ctx.fillStyle = '#ffd700';
+                ctx.beginPath();
+                ctx.moveTo(-10, -5);
+                ctx.lineTo(-15, -20);
+                ctx.lineTo(-5, -12);
+                ctx.lineTo(0, -25);
+                ctx.lineTo(5, -12);
+                ctx.lineTo(15, -20);
+                ctx.lineTo(10, -5);
+                ctx.fill();
+
+                ctx.restore();
+            }
+            update() {
+                this.x -= this.speed;
+                // Persegue levemente a altura de Alice
+                this.y += (alice.y - this.y) * 0.02;
+
+                if (this.x < -50) {
+                    this.x = world.width + 50;
+                    this.y = Math.random() * world.height;
+                    this.speed += 0.2;
+                }
+
+                // Colisão
+                const dx = this.x - alice.x;
+                const dy = this.y - alice.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                if (dist < 40) {
+                    sanity -= 1;
+                    ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
+                    ctx.fillRect(0,0, world.width, world.height);
+                }
+            }
+        }
+
+        // Cartas Colecionáveis
+        class Card {
+            constructor() {
+                this.reset();
+            }
+            reset() {
+                this.x = Math.random() * world.width;
+                this.y = -50;
+                this.speed = 1 + Math.random() * 3;
+                this.type = Math.random() > 0.5 ? '♥' : '♦';
+            }
+            draw() {
+                ctx.fillStyle = 'white';
+                ctx.fillRect(this.x, this.y, 30, 45);
+                ctx.fillStyle = 'red';
+                ctx.font = '16px serif';
+                ctx.fillText(this.type, this.x + 5, this.y + 20);
+            }
+            update() {
+                this.y += this.speed;
+                if (this.y > world.height) this.reset();
+
+                const dx = this.x - alice.x;
+                const dy = this.y - alice.y;
+                if (Math.sqrt(dx*dx + dy*dy) < 40) {
+                    score += 10;
+                    scoreDisplay.innerText = score;
+                    this.reset();
+                }
+            }
+        }
+
+        const queens = [new Queen(), new Queen()];
+        const cards = [new Card(), new Card(), new Card()];
+
+        // Controle
+        const keys = {};
+        window.addEventListener('keydown', e => keys[e.code] = true);
+        window.addEventListener('keyup', e => keys[e.code] = false);
+
+        function handleInput() {
+            if (keys['ArrowLeft'] || keys['KeyA']) alice.vx -= 0.8;
+            if (keys['ArrowRight'] || keys['KeyD']) alice.vx += 0.8;
+            if ((keys['Space'] || keys['ArrowUp'] || keys['KeyW']) && !alice.jumping) {
+                alice.vy = -12;
+                alice.jumping = true;
+            }
+        }
+
+        function drawBackground() {
+            // Gradiente Surrealista
+            const grd = ctx.createRadialGradient(world.width/2, world.height/2, 5, world.width/2, world.height/2, world.width);
+            grd.addColorStop(0, "#2b0000");
+            grd.addColorStop(1, "#000000");
+            ctx.fillStyle = grd;
+            ctx.fillRect(0, 0, world.width, world.height);
+
+            // Relógios derretendo de fundo
+            ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+            ctx.lineWidth = 2;
+            for(let i=0; i<5; i++) {
+                ctx.beginPath();
+                ctx.ellipse(200 + i*300, 200 + Math.sin(frameCount*0.01 + i)*50, 50, 80, Math.PI/4, 0, Math.PI*2);
+                ctx.stroke();
+            }
+        }
+
+        function gameLoop() {
+            if (!gameActive) return;
+
+            ctx.clearRect(0, 0, world.width, world.height);
+            drawBackground();
+           
+            handleInput();
+            alice.update();
+            alice.draw();
+
+            queens.forEach(q => {
+                q.update();
+                q.draw();
+            });
+
+            cards.forEach(c => {
+                c.update();
+                c.draw();
+            });
+
+            // Atualiza Sanidade
+            sanityMeter.innerText = Math.max(0, Math.floor(sanity));
+            if (sanity <= 0) {
+                endGame();
+            }
+
+            frameCount++;
+            requestAnimationFrame(gameLoop);
+        }
+
+        function startGame() {
+            document.getElementById('start-screen').classList.add('hidden');
+            gameActive = true;
+            gameLoop();
+        }
+
+        function endGame() {
+            gameActive = false;
+            document.getElementById('game-over').classList.remove('hidden');
+            document.getElementById('final-score').innerText = `Você coletou ${score} cartas antes de perder a cabeça!`;
+        }
+    </script>
+</body>
+</html>
