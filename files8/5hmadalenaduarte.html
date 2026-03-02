@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="pt-pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Alice no País das Maravilhas - Edição IA</title>
+    <style>
+        :root {
+            --sky-blue: #a2d2ff;
+            --grass-green: #70e000;
+            --alice-blue: #00b4d8;
+            --heart-red: #ef233c;
+            --mushroom-purple: #9b5de5;
+            --gold: #ffb703;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #333;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            touch-action: none;
+        }
+
+        #game-container {
+            position: relative;
+            width: 800px;
+            height: 600px;
+            background: linear-gradient(to bottom, var(--sky-blue), #ffffff);
+            box-shadow: 0 0 50px rgba(0,0,0,0.5);
+            overflow: hidden;
+            border-radius: 8px;
+            transition: background 1s ease;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            pointer-events: none;
+            color: #2b2d42;
+            font-size: 18px;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px rgba(255,255,255,0.8);
+            z-index: 5;
+        }
+
+        #lives-container {
+            display: flex;
+            gap: 2px;
+            flex-wrap: wrap;
+            max-width: 250px;
+            justify-content: flex-end;
+        }
+
+        #ai-assistant {
+            position: absolute;
+            bottom: 100px;
+            right: 20px;
+            width: 240px;
+            background: rgba(255, 255, 255, 0.95);
+            border: 3px solid var(--mushroom-purple);
+            border-radius: 15px;
+            padding: 12px;
+            font-size: 14px;
+            pointer-events: auto;
+            display: none;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            z-index: 100;
+        }
+
+        #ai-bubble {
+            font-style: italic;
+            margin-bottom: 10px;
+            color: #444;
+            max-height: 80px;
+            overflow-y: auto;
+            line-height: 1.4;
+        }
+
+        .ai-btn {
+            background: var(--mushroom-purple);
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 10px;
+            cursor: pointer;
+            width: 100%;
+            font-weight: bold;
+            transition: all 0.2s;
+            margin-top: 5px;
+        }
+
+        #overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            color: white; z-index: 200; text-align: center; padding: 20px;
+        }
+
+        #narrative-box {
+            margin: 15px 0;
+            font-style: italic;
+            color: var(--sky-blue);
+            max-width: 80%;
+            line-height: 1.5;
+        }
+
+        .btn {
+            padding: 15px 35px;
+            font-size: 20px;
+            background: var(--alice-blue);
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        #mobile-controls {
+            position: absolute; bottom: 20px; left: 0; width: 100%;
+            display: flex; justify-content: space-around; pointer-events: none;
+            display: none;
+        }
+
+        .control-btn {
+            width: 75px; height: 75px;
+            background: rgba(255,255,255,0.4);
+            border-radius: 50%; display: flex;
+            justify-content: center; align-items: center;
+            font-size: 32px; pointer-events: auto;
+            border: 2px solid white;
+            user-select: none;
+        }
+
+        @media (max-pointer: coarse) { #mobile-controls { display: flex; } }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="ui-layer">
+        <div>Nível: <span id="level-val">1</span> | Cartas: <span id="score-val">0</span>/<span id="target-val">5</span></div>
+        <div id="lives-container"></div>
+    </div>
+
+    <div id="ai-assistant">
+        <div id="ai-bubble">"Quem és tu?..."</div>
+        <button class="ai-btn" id="ask-ai-btn">✨ Pedir Sabedoria</button>
+        <button class="ai-btn" id="magic-potion-btn" style="background: var(--heart-red)">✨ Poção Aleatória</button>
+    </div>
+
+    <div id="overlay">
+        <h1 id="overlay-title">Alice no País das Maravilhas</h1>
+        <div id="narrative-box"></div>
+        <p id="overlay-desc">Cuidado! AS poções roxas agora perseguem-te em grupo!</p>
+        <button class="btn" id="main-action-btn" onclick="startGame()">Começar Jornada</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="mobile-controls">
+        <div class="control-btn" id="btn-left">⬅️</div>
+        <div class="control-btn" id="btn-up">⬆️</div>
+        <div class="control-btn" id="btn-right">➡️</div>
+    </div>
+</div>
+
+<script>
+    const apiKey = "";
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'alice-wonderland-ia';
+
+    const keys = {};
+    function resetKeys() {
+        for (let key in keys) keys[key] = false;
+    }
+
+    async function callGemini(prompt, systemPrompt) {
+        let retries = 0;
+        const maxRetries = 5;
+        const delays = [1000, 2000, 4000, 8000, 16000];
+        while (retries < maxRetries) {
+            try {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: prompt }] }],
+                        systemInstruction: { parts: [{ text: systemPrompt }] }
+                    })
+                });
+                const data = await response.json();
+                return data.candidates?.[0]?.content?.parts?.[0]?.text;
+            } catch (e) {
+                retries++;
+                await new Promise(r => setTimeout(r, delays[retries-1]));
+            }
+        }
+    }
+
+    async function triggerMagicPotion() {
+        const bubble = document.getElementById('ai-bubble');
+        const btn = document.getElementById('magic-potion-btn');
+        btn.disabled = true;
+        bubble.innerText = "A borbulhar...";
+
+        const prompt = `Gera um efeito mágico curto.`;
+        const text = await callGemini(prompt, "És a Lagarta. Fala em Português de Portugal.");
+        bubble.innerText = text || "Nada aconteceu...";
+       
+        if (text?.toLowerCase().includes("lento") || text?.toLowerCase().includes("chá")) {
+            baseSpeed = 3; setTimeout(() => baseSpeed = 5, 5000);
+        } else if (text?.toLowerCase().includes("cresceu") || text?.toLowerCase().includes("maior")) {
+            player.width = 50; player.height = 80; player.y -= 30;
+            setTimeout(() => { player.width = 35; player.height = 55; }, 5000);
+        } else {
+            speedBonus += 3; setTimeout(() => speedBonus = 0, 5000);
+        }
+        setTimeout(() => { btn.disabled = false; }, 8000);
+    }
+
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreElement = document.getElementById('score-val');
+    const targetElement = document.getElementById('target-val');
+    const levelElement = document.getElementById('level-val');
+    const livesContainer = document.getElementById('lives-container');
+    const overlay = document.getElementById('overlay');
+    const aiAssistant = document.getElementById('ai-assistant');
+
+    canvas.width = 800; canvas.height = 600;
+
+    let gameRunning = false;
+    let score = 0;
+    let targetScore = 5;
+    let level = 1;
+    let lives = 10;
+    let baseSpeed = 5;
+    let speedBonus = 0;
+    let pizzaActive = false;
+
+    const player = { x: 400, y: 500, width: 35, height: 55, velX: 0, velY: 0, jumping: false, grounded: false, color: '#00b4d8' };
+    const gravity = 0.5;
+    const friction = 0.8;
+    let platforms = [];
+    let items = [];
+
+    function initLevel() {
+        platforms = [
+            { x: 0, y: 550, width: 800, height: 50 },
+            { x: 100, y: 440, width: 140, height: 20 },
+            { x: 550, y: 440, width: 140, height: 20 },
+            { x: 325, y: 350, width: 150, height: 20 },
+            { x: 100, y: 220, width: 140, height: 20 },
+            { x: 550, y: 220, width: 140, height: 20 },
+            { x: 325, y: 120, width: 150, height: 20 }
+        ];
+        items = []; pizzaActive = false; score = 0; targetScore = 4 + level;
+        scoreElement.innerText = score; targetElement.innerText = targetScore; levelElement.innerText = level;
+       
+        // Inicializa com 2 cartas e várias poções dependendo do nível
+        spawnItem('card');
+        spawnItem('card');
+       
+        const numPotions = Math.min(1 + level, 5); // Aumenta o número de poções até 5
+        for(let i=0; i<numPotions; i++) {
+            spawnItem('potion');
+        }
+    }
+
+    function spawnItem(type) {
+        const plat = platforms[Math.floor(Math.random() * (platforms.length - 1)) + 1];
+        items.push({
+            type,
+            x: plat.x + Math.random()*(plat.width-30),
+            y: plat.y - 45,
+            width: 30,
+            height: 40,
+            velX: 0,
+            velY: 0,
+            grounded: false
+        });
+    }
+
+    function startGame() {
+        level = 1; lives = 10; speedBonus = 0;
+        resetKeys(); updateLivesDisplay(); initLevel();
+        overlay.style.display = 'none'; aiAssistant.style.display = 'block';
+        gameRunning = true; requestAnimationFrame(gameLoop);
+    }
+
+    function loseLife() {
+        lives--; updateLivesDisplay();
+        if (lives <= 0) gameOver();
+        else { player.x = 400; player.y = 100; player.velY = 0; resetKeys(); }
+    }
+
+    function updateLivesDisplay() { livesContainer.innerHTML = '❤️'.repeat(Math.max(0, lives)); }
+    async function nextLevel() { gameRunning = false; level++; initLevel(); gameRunning = true; requestAnimationFrame(gameLoop); }
+    async function gameOver() { gameRunning = false; overlay.style.display = 'flex'; }
+
+    window.addEventListener('keydown', e => { keys[e.code] = true; });
+    window.addEventListener('keyup', e => { keys[e.code] = false; });
+    document.getElementById('magic-potion-btn').onclick = triggerMagicPotion;
+
+    const setupMobile = (id, code) => {
+        const btn = document.getElementById(id);
+        btn.addEventListener('touchstart', e => { e.preventDefault(); keys[code] = true; });
+        btn.addEventListener('touchend', e => { e.preventDefault(); keys[code] = false; });
+    };
+    setupMobile('btn-left', 'ArrowLeft'); setupMobile('btn-right', 'ArrowRight'); setupMobile('btn-up', 'ArrowUp');
+
+    function update() {
+        if (!gameRunning) return;
+        const jumpStrength = -12;
+
+        if ((keys['ArrowUp'] || keys['Space'] || keys['KeyW']) && player.grounded) {
+            player.velY = jumpStrength;
+            player.grounded = false;
+        }
+
+        if (keys['ArrowLeft'] || keys['KeyA']) player.velX = -(baseSpeed + speedBonus);
+        else if (keys['ArrowRight'] || keys['KeyD']) player.velX = (baseSpeed + speedBonus);
+        else player.velX *= friction;
+
+        player.velY += gravity;
+        player.grounded = false;
+        checkPlatformCollisions(player);
+
+        player.x += player.velX;
+        player.y += player.velY;
+
+        if (player.x < 0) player.x = 0;
+        if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+        if (player.y > canvas.height) loseLife();
+
+        for (let i = items.length - 1; i >= 0; i--) {
+            let it = items[i];
+           
+            // IA DAS POÇÕES E CARTAS ✨
+            if (it.type === 'card') {
+                const dx = player.x - it.x;
+                const dist = Math.abs(dx);
+                if (dist < 150) {
+                    it.velX = dx > 0 ? -3 : 3;
+                } else {
+                    it.velX *= 0.9;
+                }
+            } else if (it.type === 'potion') {
+                // TODAS as poções perseguem a Alice
+                it.velX = it.x < player.x ? 1.8 : -1.8;
+            }
+
+            it.velY += gravity;
+            it.grounded = false;
+            checkPlatformCollisions(it);
+            it.x += it.velX;
+            it.y += it.velY;
+
+            if (it.x < 0) it.x = 0;
+            if (it.x > canvas.width - it.width) it.x = canvas.width - it.width;
+
+            // Colisão
+            if (player.x < it.x + it.width && player.x + player.width > it.x && player.y < it.y + it.height && player.y + player.height > it.y) {
+                if (it.type === 'card') {
+                    score++; items.splice(i, 1); spawnItem('card');
+                    if (score >= targetScore && !pizzaActive) { pizzaActive = true; spawnItem('pizza'); }
+                }
+                else if (it.type === 'potion') {
+                    loseLife();
+                    items.splice(i, 1);
+                    spawnItem('potion'); // Faz respawn da poção perseguidora
+                }
+                else if (it.type === 'pizza') nextLevel();
+            }
+        }
+    }
+
+    function checkPlatformCollisions(entity) {
+        for (let plat of platforms) {
+            if (entity.x + entity.width > plat.x && entity.x < plat.x + plat.width) {
+                if (entity.y + entity.height <= plat.y && entity.y + entity.height + entity.velY >= plat.y) {
+                    entity.grounded = true; entity.velY = 0; entity.y = plat.y - entity.height;
+                    return;
+                }
+            }
+        }
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        platforms.forEach(p => { ctx.fillStyle = '#2d6a4f'; ctx.beginPath(); ctx.roundRect(p.x, p.y, p.width, p.height, 5); ctx.fill(); });
+       
+        items.forEach(it => {
+            if (it.type === 'card') {
+                ctx.fillStyle = 'white'; ctx.beginPath(); ctx.roundRect(it.x, it.y, it.width, it.height, 3); ctx.fill();
+                ctx.fillStyle = 'red'; ctx.font = 'bold 12px sans-serif'; ctx.fillText('A', it.x+5, it.y+15);
+            } else if (it.type === 'potion') {
+                ctx.fillStyle = '#9b5de5'; ctx.beginPath(); ctx.moveTo(it.x+5, it.y+40); ctx.lineTo(it.x+25, it.y+40); ctx.lineTo(it.x+15, it.y); ctx.fill();
+                ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.beginPath(); ctx.arc(it.x+15, it.y+25, 4, 0, Math.PI*2); ctx.fill();
+            } else if (it.type === 'pizza') {
+                ctx.fillStyle = 'gold'; ctx.beginPath(); ctx.moveTo(it.x, it.y); ctx.lineTo(it.x+40, it.y); ctx.lineTo(it.x+20, it.y+40); ctx.fill();
+            }
+        });
+
+        // Desenhar Alice
+        ctx.fillStyle = player.color; ctx.beginPath();
+        ctx.moveTo(player.x, player.y + player.height);
+        ctx.lineTo(player.x + player.width, player.y + player.height);
+        ctx.lineTo(player.x + player.width - 5, player.y + 25);
+        ctx.lineTo(player.x + 5, player.y + 25); ctx.fill();
+        ctx.fillStyle = 'white'; ctx.fillRect(player.x + 10, player.y + 30, player.width - 20, 20);
+        ctx.fillStyle = '#ffe0bd'; ctx.beginPath(); ctx.arc(player.x + player.width/2, player.y + 12, 11, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#ffde00'; ctx.fillRect(player.x + 7, player.y + 2, player.width - 14, 10);
+    }
+
+    function gameLoop() { if (gameRunning) { update(); draw(); requestAnimationFrame(gameLoop); } }
+</script>
+</body>
+</html>
