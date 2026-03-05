@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="pt-pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cyber-Strike: Neon Protocol</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #050505;
+            font-family: 'Orbitron', sans-serif;
+            color: #fff;
+            user-select: none;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: radial-gradient(circle at center, #1a0b2e 0%, #050505 100%);
+        }
+
+        canvas {
+            display: block;
+            box-shadow: 0 0 50px rgba(0, 255, 255, 0.2);
+            image-rendering: pixelated;
+        }
+
+        .ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+            z-index: 10;
+        }
+
+        .hud-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .stats-box {
+            background: rgba(0, 0, 0, 0.6);
+            border-left: 4px solid #00f2ff;
+            padding: 10px 20px;
+            backdrop-filter: blur(5px);
+        }
+
+        .bar-container {
+            width: 200px;
+            height: 10px;
+            background: #222;
+            border-radius: 5px;
+            margin-top: 5px;
+            overflow: hidden;
+        }
+
+        .bar-fill {
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+
+        #hp-bar { background: linear-gradient(90deg, #ff0055, #ff4d00); width: 100%; }
+        #energy-bar { background: linear-gradient(90deg, #00f2ff, #0062ff); width: 100%; }
+
+        .overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            pointer-events: auto;
+            z-index: 100;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .btn-neon {
+            background: transparent;
+            border: 2px solid #00f2ff;
+            color: #00f2ff;
+            padding: 12px 30px;
+            font-size: 1.2rem;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: bold;
+            letter-spacing: 2px;
+            box-shadow: 0 0 15px rgba(0, 242, 255, 0.3);
+            z-index: 110;
+        }
+
+        .btn-neon:hover {
+            background: #00f2ff;
+            color: #000;
+            box-shadow: 0 0 30px rgba(0, 242, 255, 0.6);
+        }
+
+        .glow-text {
+            text-shadow: 0 0 10px #00f2ff, 0 0 20px #00f2ff;
+        }
+
+        .leaderboard-container {
+            width: 100%;
+            max-width: 550px;
+            max-height: 300px; /* Limita o tamanho vertical */
+            overflow-y: auto; /* Permite scroll se houver muitos recordes */
+            margin: 20px 0;
+            padding-right: 10px;
+            scrollbar-width: thin;
+            scrollbar-color: #00f2ff #000;
+        }
+
+        .leaderboard-container::-webkit-scrollbar {
+            width: 6px;
+        }
+        .leaderboard-container::-webkit-scrollbar-thumb {
+            background: #00f2ff;
+            border-radius: 3px;
+        }
+
+        .leaderboard-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+        }
+
+        .leaderboard-table th {
+            position: sticky;
+            top: 0;
+            background: #000;
+            border-bottom: 2px solid #00f2ff;
+            padding: 10px;
+            color: #00f2ff;
+            text-transform: uppercase;
+            z-index: 5;
+        }
+
+        .leaderboard-table td {
+            padding: 8px;
+            border-bottom: 1px solid rgba(0, 242, 255, 0.1);
+        }
+
+        .input-neon {
+            background: rgba(0, 242, 255, 0.1);
+            border: 1px solid #00f2ff;
+            color: #fff;
+            padding: 10px;
+            text-align: center;
+            font-family: 'Orbitron', sans-serif;
+            margin-bottom: 15px;
+            outline: none;
+            z-index: 110;
+        }
+
+        .scanline {
+            width: 100%;
+            height: 100%;
+            z-index: 200;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 4px, 3px 100%;
+            pointer-events: none;
+            position: absolute;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div class="scanline"></div>
+    <canvas id="gameCanvas"></canvas>
+   
+    <div class="ui-layer">
+        <div class="hud-top">
+            <div class="stats-box">
+                <div class="text-xs uppercase opacity-70">Integridade Estrutural</div>
+                <div class="bar-container"><div id="hp-bar" class="bar-fill"></div></div>
+                <div class="text-xs uppercase opacity-70 mt-2">Energia do Protocolo</div>
+                <div class="bar-container"><div id="energy-bar" class="bar-fill"></div></div>
+            </div>
+            <div class="stats-box text-right">
+                <div class="text-xs uppercase opacity-70">Pontuação</div>
+                <div id="score" class="text-2xl font-bold glow-text">000000</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Menu Inicial -->
+    <div id="start-menu" class="overlay">
+        <h1 class="text-6xl font-black mb-4 italic glow-text">CYBER-STRIKE</h1>
+        <p class="text-cyan-400 mb-6 text-sm">PRONTO PARA A SESSÃO, PILOTO?</p>
+        <input type="text" id="player-name" class="input-neon w-64" placeholder="INTRODUZ CALLSIGN" maxlength="12">
+        <button class="btn-neon" onclick="startGame()">Iniciar Missão</button>
+       
+        <!-- Tabela também visível no início para motivação -->
+        <div class="leaderboard-container mt-8 bg-black/40 border border-cyan-500/20 p-2 rounded">
+             <h3 class="text-cyan-400 text-xs font-bold mb-2 uppercase italic">Hall of Fame</h3>
+             <table class="leaderboard-table">
+                <thead>
+                    <tr>
+                        <th>PILOTO</th>
+                        <th>SCORE</th>
+                        <th>DATA</th>
+                    </tr>
+                </thead>
+                <tbody id="leaderboard-body-start">
+                    <!-- Registos -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Game Over -->
+    <div id="game-over" class="overlay hidden">
+        <h2 class="text-5xl font-bold mb-2 text-red-500">MISSÃO FALHOU</h2>
+        <p id="final-score" class="text-xl mb-4 text-cyan-400">PONTOS: 0</p>
+       
+        <div class="w-full max-w-xl bg-black/60 p-4 border border-cyan-500/30 rounded">
+            <h3 class="text-cyan-400 font-bold mb-2 underline italic">REGISTO DE RECORDES</h3>
+            <div class="leaderboard-container">
+                <table class="leaderboard-table mx-auto">
+                    <thead>
+                        <tr>
+                            <th>PILOTO</th>
+                            <th>SCORE</th>
+                            <th>DATA / HORA</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leaderboard-body-end">
+                        <!-- Registos -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <button class="btn-neon mt-6" onclick="location.reload()">Reiniciar Sistema</button>
+    </div>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getFirestore, collection, addDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
+    const firebaseConfig = JSON.parse(__firebase_config);
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'cyber-strike-v1';
+
+    let user = null;
+
+    const initAuth = async () => {
+        try {
+            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                await signInWithCustomToken(auth, __initial_auth_token);
+            } else {
+                await signInAnonymously(auth);
+            }
+        } catch (error) {
+            console.error("Falha na autenticação:", error);
+        }
+    };
+
+    onAuthStateChanged(auth, (u) => {
+        user = u;
+        if (user) loadLeaderboard();
+    });
+
+    initAuth();
+
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const hpBar = document.getElementById('hp-bar');
+    const energyBar = document.getElementById('energy-bar');
+    const scoreDisplay = document.getElementById('score');
+
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    let gameActive = false;
+    let score = 0;
+    let frame = 0;
+    let playerName = "ANÓNIMO";
+   
+    const player = {
+        x: canvas.width / 2, y: canvas.height * 0.8,
+        w: 40, h: 40, speed: 7, hp: 100, maxHp: 100,
+        energy: 100, bullets: [], lastShot: 0
+    };
+
+    const keys = {};
+    window.addEventListener('keydown', e => keys[e.code] = true);
+    window.addEventListener('keyup', e => keys[e.code] = false);
+
+    let enemies = [];
+    let particles = [];
+    let enemyBullets = [];
+
+    async function saveScore() {
+        if (!user) return;
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('pt-PT');
+        const timeStr = now.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
+        try {
+            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'scores'), {
+                name: playerName.toUpperCase(),
+                score: score,
+                userId: user.uid,
+                timestamp: Date.now(),
+                formattedDate: `${dateStr} ${timeStr}`
+            });
+            loadLeaderboard();
+        } catch (e) { console.error("Erro ao guardar:", e); }
+    }
+
+    async function loadLeaderboard() {
+        if (!user) return;
+        const bodyStart = document.getElementById('leaderboard-body-start');
+        const bodyEnd = document.getElementById('leaderboard-body-end');
+       
+        const loadingStr = '<tr><td colspan="3">A SINCRONIZAR...</td></tr>';
+        bodyStart.innerHTML = loadingStr;
+        bodyEnd.innerHTML = loadingStr;
+       
+        try {
+            const q = collection(db, 'artifacts', appId, 'public', 'data', 'scores');
+            const querySnapshot = await getDocs(q);
+            let scores = [];
+            querySnapshot.forEach(doc => scores.push(doc.data()));
+            scores.sort((a, b) => b.score - a.score);
+            const topScores = scores.slice(0, 15); // Carregar mais itens agora que temos scroll
+
+            const render = (body) => {
+                body.innerHTML = '';
+                if (topScores.length === 0) {
+                    body.innerHTML = '<tr><td colspan="3">SEM REGISTOS</td></tr>';
+                } else {
+                    topScores.forEach(s => {
+                        const dateDisplay = s.formattedDate || new Date(s.timestamp).toLocaleDateString('pt-PT');
+                        body.innerHTML += `
+                            <tr>
+                                <td>${s.name}</td>
+                                <td class="text-cyan-400 font-bold">${s.score}</td>
+                                <td class="opacity-60 text-[0.65rem]">${dateDisplay}</td>
+                            </tr>`;
+                    });
+                }
+            };
+            render(bodyStart);
+            render(bodyEnd);
+        } catch (e) { console.error("Erro ao carregar:", e); }
+    }
+
+    class Enemy {
+        constructor(type) {
+            this.type = type;
+            this.w = type === 'boss' ? 80 : 40;
+            this.h = type === 'boss' ? 80 : 40;
+            this.x = Math.random() * (canvas.width - this.w);
+            this.y = -100;
+            this.hp = type === 'boss' ? 50 : 2;
+            this.speed = type === 'scout' ? 5 : 2;
+            this.lastShot = 0;
+            this.angle = 0;
+        }
+        update() {
+            this.y += this.speed;
+            this.angle += 0.02;
+            if (Date.now() - this.lastShot > (this.type === 'boss' ? 600 : 2000)) {
+                this.shoot();
+                this.lastShot = Date.now();
+            }
+        }
+        shoot() {
+            if (this.type === 'boss') {
+                for(let i=0; i<8; i++) {
+                    enemyBullets.push({
+                        x: this.x + this.w/2, y: this.y + this.h/2,
+                        vx: Math.cos(i * Math.PI/4) * 4, vy: Math.sin(i * Math.PI/4) * 4, r: 6
+                    });
+                }
+            } else {
+                enemyBullets.push({ x: this.x + this.w/2, y: this.y + this.h, vx: 0, vy: 6, r: 4 });
+            }
+        }
+        draw() {
+            ctx.save();
+            ctx.translate(this.x + this.w/2, this.y + this.h/2);
+            ctx.rotate(this.angle);
+            ctx.strokeStyle = this.type === 'boss' ? '#ff00ff' : '#00ff00';
+            ctx.shadowBlur = 10; ctx.shadowColor = ctx.strokeStyle;
+            ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.moveTo(0, -this.h/2); ctx.lineTo(this.w/2, this.h/2); ctx.lineTo(-this.w/2, this.h/2); ctx.closePath();
+            ctx.stroke(); ctx.restore();
+        }
+    }
+
+    window.startGame = function() {
+        const input = document.getElementById('player-name').value;
+        if (input) playerName = input;
+        document.getElementById('start-menu').classList.add('hidden');
+        gameActive = true;
+        animate();
+    };
+
+    function gameOver() {
+        gameActive = false;
+        document.getElementById('game-over').classList.remove('hidden');
+        document.getElementById('final-score').innerText = `PONTOS: ${score}`;
+        saveScore();
+    }
+
+    function createExplosion(x, y, color) {
+        for(let i=0; i<10; i++) {
+            particles.push({ x, y, vx: (Math.random()-0.5)*8, vy: (Math.random()-0.5)*8, life: 1, decay: 0.03, color });
+        }
+    }
+
+    function update() {
+        if (!gameActive) return;
+
+        if ((keys['ArrowLeft'] || keys['KeyA']) && player.x > 0) player.x -= player.speed;
+        if ((keys['ArrowRight'] || keys['KeyD']) && player.x < canvas.width - player.w) player.x += player.speed;
+        if ((keys['ArrowUp'] || keys['KeyW']) && player.y > 0) player.y -= player.speed;
+        if ((keys['ArrowDown'] || keys['KeyS']) && player.y < canvas.height - player.h) player.y += player.speed;
+
+        if (Date.now() - player.lastShot > 150) {
+            player.bullets.push({x: player.x + player.w/2, y: player.y, speed: 12});
+            player.lastShot = Date.now();
+        }
+
+        if (keys['Space'] && player.energy >= 100) {
+            player.energy = 0;
+            createExplosion(player.x + player.w/2, player.y, '#00f2ff');
+            enemies.forEach(e => { e.hp -= 10; score += 100; });
+        }
+
+        if (frame % 60 === 0) enemies.push(new Enemy('scout'));
+        if (frame % 400 === 0) enemies.push(new Enemy('boss'));
+
+        player.bullets.forEach((b, i) => {
+            b.y -= b.speed;
+            if (b.y < -20) player.bullets.splice(i, 1);
+        });
+
+        enemyBullets.forEach((b, i) => {
+            b.x += b.vx; b.y += b.vy;
+            const dist = Math.sqrt(Math.pow(b.x - (player.x + player.w/2), 2) + Math.pow(b.y - (player.y + player.h/2), 2));
+            if (dist < 20) {
+                player.hp -= 10; enemyBullets.splice(i, 1);
+                createExplosion(player.x + player.w/2, player.y + player.h/2, '#ff0000');
+                if (player.hp <= 0) gameOver();
+            }
+            if (b.y > canvas.height + 20) enemyBullets.splice(i, 1);
+        });
+
+        enemies.forEach((e, i) => {
+            e.update();
+            player.bullets.forEach((b, bi) => {
+                if (b.x > e.x && b.x < e.x + e.w && b.y > e.y && b.y < e.y + e.h) {
+                    e.hp--; player.bullets.splice(bi, 1);
+                    if (e.hp <= 0) {
+                        score += e.type === 'boss' ? 1000 : 100;
+                        createExplosion(e.x+e.w/2, e.y+e.h/2, '#00ff00');
+                        enemies.splice(i, 1);
+                    }
+                }
+            });
+            if (e.y > canvas.height + 50) enemies.splice(i, 1);
+        });
+
+        particles.forEach((p, i) => {
+            p.x += p.vx; p.y += p.vy; p.life -= p.decay;
+            if (p.life <= 0) particles.splice(i, 1);
+        });
+
+        hpBar.style.width = player.hp + '%';
+        if (player.energy < 100) player.energy += 0.2;
+        energyBar.style.width = player.energy + '%';
+        scoreDisplay.innerText = score.toString().padStart(6, '0');
+        frame++;
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
+        for(let i=0; i<30; i++) ctx.fillRect((i*137+frame*2)%canvas.width, (i*251+frame*3)%canvas.height, 2, 2);
+        ctx.strokeStyle = '#00f2ff'; ctx.lineWidth = 3; ctx.shadowBlur = 15; ctx.shadowColor = '#00f2ff';
+        ctx.beginPath();
+        ctx.moveTo(player.x + player.w/2, player.y);
+        ctx.lineTo(player.x + player.w, player.y + player.h);
+        ctx.lineTo(player.x + player.w/2, player.y + player.h*0.7);
+        ctx.lineTo(player.x, player.y + player.h);
+        ctx.closePath(); ctx.stroke();
+        enemies.forEach(e => e.draw());
+        ctx.fillStyle = '#00f2ff';
+        player.bullets.forEach(b => ctx.fillRect(b.x-2, b.y, 4, 15));
+        ctx.fillStyle = '#ff0000'; ctx.shadowColor = '#ff0000';
+        enemyBullets.forEach(b => {
+            ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI*2); ctx.fill();
+        });
+        particles.forEach(p => {
+            ctx.globalAlpha = p.life; ctx.fillStyle = p.color;
+            ctx.fillRect(p.x, p.y, 3, 3);
+        });
+        ctx.globalAlpha = 1;
+    }
+
+    function animate() {
+        update();
+        draw();
+        if (gameActive) requestAnimationFrame(animate);
+    }
+</script>
+</body>
+</html>
