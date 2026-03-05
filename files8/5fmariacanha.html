@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Labirinto de Rosas da Alice - Verdadeiro 3D</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600&family=Mountains+of+Christmas:wght@700&display=swap');
+
+        body {
+            background-color: #050a11;
+            color: #f1f5f9;
+            font-family: 'Cinzel', serif;
+            touch-action: none; /* Previne zoom e scroll */
+            user-select: none;  /* Previne seleção de texto ao carregar botões */
+            overflow: hidden;
+            margin: 0;
+            padding: 0;
+        }
+
+        h1 {
+            font-family: 'Mountains of Christmas', cursive;
+            text-shadow: 0 0 10px rgba(255, 0, 0, 0.8);
+        }
+
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 0 40px rgba(0, 0, 0, 0.9);
+            border: 2px solid #4a1c1c;
+        }
+
+        canvas {
+            display: block;
+            width: 100% !important;
+            height: 100% !important;
+            outline: none;
+        }
+
+        .control-btn {
+            background: linear-gradient(145deg, #4a1c1c, #2b0f1a);
+            border: 2px solid #8b3a3a;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.6);
+            transition: background 0.1s;
+        }
+
+        .control-btn:active, .control-btn.active {
+            background: #8b3a3a;
+            box-shadow: inset 0 4px 6px rgba(0,0,0,0.5);
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(0.8); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-pop {
+            animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col items-center justify-center p-2 sm:p-4 bg-gradient-to-b from-[#0a0508] to-[#050a11]">
+
+    <!-- Bússola Mágica -->
+    <div id="compass-container" class="fixed top-4 left-4 w-12 h-12 sm:w-16 sm:h-16 bg-[#0a0508] bg-opacity-80 rounded-full border-2 border-[#8b3a3a] shadow-[0_0_15px_rgba(220,38,38,0.3)] flex items-center justify-center z-50 backdrop-blur-sm pointer-events-none">
+        <div id="compass-needle" class="absolute w-full h-full transition-transform duration-100 will-change-transform" style="transform: rotate(0deg);">
+            <!-- Letra N -->
+            <div class="absolute top-0 left-1/2 -translate-x-1/2 text-[10px] sm:text-[12px] font-black text-red-500 drop-shadow-[0_0_2px_black] z-10">N</div>
+            <!-- Metade Norte (Vermelha) apontando para a saída -->
+            <div class="absolute top-[15%] left-1/2 -translate-x-1/2 w-0 h-0 border-l-[4px] sm:border-l-[6px] border-r-[4px] sm:border-r-[6px] border-b-[14px] sm:border-b-[18px] border-l-transparent border-r-transparent border-b-red-600"></div>
+            <!-- Metade Sul (Branca) -->
+            <div class="absolute bottom-[15%] left-1/2 -translate-x-1/2 w-0 h-0 border-l-[4px] sm:border-l-[6px] border-r-[4px] sm:border-r-[6px] border-t-[14px] sm:border-t-[18px] border-l-transparent border-r-transparent border-t-gray-400"></div>
+        </div>
+        <!-- Eixo central -->
+        <div class="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-yellow-500 rounded-full absolute shadow-md border border-yellow-700 z-10"></div>
+    </div>
+
+    <!-- Botão do Mapa Mágico (Topo Direita) -->
+    <button id="btn-map" class="fixed top-4 right-4 bg-[#0a0508] bg-opacity-80 text-white px-3 py-2 sm:px-4 sm:py-2 rounded-lg border-2 border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.3)] z-50 font-sans font-bold flex items-center gap-2 hover:bg-blue-900 transition-colors pointer-events-auto text-sm sm:text-base" onclick="showMap()">
+        🗺️ Mapa (<span id="map-uses">2</span>)
+    </button>
+
+    <header class="text-center mb-2 z-20 shrink-0">
+        <h1 class="text-3xl sm:text-5xl text-red-500 mb-1">Labirinto de Rosas 3D</h1>
+        <p class="text-xs sm:text-sm text-gray-400 font-sans tracking-wider">Explore o labirinto livremente e encontre a saída!</p>
+    </header>
+
+    <main class="flex-1 flex flex-col items-center justify-center w-full max-w-4xl z-10 relative">
+        
+        <div class="flex justify-between w-full max-w-[800px] mb-2 px-2 font-sans text-sm sm:text-base text-red-200 shrink-0 z-20">
+            <span>Tempo: <span id="timeCounter" class="font-bold text-white">0.0</span>s</span>
+            <button onclick="initGame()" class="hover:text-white transition-colors underline decoration-red-500 underline-offset-4 cursor-pointer">Reiniciar</button>
+        </div>
+
+        <div id="game-container" class="w-full max-w-[800px] flex-1 min-h-[300px]"></div>
+
+        <!-- Controlos Mobile e Rato -->
+        <div class="flex flex-row justify-center items-end gap-6 mt-4 shrink-0 z-20 mx-auto pointer-events-auto">
+            <div class="grid grid-cols-3 gap-2 w-48">
+                <div></div>
+                <button class="control-btn h-14 rounded-lg flex items-center justify-center text-3xl" id="btn-up">⬆️</button>
+                <div></div>
+                <button class="control-btn h-14 rounded-lg flex items-center justify-center text-3xl" id="btn-left">⬅️</button>
+                <button class="control-btn h-14 rounded-lg flex items-center justify-center text-3xl" id="btn-down">⬇️</button>
+                <button class="control-btn h-14 rounded-lg flex items-center justify-center text-3xl" id="btn-right">➡️</button>
+            </div>
+            <!-- Botão de Tinta Mobile -->
+            <button class="control-btn w-16 h-16 rounded-full flex items-center justify-center text-3xl border-red-500 shadow-[0_0_15px_rgba(255,0,0,0.4)] transition-transform active:scale-90" id="btn-ink" title="Lançar Tinta">🎨</button>
+        </div>
+        
+        <p class="mt-4 text-gray-500 font-sans text-xs sm:text-sm shrink-0 text-center">
+            <span class="hidden sm:inline"><b>Clique no jogo</b> para bloquear o rato.<br></span>
+            <b>Mover:</b> Setas/WASD | <b>Espaço:</b> Tinta | <b>M:</b> Mapa Mágico
+        </p>
+
+        <!-- Overlay do Mapa (Escondido) -->
+        <div id="map-overlay" class="fixed inset-0 z-40 hidden items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-none">
+            <div class="bg-[#1a1a1a] p-3 sm:p-4 rounded-xl border-2 border-blue-500 shadow-[0_0_30px_rgba(59,130,246,0.5)] flex flex-col items-center">
+                <h3 class="text-blue-400 font-sans font-bold mb-2">Mapa a fechar em <span id="map-timer" class="text-white text-lg">5</span>s</h3>
+                <canvas id="minimap-canvas" width="250" height="250" class="rounded bg-[#2b2b2b] w-[200px] h-[200px] sm:w-[250px] sm:h-[250px]"></canvas>
+            </div>
+        </div>
+
+        <!-- Alerta de Perseguição -->
+        <div id="chase-warning" class="absolute top-4 left-1/2 -translate-x-1/2 bg-red-600 text-white font-sans font-bold px-4 py-2 rounded-full border-2 border-white shadow-[0_0_20px_rgba(220,38,38,0.8)] z-40 hidden animate-pulse pointer-events-none text-center">
+            ⚠️ AS CARTAS ATACAM! ⚠️<br>
+            <span class="text-sm">Foge durante <span id="chase-time">10</span>s</span>
+        </div>
+        
+        <!-- Flash de Dano -->
+        <div id="damage-flash" class="fixed inset-0 bg-red-600/60 z-50 opacity-0 transition-opacity duration-300 pointer-events-none"></div>
+
+    </main>
+
+    <!-- Modal de Vitória -->
+    <div id="victoryModal" class="fixed inset-0 bg-black/90 hidden items-center justify-center z-50 backdrop-blur-md">
+        <div class="bg-gradient-to-b from-[#2b0f1a] to-[#1a1a1a] p-8 rounded-2xl border-2 border-red-900 text-center animate-pop max-w-sm mx-4 shadow-[0_0_50px_rgba(220,38,38,0.5)]">
+            <div class="text-6xl mb-4">🐇☕🎩</div>
+            <h2 class="text-3xl font-bold text-red-500 mb-2 font-['Mountains_of_Christmas']">Escapou!</h2>
+            <p class="text-gray-300 font-sans mb-6">Encontrou o Coelho Branco em <span id="finalTime" class="font-bold text-white">0</span> segundos. Excelente sentido de orientação!</p>
+            <button onclick="initGame()" class="bg-red-700 hover:bg-red-600 text-white font-bold py-3 px-6 rounded-full w-full transition-transform transform hover:scale-105 shadow-[0_0_15px_rgba(220,38,38,0.5)]">
+                Jogar Novamente
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // --- UI e Estado do Jogo ---
+        const timeElement = document.getElementById('timeCounter');
+        const modal = document.getElementById('victoryModal');
+        const container = document.getElementById('game-container');
+        const compassNeedle = document.getElementById('compass-needle');
+        
+        let isPlaying = false;
+        let elapsedTime = 0;
+        let clock = new THREE.Clock(); // Para movimento independente da framerate
+        
+        // Estado do Mapa
+        let mapUsesLeft = 2;
+        let isMapOpen = false;
+        let mapTimeout = null;
+        let mapInterval = null;
+
+        // --- Constantes do Labirinto ---
+        const cols = 21; 
+        const rows = 21;
+        let maze = [];
+        let goal = { x: 0, y: 0 };
+        const WALL = 1;
+        const PATH = 0;
+        const offsetX = -cols / 2 + 0.5;
+        const offsetZ = -rows / 2 + 0.5;
+
+        // --- Variáveis Three.js ---
+        let scene, camera, renderer;
+        let mazeGroup, aliceGroup;
+        
+        // Estado das Cartas e Perseguição
+        let cards = [];
+        let isChasing = false;
+        let chaseTimer = 0;
+        
+        // Estado das teclas (Movimento contínuo)
+        const keys = {
+            forward: false,
+            backward: false,
+            left: false,
+            right: false
+        };
+
+        // Materiais reutilizáveis
+        const matWall = new THREE.MeshStandardMaterial({ color: 0x7cb342, roughness: 0.9 }); // VERDE CLARO
+        const matRose = new THREE.MeshStandardMaterial({ color: 0xff0033, roughness: 0.3 }); // Vermelho mais vivo
+        const matLeaf = new THREE.MeshStandardMaterial({ color: 0x228b22, roughness: 0.9 }); // Verde para as folhas da rosa
+        const matFloorLight = new THREE.MeshStandardMaterial({ color: 0xd4c4a1, roughness: 0.8 });
+        const matFloorDark = new THREE.MeshStandardMaterial({ color: 0xc3b08c, roughness: 0.8 });
+
+        // Textura da Rainha de Copas
+        function createCardTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128; canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            
+            ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, 128, 256);
+            ctx.strokeStyle = '#dc2626'; ctx.lineWidth = 8; ctx.strokeRect(4, 4, 120, 248);
+            
+            ctx.fillStyle = '#dc2626'; ctx.textAlign = 'center';
+            
+            ctx.font = 'bold 36px Arial'; ctx.fillText('Q', 30, 40);
+            ctx.font = '30px Arial'; ctx.fillText('♥', 30, 70);
+            
+            ctx.save(); ctx.translate(128, 256); ctx.rotate(Math.PI);
+            ctx.font = 'bold 36px Arial'; ctx.fillText('Q', 30, 40);
+            ctx.font = '30px Arial'; ctx.fillText('♥', 30, 70);
+            ctx.restore();
+            
+            ctx.font = '80px Arial'; ctx.fillText('♥', 64, 155);
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        const matCard = new THREE.MeshStandardMaterial({ map: createCardTexture(), roughness: 0.5 });
+
+        initThreeJS();
+
+        function initThreeJS() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x050a11);
+            scene.fog = new THREE.Fog(0x050a11, 2, 12); // Nevoeiro intenso para mistério
+
+            // Câmara (Será adicionada à Alice para Visão em 3ª Pessoa)
+            camera = new THREE.PerspectiveCamera(65, container.clientWidth / container.clientHeight, 0.1, 100);
+            
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            // Luzes
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+            dirLight.position.set(10, 20, 10);
+            dirLight.castShadow = true;
+            dirLight.shadow.camera.left = -15; dirLight.shadow.camera.right = 15;
+            dirLight.shadow.camera.top = 15; dirLight.shadow.camera.bottom = -15;
+            scene.add(dirLight);
+
+            window.addEventListener('resize', () => {
+                camera.aspect = container.clientWidth / container.clientHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(container.clientWidth, container.clientHeight);
+            });
+
+            animate();
+        }
+
+        // --- Geração Aleatória de Labirinto Perfeito ---
+        function generateMaze() {
+            maze = Array(rows).fill().map(() => Array(cols).fill(WALL));
+            const stack = [];
+            const startX = 1;
+            const startY = 1;
+            
+            maze[startY][startX] = PATH;
+            stack.push({x: startX, y: startY});
+
+            while (stack.length > 0) {
+                const current = stack[stack.length - 1];
+                const neighbors = getUnvisitedNeighbors(current.x, current.y);
+
+                if (neighbors.length > 0) {
+                    const next = neighbors[Math.floor(Math.random() * neighbors.length)];
+                    maze[current.y + (next.y - current.y) / 2][current.x + (next.x - current.x) / 2] = PATH;
+                    maze[next.y][next.x] = PATH;
+                    stack.push(next);
+                } else {
+                    stack.pop();
+                }
+            }
+            
+            // Criar a saída na borda inferior
+            maze[rows-2][cols-2] = PATH; 
+            maze[rows-3][cols-2] = PATH; 
+            maze[rows-1][cols-2] = PATH; 
+            
+            goal = { x: cols-2, y: rows-1 }; 
+        }
+
+        function getUnvisitedNeighbors(x, y) {
+            const neighbors = [];
+            const dirs = [{dx: 0, dy: -2}, {dx: 2, dy: 0}, {dx: 0, dy: 2}, {dx: -2, dy: 0}];
+            for (let dir of dirs) {
+                const nx = x + dir.dx;
+                const ny = y + dir.dy;
+                if (nx > 0 && nx < cols - 1 && ny > 0 && ny < rows - 1 && maze[ny][nx] === WALL) {
+                    neighbors.push({x: nx, y: ny});
+                }
+            }
+            return neighbors;
+        }
+
+        // --- Construir o Mundo 3D ---
+        function build3DWorld() {
+            if (mazeGroup) scene.remove(mazeGroup);
+            mazeGroup = new THREE.Group();
+            
+            // PAREDES MAIS ALTAS PARA IMERSÃO (Altura = 2)
+            const wallGeo = new THREE.BoxGeometry(1, 2, 1);
+            const floorGeo = new THREE.PlaneGeometry(1, 1);
+            
+            // Geometria da Rosa Melhorada
+            const roseFlowerGeo = new THREE.DodecahedronGeometry(0.18);
+            const roseLeafGeo = new THREE.ConeGeometry(0.25, 0.15, 4);
+
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    const posX = x + offsetX;
+                    const posZ = y + offsetZ;
+
+                    // Chão
+                    const floor = new THREE.Mesh(floorGeo, (x + y) % 2 === 0 ? matFloorLight : matFloorDark);
+                    floor.rotation.x = -Math.PI / 2;
+                    floor.position.set(posX, 0, posZ);
+                    floor.receiveShadow = true;
+                    mazeGroup.add(floor);
+
+                    // Paredes
+                    if (maze[y][x] === WALL) {
+                        const wall = new THREE.Mesh(wallGeo, matWall);
+                        wall.position.set(posX, 1, posZ); // Centrado na altura 1 (2/2)
+                        wall.castShadow = true;
+                        wall.receiveShadow = true;
+                        mazeGroup.add(wall);
+
+                        // MULTIPLAS ROSAS VISTOSAS NAS SEBES
+                        // Colocamos de 1 a 3 rosas por bloco de parede para o labirinto ficar cheio delas!
+                        const numRosas = Math.floor(Math.random() * 3) + 1; 
+                        for(let i = 0; i < numRosas; i++) {
+                            const roseGroup = new THREE.Group();
+                            
+                            const flower = new THREE.Mesh(roseFlowerGeo, matRose);
+                            flower.position.y = 0.05;
+                            flower.castShadow = true;
+                            
+                            const leaves = new THREE.Mesh(roseLeafGeo, matLeaf);
+                            leaves.rotation.y = Math.PI / 4;
+                            leaves.position.y = -0.05;
+                            
+                            roseGroup.add(flower);
+                            roseGroup.add(leaves);
+                            
+                            // Fixar as rosas nas faces exteriores das paredes para serem muito visíveis
+                            const side = Math.floor(Math.random() * 4);
+                            let rx = posX, rz = posZ;
+                            if(side === 0) rx += 0.52; // Face Direita
+                            if(side === 1) rx -= 0.52; // Face Esquerda
+                            if(side === 2) rz += 0.52; // Face Frente
+                            if(side === 3) rz -= 0.52; // Face Trás
+                            
+                            roseGroup.position.set(
+                                rx + (Math.random() - 0.5) * 0.4, // Ligeiro desvio lateral na própria face
+                                0.4 + Math.random() * 1.2,        // Altura aleatória na parede
+                                rz + (Math.random() - 0.5) * 0.4
+                            );
+                            
+                            // Rodar para a rosa "olhar" para fora da sebe de forma natural
+                            if(side === 0) roseGroup.rotation.z = -Math.PI/2;
+                            if(side === 1) roseGroup.rotation.z = Math.PI/2;
+                            if(side === 2) roseGroup.rotation.x = Math.PI/2;
+                            if(side === 3) roseGroup.rotation.x = -Math.PI/2;
+
+                            mazeGroup.add(roseGroup);
+                        }
+                    }
+                }
+            }
+
+            // O Coelho (Objetivo)
+            const rabbitGroup = new THREE.Group();
+            const matWhite = new THREE.MeshStandardMaterial({ color: 0xffffff });
+            const body = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.25, 0.5, 16), matWhite);
+            body.position.y = 0.25;
+            body.castShadow = true;
+            const ear1 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.4, 8), matWhite);
+            ear1.position.set(-0.1, 0.6, 0); ear1.rotation.z = 0.2;
+            const ear2 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.4, 8), matWhite);
+            ear2.position.set(0.1, 0.6, 0); ear2.rotation.z = -0.2;
+            rabbitGroup.add(body, ear1, ear2);
+            rabbitGroup.position.set(goal.x + offsetX, 0, goal.y + offsetZ + 0.5);
+            mazeGroup.add(rabbitGroup);
+
+            // --- CARTAS (ARMADILHAS) ---
+            const emptySpots = [];
+            for (let y = 1; y < rows - 1; y++) {
+                for (let x = 1; x < cols - 1; x++) {
+                    // Evitar colocar cartas coladas ao ponto de partida
+                    if (maze[y][x] === PATH && Math.hypot(x - 1, y - 1) > 3) {
+                        emptySpots.push({x, y});
+                    }
+                }
+            }
+            emptySpots.sort(() => Math.random() - 0.5); // Baralhar posições
+            
+            const cardGeo = new THREE.BoxGeometry(0.4, 0.6, 0.05);
+            const numCards = Math.min(6, emptySpots.length); // Criar até 6 cartas perigosas
+            
+            for (let i = 0; i < numCards; i++) {
+                const spot = emptySpots[i];
+                const card = new THREE.Mesh(cardGeo, matCard);
+                card.position.set(spot.x + offsetX, 0.5, spot.y + offsetZ);
+                card.castShadow = true;
+                card.userData = {
+                    spawnPos: card.position.clone(),
+                    offset: Math.random() * Math.PI * 2
+                };
+                scene.add(card);
+                cards.push(card);
+            }
+
+            scene.add(mazeGroup);
+
+            // --- CRIAR A ALICE (O JOGADOR) ---
+            if (aliceGroup) scene.remove(aliceGroup);
+            aliceGroup = new THREE.Group();
+            
+            // Corpo da Alice
+            const matDress = new THREE.MeshStandardMaterial({ color: 0x3b82f6 });
+            const dress = new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.7, 16), matDress);
+            dress.position.y = 0.35;
+            dress.castShadow = true;
+            
+            const matHair = new THREE.MeshStandardMaterial({ color: 0xfacc15 });
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 16), matHair);
+            head.position.y = 0.8;
+            head.castShadow = true;
+
+            aliceGroup.add(dress, head);
+
+            // Adicionar uma luz à Alice (Luz na ponta do nariz para ver nos corredores)
+            const playerLight = new THREE.PointLight(0xffffff, 0.8, 5);
+            playerLight.position.set(0, 1, 0);
+            aliceGroup.add(playerLight);
+
+            // ANEXAR CÂMARA À ALICE (Visão em 3ª Pessoa Livre)
+            aliceGroup.add(camera);
+            // Colocar câmara atrás (Z positivo) e acima (Y positivo) - MAIS PRÓXIMA PARA NÃO VER ATRAVÉS DAS PAREDES
+            camera.position.set(0, 1.5, 0.6); 
+            // Apontar a câmara ligeiramente para baixo
+            camera.rotation.set(-0.1, 0, 0);
+
+            scene.add(aliceGroup);
+
+            // Colocar Alice no início do labirinto
+            aliceGroup.position.set(1 + offsetX, 0, 1 + offsetZ);
+            aliceGroup.rotation.y = Math.PI; // Virada para a frente (Z negativo)
+        }
+
+        // --- MOTOR DE FÍSICA E COLISÕES REAIS ---
+        function checkCollision(px, pz, customRadius = 0.35) {
+            const playerRadius = customRadius; // 0.35 para o jogador, menor para a tinta
+            
+            // Descobrir em que célula a Alice está
+            const gridX = Math.round(px - offsetX);
+            const gridZ = Math.round(pz - offsetZ);
+
+            // Verificar as 9 células em redor (AABB Circle Collision)
+            for(let z = gridZ - 1; z <= gridZ + 1; z++) {
+                for(let x = gridX - 1; x <= gridX + 1; x++) {
+                    // Se estiver fora dos limites ou for uma parede
+                    if (z < 0 || z >= rows || x < 0 || x >= cols || maze[z][x] === WALL) {
+                        const wallX = x + offsetX;
+                        const wallZ = z + offsetZ;
+                        
+                        // Encontrar o ponto mais próximo do quadrado da parede ao círculo do jogador
+                        const closestX = Math.max(wallX - 0.5, Math.min(px, wallX + 0.5));
+                        const closestZ = Math.max(wallZ - 0.5, Math.min(pz, wallZ + 0.5));
+                        
+                        const dx = px - closestX;
+                        const dz = pz - closestZ;
+                        
+                        // Se a distância for menor que o raio, há colisão!
+                        if ((dx * dx + dz * dz) < (playerRadius * playerRadius)) {
+                            return true; 
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
+        // --- SISTEMA DE INIMIGOS (CARTAS) ---
+        function startChase() {
+            if (isChasing) return;
+            isChasing = true;
+            chaseTimer = 10;
+            document.getElementById('chase-warning').classList.remove('hidden');
+        }
+
+        function catchPlayer() {
+            // Efeito de Dano (Pisca vermelho)
+            const flash = document.getElementById('damage-flash');
+            flash.classList.remove('opacity-0');
+            flash.classList.add('opacity-100');
+            setTimeout(() => {
+                flash.classList.remove('opacity-100');
+                flash.classList.add('opacity-0');
+            }, 300);
+
+            // Penalização
+            elapsedTime += 15; // +15 segundos ao tempo!
+            
+            // Termina a perseguição e repõe cartas
+            isChasing = false;
+            document.getElementById('chase-warning').classList.add('hidden');
+            cards.forEach(card => card.position.copy(card.userData.spawnPos));
+        }
+
+        // --- SISTEMA DE TINTA (MARCAR CAMINHO) ---
+        let inkSplats = [];
+        let projectiles = [];
+
+        function shootInkJet() {
+            if (!isPlaying || !aliceGroup) return;
+
+            // Criar a "gota" de tinta que voa
+            const geo = new THREE.SphereGeometry(0.08, 8, 8);
+            const mat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+            const drop = new THREE.Mesh(geo, mat);
+            
+            // Começa na posição do jogador, à altura do peito
+            drop.position.copy(aliceGroup.position);
+            drop.position.y = 1.2;
+            
+            // Direção para onde o jogador está a olhar
+            const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(aliceGroup.quaternion).normalize();
+            
+            scene.add(drop);
+            projectiles.push({ mesh: drop, dir: dir });
+        }
+
+        function createSplat(x, z) {
+            const splatGroup = new THREE.Group();
+            // depthWrite: false evita que a tinta pisque ("z-fighting") ao colidir com o chão
+            const matInk = new THREE.MeshBasicMaterial({ color: 0xcc0000, depthWrite: false }); 
+            
+            // Mancha principal
+            const geoMain = new THREE.CircleGeometry(0.2 + Math.random() * 0.1, 16);
+            const mainSplat = new THREE.Mesh(geoMain, matInk);
+            mainSplat.rotation.x = -Math.PI / 2;
+            mainSplat.position.set(0, 0.01 + Math.random() * 0.005, 0); // Ligeiramente acima do chão
+            splatGroup.add(mainSplat);
+
+            // Gotículas salpicadas em redor
+            for(let i=0; i<4; i++) {
+                const geoDrop = new THREE.CircleGeometry(0.03 + Math.random() * 0.05, 8);
+                const drop = new THREE.Mesh(geoDrop, matInk);
+                drop.rotation.x = -Math.PI / 2;
+                drop.position.set((Math.random() - 0.5) * 0.5, 0.01 + Math.random() * 0.005, (Math.random() - 0.5) * 0.5);
+                splatGroup.add(drop);
+            }
+
+            splatGroup.position.set(x, 0, z);
+            scene.add(splatGroup);
+            inkSplats.push(splatGroup);
+        }
+
+        // --- SISTEMA DE MAPA ---
+        function drawMiniMap() {
+            const canvas = document.getElementById('minimap-canvas');
+            const ctx = canvas.getContext('2d');
+            const cellSize = canvas.width / cols;
+
+            // Fundo escuro
+            ctx.fillStyle = '#050a11';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Desenhar Paredes e Caminhos
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    if (maze[y][x] === WALL) {
+                        ctx.fillStyle = '#7cb342'; // Verde
+                        ctx.fillRect(x * cellSize, y * cellSize, cellSize + 0.5, cellSize + 0.5); // +0.5 previne falhas nas bordas
+                    } else {
+                        ctx.fillStyle = '#d4c4a1'; // Chão areia
+                        ctx.fillRect(x * cellSize, y * cellSize, cellSize + 0.5, cellSize + 0.5);
+                    }
+                }
+            }
+
+            // Ponto de Saída (Coelho)
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc((goal.x + 0.5) * cellSize, (goal.y + 0.5) * cellSize, cellSize * 0.4, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Posição da Alice
+            if (aliceGroup) {
+                const aliceGridX = aliceGroup.position.x - offsetX;
+                const aliceGridZ = aliceGroup.position.z - offsetZ;
+                
+                // Ponto azul do jogador
+                ctx.fillStyle = '#3b82f6';
+                ctx.beginPath();
+                ctx.arc(aliceGridX * cellSize, aliceGridZ * cellSize, cellSize * 0.4, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Linha indicando para onde está a olhar
+                const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(aliceGroup.quaternion).normalize();
+                ctx.strokeStyle = '#facc15';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(aliceGridX * cellSize, aliceGridZ * cellSize);
+                ctx.lineTo((aliceGridX + dir.x * 1.5) * cellSize, (aliceGridZ + dir.z * 1.5) * cellSize);
+                ctx.stroke();
+            }
+        }
+
+        function showMap() {
+            if (!isPlaying || isMapOpen || mapUsesLeft <= 0) return;
+            
+            // Consumir 1 uso
+            mapUsesLeft--;
+            document.getElementById('map-uses').innerText = mapUsesLeft;
+            if (mapUsesLeft === 0) {
+                document.getElementById('btn-map').classList.add('opacity-50', 'cursor-not-allowed');
+            }
+            
+            // Abrir Interface
+            isMapOpen = true;
+            const overlay = document.getElementById('map-overlay');
+            overlay.classList.remove('hidden');
+            overlay.classList.add('flex');
+            
+            // Inicializar Relógio do Mapa
+            let timeLeft = 5;
+            document.getElementById('map-timer').innerText = timeLeft;
+            
+            mapInterval = setInterval(() => {
+                timeLeft--;
+                document.getElementById('map-timer').innerText = timeLeft;
+                if(timeLeft <= 0) clearInterval(mapInterval);
+            }, 1000);
+
+            // Fechar o mapa automaticamente
+            mapTimeout = setTimeout(() => {
+                closeMap();
+            }, 5000);
+        }
+
+        function closeMap() {
+            isMapOpen = false;
+            const overlay = document.getElementById('map-overlay');
+            overlay.classList.add('hidden');
+            overlay.classList.remove('flex');
+            clearInterval(mapInterval);
+            clearTimeout(mapTimeout);
+        }
+
+        // --- LOOP PRINCIPAL DO JOGO ---
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            const delta = clock.getDelta(); // Tempo desde a última frame
+            
+            if (isPlaying) {
+                // Atualizar Tempo
+                elapsedTime += delta;
+                timeElement.innerText = elapsedTime.toFixed(1);
+
+                // --- SISTEMA DE MOVIMENTO (AGORA COM STRAFING) ---
+                const moveSpeed = 3.5; // Unidades por segundo
+
+                let speedZ = 0; // Frente / Trás
+                let speedX = 0; // Esquerda / Direita (Andar de lado)
+
+                if (keys.forward) speedZ = moveSpeed;
+                if (keys.backward) speedZ = -moveSpeed * 0.6; // Anda para trás mais devagar
+                if (keys.left) speedX = -moveSpeed * 0.8;     // Passo lateral esquerdo
+                if (keys.right) speedX = moveSpeed * 0.8;     // Passo lateral direito
+
+                if (speedZ !== 0 || speedX !== 0) {
+                    // Calcular vetores de direção baseados para onde a Alice está virada
+                    const dirZ = new THREE.Vector3(0, 0, -1).applyQuaternion(aliceGroup.quaternion).normalize();
+                    const dirX = new THREE.Vector3(1, 0, 0).applyQuaternion(aliceGroup.quaternion).normalize();
+
+                    const dx = (dirZ.x * speedZ + dirX.x * speedX) * delta;
+                    const dz = (dirZ.z * speedZ + dirX.z * speedX) * delta;
+
+                    // Deslizamento (Sliding) contra as paredes: Move eixo a eixo
+                    if (!checkCollision(aliceGroup.position.x + dx, aliceGroup.position.z)) {
+                        aliceGroup.position.x += dx;
+                    }
+                    if (!checkCollision(aliceGroup.position.x, aliceGroup.position.z + dz)) {
+                        aliceGroup.position.z += dz;
+                    }
+                }
+
+                // --- LÓGICA DAS CARTAS INIMIGAS ---
+                if (isChasing) {
+                    chaseTimer -= delta;
+                    if (chaseTimer <= 0) {
+                        isChasing = false;
+                        document.getElementById('chase-warning').classList.add('hidden');
+                        cards.forEach(card => card.position.y = 0.5); // Voltam a flutuar direito
+                    } else {
+                        document.getElementById('chase-time').innerText = Math.ceil(chaseTimer);
+                    }
+                }
+
+                cards.forEach(card => {
+                    if (!isChasing) {
+                        // Flutuar e Rodar Calmas
+                        card.rotation.y += delta;
+                        card.position.y = 0.5 + Math.sin(elapsedTime * 2 + card.userData.offset) * 0.1;
+
+                        // Se tocar no jogador (Armadilha ativa)
+                        if (card.position.distanceTo(aliceGroup.position) < 0.6) {
+                            startChase();
+                        }
+                    } else {
+                        // PERSEGUIÇÃO
+                        const dir = new THREE.Vector3().subVectors(aliceGroup.position, card.position);
+                        dir.y = 0;
+                        if (dir.lengthSq() > 0.001) {
+                            dir.normalize();
+                            
+                            // Rodar para olhar para a Alice
+                            card.rotation.y = Math.atan2(dir.x, dir.z);
+
+                            // Velocidade das Cartas (2.0 contra 3.5 do Jogador - dá para fugir!)
+                            const cardSpeed = 2.0; 
+                            const moveX = dir.x * cardSpeed * delta;
+                            const moveZ = dir.z * cardSpeed * delta;
+
+                            // Cartas também colidem com as paredes para ser justo
+                            if (!checkCollision(card.position.x + moveX, card.position.z, 0.2)) {
+                                card.position.x += moveX;
+                            }
+                            if (!checkCollision(card.position.x, card.position.z + moveZ, 0.2)) {
+                                card.position.z += moveZ;
+                            }
+                        }
+
+                        // Se a carta apanhar a Alice
+                        if (card.position.distanceTo(aliceGroup.position) < 0.5) {
+                            catchPlayer();
+                        }
+                    }
+                });
+
+                // --- ATUALIZAR PROJÉTEIS DE TINTA ---
+                for (let i = projectiles.length - 1; i >= 0; i--) {
+                    let p = projectiles[i];
+                    // Mover projétil
+                    p.mesh.position.addScaledVector(p.dir, 8 * delta); // Velocidade do jato
+                    p.mesh.position.y -= 3 * delta; // Gravidade a puxar a tinta para o chão
+                    
+                    // Colisão com o chão
+                    if (p.mesh.position.y <= 0.02) {
+                        createSplat(p.mesh.position.x, p.mesh.position.z);
+                        scene.remove(p.mesh);
+                        projectiles.splice(i, 1);
+                        continue;
+                    }
+                    // Colisão com as paredes (usamos um raio menor: 0.1)
+                    if (checkCollision(p.mesh.position.x, p.mesh.position.z, 0.1)) {
+                        createSplat(p.mesh.position.x, p.mesh.position.z);
+                        scene.remove(p.mesh);
+                        projectiles.splice(i, 1);
+                    }
+                }
+
+                // --- ATUALIZAR BÚSSOLA MÁGICA ---
+                const goalGlobalX = goal.x + offsetX;
+                const goalGlobalZ = goal.y + offsetZ;
+                
+                const dxGoal = goalGlobalX - aliceGroup.position.x;
+                const dzGoal = goalGlobalZ - aliceGroup.position.z;
+                
+                // Vetor em direção à saída
+                const targetDir = new THREE.Vector3(dxGoal, 0, dzGoal).normalize();
+                
+                // Vetores locais do jogador
+                const forwardDir = new THREE.Vector3(0, 0, -1).applyQuaternion(aliceGroup.quaternion);
+                const rightDir = new THREE.Vector3(1, 0, 0).applyQuaternion(aliceGroup.quaternion);
+
+                // Calcular o ângulo relativo entre a direção que o jogador olha e a saída
+                const dotForward = targetDir.dot(forwardDir);
+                const dotRight = targetDir.dot(rightDir);
+                
+                const angleRad = Math.atan2(dotRight, dotForward);
+                const angleDeg = angleRad * (180 / Math.PI);
+                
+                // Rodar a agulha da bússola no ecrã
+                compassNeedle.style.transform = `rotate(${angleDeg}deg)`;
+
+                // Atualizar o Mapa em tempo real se estiver aberto
+                if (isMapOpen) {
+                    drawMiniMap();
+                }
+
+                // Verificar Vitória (Distância entre Alice e o Coelho)
+                const distToGoal = Math.hypot(dxGoal, dzGoal);
+                
+                if (distToGoal < 0.8) {
+                    isPlaying = false;
+                    document.getElementById('finalTime').innerText = elapsedTime.toFixed(1);
+                    setTimeout(() => {
+                        modal.classList.remove('hidden');
+                        modal.classList.add('flex');
+                    }, 200);
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // --- CONTROLOS UNIVERSAIS ---
+        
+        // Teclado - Código mais robusto para garantir que as setas do PC funcionam sempre
+        window.addEventListener('keydown', (e) => {
+            if(!isPlaying) return;
+            const key = e.key ? e.key.toLowerCase() : '';
+            const code = e.code || '';
+            if (code === 'ArrowUp' || key === 'arrowup' || key === 'w') keys.forward = true;
+            if (code === 'ArrowDown' || key === 'arrowdown' || key === 's') keys.backward = true;
+            if (code === 'ArrowLeft' || key === 'arrowleft' || key === 'a') keys.left = true;
+            if (code === 'ArrowRight' || key === 'arrowright' || key === 'd') keys.right = true;
+            
+            // Disparar Jato de Tinta com o Espaço
+            if (code === 'Space' || key === ' ') {
+                e.preventDefault(); // Evita que a página faça scroll para baixo ao carregar no espaço
+                shootInkJet();
+            }
+            
+            // Abrir Mapa com a tecla M
+            if (key === 'm') {
+                showMap();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            const key = e.key ? e.key.toLowerCase() : '';
+            const code = e.code || '';
+            if (code === 'ArrowUp' || key === 'arrowup' || key === 'w') keys.forward = false;
+            if (code === 'ArrowDown' || key === 'arrowdown' || key === 's') keys.backward = false;
+            if (code === 'ArrowLeft' || key === 'arrowleft' || key === 'a') keys.left = false;
+            if (code === 'ArrowRight' || key === 'arrowright' || key === 'd') keys.right = false;
+        });
+
+        // Botões Visuais (Mobile / Rato)
+        function bindButton(id, keyStr) {
+            const btn = document.getElementById(id);
+            const press = (e) => { e.preventDefault(); keys[keyStr] = true; btn.classList.add('active'); };
+            const release = (e) => { e.preventDefault(); keys[keyStr] = false; btn.classList.remove('active'); };
+            
+            // Touch & Mouse events para funcionar segurando
+            btn.addEventListener('pointerdown', press);
+            btn.addEventListener('pointerup', release);
+            btn.addEventListener('pointerleave', release);
+            btn.addEventListener('pointercancel', release);
+        }
+
+        bindButton('btn-up', 'forward');
+        bindButton('btn-down', 'backward');
+        bindButton('btn-left', 'left');
+        bindButton('btn-right', 'right');
+
+        // Botão Tinta Mobile
+        document.getElementById('btn-ink').addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            shootInkJet();
+        });
+
+        // --- CONTROLO DE CÂMARA COM O RATO (VISÃO 360º) ---
+        let isPointerLocked = false;
+
+        // Pedir para bloquear o rato ao clicar no contentor do jogo (estilo PC)
+        container.addEventListener('click', () => {
+            if (!isPointerLocked && isPlaying) {
+                container.requestPointerLock();
+            }
+        });
+
+        // Atualizar estado do bloqueio do rato
+        document.addEventListener('pointerlockchange', () => {
+            isPointerLocked = (document.pointerLockElement === container);
+        });
+
+        // Movimentar a câmara com o rato
+        document.addEventListener('mousemove', (e) => {
+            if (isPointerLocked && isPlaying && aliceGroup) {
+                // Rotação horizontal (vira a Alice inteira)
+                aliceGroup.rotation.y -= e.movementX * 0.003;
+                
+                // Rotação vertical (vira apenas a câmara para olhar para cima/baixo)
+                camera.rotation.x -= e.movementY * 0.003;
+                
+                // Limitar a câmara para não dar cambalhotas (limite olhar p/ o céu e chão)
+                camera.rotation.x = Math.max(-Math.PI/3, Math.min(Math.PI/4, camera.rotation.x));
+            }
+        });
+
+        // Controlo Touch para rodar (Alternativa para Ecrãs Táteis)
+        let lastTouchX = null;
+        let lastTouchY = null;
+        container.addEventListener('touchstart', (e) => {
+            if(isPlaying) {
+                lastTouchX = e.touches[0].clientX;
+                lastTouchY = e.touches[0].clientY;
+            }
+        });
+        container.addEventListener('touchmove', (e) => {
+            if (isPlaying && lastTouchX !== null && lastTouchY !== null && aliceGroup) {
+                const touchX = e.touches[0].clientX;
+                const touchY = e.touches[0].clientY;
+                
+                aliceGroup.rotation.y -= (touchX - lastTouchX) * 0.005;
+                camera.rotation.x -= (touchY - lastTouchY) * 0.005;
+                camera.rotation.x = Math.max(-Math.PI/3, Math.min(Math.PI/4, camera.rotation.x));
+
+                lastTouchX = touchX;
+                lastTouchY = touchY;
+            }
+        });
+        container.addEventListener('touchend', () => { lastTouchX = null; lastTouchY = null; });
+
+        // --- INICIALIZAÇÃO ---
+        function initGame() {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            
+            elapsedTime = 0;
+            timeElement.innerText = "0.0";
+            
+            // Reset do Mapa
+            mapUsesLeft = 2;
+            document.getElementById('map-uses').innerText = mapUsesLeft;
+            document.getElementById('btn-map').classList.remove('opacity-50', 'cursor-not-allowed');
+            closeMap();
+
+            // Limpar Tinta do Jogo Anterior
+            projectiles.forEach(p => scene.remove(p.mesh));
+            projectiles = [];
+            inkSplats.forEach(s => scene.remove(s));
+            inkSplats = [];
+            
+            // Reset de teclas caso algo ficasse preso
+            keys.forward = false; keys.backward = false; keys.left = false; keys.right = false;
+            
+            // Reset de Inimigos
+            cards.forEach(c => scene.remove(c));
+            cards = [];
+            isChasing = false;
+            chaseTimer = 0;
+            document.getElementById('chase-warning').classList.add('hidden');
+            
+            generateMaze();
+            build3DWorld();
+            
+            clock.start();
+            isPlaying = true;
+        }
+
+        window.onload = initGame;
+
+    </script>
+</body>
+</html>
