@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alice: Sobrevivência nas 99 Noites</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #1a1a1a; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        canvas { display: block; background: #2d5a27; cursor: none; }
+        #ui { position: absolute; top: 20px; left: 20px; color: white; pointer-events: none; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); }
+        .bar-container { width: 200px; height: 10px; background: rgba(0,0,0,0.5); border-radius: 5px; margin-bottom: 10px; overflow: hidden; }
+        #health-bar { height: 100%; background: #ff4757; transition: width 0.3s; }
+        #stamina-bar { height: 100%; background: #2ed573; transition: width 0.3s; }
+        #overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,0,0.8); color: white; z-index: 10; }
+        button { pointer-events: auto; padding: 10px 30px; font-size: 1.2rem; background: #ff4757; border: none; border-radius: 5px; color: white; cursor: pointer; transition: transform 0.2s; }
+        button:hover { transform: scale(1.1); }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <div class="text-2xl font-bold mb-2">Noite: <span id="night-count">1</span> / 99</div>
+        <div>Saúde:</div>
+        <div class="bar-container"><div id="health-bar" style="width: 100%;"></div></div>
+        <div>Energia:</div>
+        <div class="bar-container"><div id="stamina-bar" style="width: 100%;"></div></div>
+        <div class="text-sm italic">Pressiona [ESPAÇO] para correr | Usa as setas ou WASD</div>
+    </div>
+
+    <div id="overlay">
+        <h1 id="msg-title" class="text-5xl font-bold mb-4 italic text-pink-400">Alice no País das Maravilhas</h1>
+        <p id="msg-desc" class="text-xl mb-8 text-center max-w-md">O Coelho Branco está atrasado e furioso. Sobrevive 99 noites na aldeia recolhendo recursos e escondendo-te nos arbustos.</p>
+        <button onclick="startGame()">Começar Jornada</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const uiNight = document.getElementById('night-count');
+        const uiHealth = document.getElementById('health-bar');
+        const uiStamina = document.getElementById('stamina-bar');
+        const overlay = document.getElementById('overlay');
+
+        // Configurações do Jogo
+        let gameActive = false;
+        let night = 1;
+        let timeOfDay = 0; // 0 a 2000 (ciclo)
+        const totalNights = 99;
+
+        // Entidades
+        const player = {
+            x: 100, y: 100, radius: 15, speed: 3,
+            health: 100, stamina: 100, isRunning: false, isHidden: false
+        };
+
+        const bunny = {
+            x: 600, y: 400, radius: 18, speed: 2.2,
+            targetX: 600, targetY: 400, state: 'patrol' // patrol, chase
+        };
+
+        let resources = [];
+        let obstacles = []; // {x, y, w, h, type: 'bush' | 'house'}
+
+        // Controlos
+        const keys = {};
+        window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
+        window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
+
+        function initLevel() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+           
+            // Gerar Aldeia
+            obstacles = [];
+            for(let i=0; i<15; i++) {
+                obstacles.push({
+                    x: Math.random() * (canvas.width - 100),
+                    y: Math.random() * (canvas.height - 100),
+                    w: 60 + Math.random() * 60,
+                    h: 60 + Math.random() * 60,
+                    type: Math.random() > 0.4 ? 'bush' : 'house'
+                });
+            }
+            spawnResources();
+        }
+
+        function spawnResources() {
+            resources = [];
+            for(let i=0; i<8; i++) {
+                resources.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    type: Math.random() > 0.5 ? 'drink' : 'cake',
+                    radius: 10
+                });
+            }
+        }
+
+        function startGame() {
+            overlay.classList.add('hidden');
+            gameActive = true;
+            night = 1;
+            player.health = 100;
+            player.stamina = 100;
+            player.x = canvas.width / 2;
+            player.y = canvas.height / 2;
+            initLevel();
+            requestAnimationFrame(update);
+        }
+
+        function gameOver(win = false) {
+            gameActive = false;
+            overlay.classList.remove('hidden');
+            document.getElementById('msg-title').innerText = win ? "Conseguiste!" : "Apanhada!";
+            document.getElementById('msg-title').className = win ? "text-5xl font-bold mb-4 text-green-400" : "text-5xl font-bold mb-4 text-red-500";
+            document.getElementById('msg-desc').innerText = win ?
+                "Sobreviveste às 99 noites e o Coelho finalmente desistiu." :
+                `O Coelho Branco apanhou-te na noite ${night}.`;
+            document.querySelector('button').innerText = "Tentar Novamente";
+        }
+
+        function update() {
+            if(!gameActive) return;
+
+            // Ciclo de Tempo
+            timeOfDay += 1;
+            if(timeOfDay > 2000) {
+                timeOfDay = 0;
+                night++;
+                uiNight.innerText = night;
+                spawnResources();
+                if(night > totalNights) gameOver(true);
+                bunny.speed += 0.1; // Fica mais rápido a cada noite
+            }
+
+            // Movimento Jogador
+            player.isRunning = keys[' '] && player.stamina > 0;
+            let currentSpeed = player.isRunning ? player.speed * 1.8 : player.speed;
+           
+            let dx = 0; let dy = 0;
+            if(keys['a'] || keys['arrowleft']) dx -= currentSpeed;
+            if(keys['d'] || keys['arrowright']) dx += currentSpeed;
+            if(keys['w'] || keys['arrowup']) dy -= currentSpeed;
+            if(keys['s'] || keys['arrowdown']) dy += currentSpeed;
+
+            player.x = Math.max(player.radius, Math.min(canvas.width - player.radius, player.x + dx));
+            player.y = Math.max(player.radius, Math.min(canvas.height - player.radius, player.y + dy));
+
+            // Gestão de Stamina
+            if(player.isRunning) {
+                player.stamina = Math.max(0, player.stamina - 0.5);
+            } else {
+                player.stamina = Math.min(100, player.stamina + 0.2);
+            }
+
+            // Verificação de Esconderijo
+            player.isHidden = false;
+            obstacles.forEach(ob => {
+                if(ob.type === 'bush' &&
+                   player.x > ob.x && player.x < ob.x + ob.w &&
+                   player.y > ob.y && player.y < ob.y + ob.h) {
+                    player.isHidden = true;
+                }
+            });
+
+            // Inteligência do Coelho
+            let distToPlayer = Math.hypot(bunny.x - player.x, bunny.y - player.y);
+           
+            if(!player.isHidden && distToPlayer < 300) {
+                bunny.state = 'chase';
+                bunny.targetX = player.x;
+                bunny.targetY = player.y;
+            } else {
+                if(Math.hypot(bunny.x - bunny.targetX, bunny.y - bunny.targetY) < 10) {
+                    bunny.state = 'patrol';
+                    bunny.targetX = Math.random() * canvas.width;
+                    bunny.targetY = Math.random() * canvas.height;
+                }
+            }
+
+            let angle = Math.atan2(bunny.targetY - bunny.y, bunny.targetX - bunny.x);
+            bunny.x += Math.cos(angle) * bunny.speed;
+            bunny.y += Math.sin(angle) * bunny.speed;
+
+            // Colisões Bunny-Player
+            if(distToPlayer < player.radius + bunny.radius) {
+                player.health -= 1;
+                if(player.health <= 0) gameOver(false);
+            }
+
+            // Recolha de Recursos
+            resources = resources.filter(res => {
+                let d = Math.hypot(player.x - res.x, player.y - res.y);
+                if(d < player.radius + res.radius) {
+                    if(res.type === 'drink') player.stamina = Math.min(100, player.stamina + 40);
+                    else player.health = Math.min(100, player.health + 20);
+                    return false;
+                }
+                return true;
+            });
+
+            draw();
+            requestAnimationFrame(update);
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Desenhar Obstáculos (Chão primeiro)
+            obstacles.forEach(ob => {
+                ctx.fillStyle = ob.type === 'bush' ? '#1e4620' : '#4a3728';
+                ctx.fillRect(ob.x, ob.y, ob.w, ob.h);
+                if(ob.type === 'house') {
+                    ctx.strokeStyle = '#2c1e14';
+                    ctx.strokeRect(ob.x, ob.y, ob.w, ob.h);
+                }
+            });
+
+            // Desenhar Recursos
+            resources.forEach(res => {
+                ctx.beginPath();
+                ctx.arc(res.x, res.y, res.radius, 0, Math.PI * 2);
+                ctx.fillStyle = res.type === 'drink' ? '#3498db' : '#e67e22';
+                ctx.fill();
+                ctx.closePath();
+            });
+
+            // Desenhar Coelho
+            ctx.beginPath();
+            ctx.arc(bunny.x, bunny.y, bunny.radius, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+            // Orelhas
+            ctx.fillRect(bunny.x - 12, bunny.y - 30, 8, 20);
+            ctx.fillRect(bunny.x + 4, bunny.y - 30, 8, 20);
+            // Olhos vermelhos se estiver a caçar
+            ctx.fillStyle = bunny.state === 'chase' ? 'red' : 'black';
+            ctx.fillRect(bunny.x - 8, bunny.y - 5, 4, 4);
+            ctx.fillRect(bunny.x + 4, bunny.y - 5, 4, 4);
+            ctx.closePath();
+
+            // Desenhar Alice
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+            ctx.fillStyle = player.isHidden ? 'rgba(52, 152, 219, 0.5)' : '#3498db';
+            ctx.fill();
+            // Cabelo loiro
+            ctx.fillStyle = '#f1c40f';
+            ctx.arc(player.x, player.y - 5, 10, 0, Math.PI, true);
+            ctx.fill();
+            ctx.closePath();
+
+            // Efeito de Noite (Overlay de Luz)
+            let nightIntensity = 0;
+            if(timeOfDay > 1000) {
+                nightIntensity = Math.min(0.8, (timeOfDay - 1000) / 500);
+            }
+            if(timeOfDay > 1500) {
+                nightIntensity = Math.max(0, 0.8 - (timeOfDay - 1500) / 500);
+            }
+
+            ctx.fillStyle = `rgba(0, 0, 20, ${nightIntensity})`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Lanterna/Visão limitada à noite
+            if(nightIntensity > 0.3) {
+                ctx.globalCompositeOperation = 'destination-out';
+                let grad = ctx.createRadialGradient(player.x, player.y, 10, player.x, player.y, 150);
+                grad.addColorStop(0, 'rgba(255,255,255,1)');
+                grad.addColorStop(1, 'rgba(255,255,255,0)');
+                ctx.fillStyle = grad;
+                ctx.beginPath();
+                ctx.arc(player.x, player.y, 150, 0, Math.PI*2);
+                ctx.fill();
+                ctx.globalCompositeOperation = 'source-over';
+            }
+
+            // Atualizar UI
+            uiHealth.style.width = player.health + '%';
+            uiStamina.style.width = player.stamina + '%';
+        }
+
+        window.onresize = () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        };
+
+        initLevel();
+    </script>
+</body>
+</html>
