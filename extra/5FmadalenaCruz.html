@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Fuga do Reino Sadida 3D - Wakfu</title>
+    <!-- Tailwind CSS para a Interface -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js para o motor 3D -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body {
+            background-color: #111827;
+            color: #cbd5e0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+        }
+        .modal {
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(8px);
+        }
+        .btn {
+            transition: all 0.2s;
+        }
+        .btn:active {
+            transform: scale(0.95);
+        }
+        .d-pad-btn {
+            width: 60px;
+            height: 60px;
+            background-color: rgba(55, 65, 81, 0.8);
+            border: 2px solid #4b5563;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: white;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        .d-pad-btn:active {
+            background-color: rgba(75, 85, 99, 0.9);
+            transform: translateY(2px);
+        }
+        /* Garantir que os modais interagem com o rato, mas o resto não bloqueia a visão */
+        .pointer-events-auto { pointer-events: auto; }
+        .pointer-events-none { pointer-events: none; }
+
+        /* Barra de scroll personalizada para os modais */
+        .modal::-webkit-scrollbar {
+            width: 8px;
+        }
+        .modal::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+        .modal::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            border-radius: 8px;
+        }
+        .modal::-webkit-scrollbar-thumb:hover {
+            background: #6b7280;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen relative">
+
+    <!-- Container do Canvas 3D -->
+    <div id="game-container" class="absolute inset-0 z-0"></div>
+
+    <!-- Camada de Interface do Utilizador (UI) -->
+    <div id="ui-layer" class="absolute inset-0 z-10 flex flex-col justify-between p-4 pointer-events-none">
+        
+        <!-- Topo: Título e Informação -->
+        <div class="w-full text-center mt-2 pointer-events-auto">
+            <h1 id="game-main-title" class="text-3xl md:text-4xl font-bold text-green-400 drop-shadow-lg" style="text-shadow: 2px 2px 4px rgba(0,0,0,0.8);">Fuga do Reino Sadida 3D</h1>
+            <p id="current-char-info" class="text-gray-200 mt-2 font-semibold hidden bg-gray-800/80 inline-block px-4 py-2 rounded-full border border-gray-600 shadow-lg">
+                A controlar: <span id="char-name-display" class="text-blue-400 font-bold"></span>
+            </p>
+        </div>
+
+        <!-- Centro: Modais -->
+        <div class="flex-1 flex items-center justify-center w-full">
+            
+            <!-- Ecrã de Seleção -->
+            <div id="screen-select" class="modal pointer-events-auto w-full max-w-3xl max-h-[85vh] overflow-y-auto p-6 rounded-xl border border-gray-700 shadow-2xl flex flex-col items-center">
+                <h2 class="text-2xl font-bold text-white mb-2">Escolhe a tua Personagem</h2>
+                <p class="text-gray-300 mb-6 text-center text-sm">Nox invadiu o Reino! Guia os heróis pelo labirinto 3D até à Árvore da Vida. Cuidado com os Noxinas e os guardas Sadidas infetados!</p>
+                
+                <div id="character-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 w-full">
+                    <!-- Botões injetados por JS -->
+                </div>
+            </div>
+
+            <!-- Ecrã de Batalha -->
+            <div id="screen-battle" class="modal pointer-events-auto w-full max-w-md p-6 rounded-xl border border-red-900 shadow-2xl flex flex-col items-center hidden">
+                <div class="text-5xl mb-4">🧟</div>
+                <h2 class="text-2xl font-bold text-red-400 mb-2">Sadida Infetado!</h2>
+                <p class="text-gray-300 mb-6 text-center text-sm">Um guarda inimigo bloqueia o caminho. Usa a tua habilidade especial para passar!</p>
+                <div id="battle-actions" class="flex flex-col gap-3 w-full">
+                    <!-- Ações injetadas por JS -->
+                </div>
+            </div>
+
+            <!-- Ecrã de Mensagem (Captura/Fuga) -->
+            <div id="screen-message" class="modal pointer-events-auto w-full max-w-md p-6 rounded-xl border border-gray-700 shadow-2xl flex flex-col items-center hidden">
+                <div id="msg-icon" class="text-5xl mb-4 text-center">⚠️</div>
+                <h2 id="msg-title" class="text-2xl font-bold text-white mb-2 text-center w-full">Mensagem</h2>
+                <p id="msg-text" class="text-gray-300 mb-6 text-center text-sm w-full">Texto de informação.</p>
+                <button id="msg-btn" class="btn bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-6 rounded w-full">
+                    Continuar
+                </button>
+            </div>
+
+            <!-- Ecrã de Vitória -->
+            <div id="screen-victory" class="modal pointer-events-auto w-full max-w-2xl p-8 rounded-xl border border-green-500 shadow-2xl flex flex-col items-center hidden">
+                <div class="text-6xl mb-4">🌀✨🌳</div>
+                <h2 class="text-3xl font-bold text-green-400 mb-4 text-center">Vitória! Todos Escaparam!</h2>
+                <p class="text-gray-200 mb-8 text-center text-lg leading-relaxed">
+                    Através do ambiente 3D, todos conseguiram chegar à Árvore da Vida.<br><br>
+                    O Yugo reencontra todos os seus irmãos Eliatropes e Dragões. A Irmandade do Tofu está sã e salva!
+                </p>
+                <button onclick="location.reload()" class="btn bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-8 rounded-lg text-lg">
+                    Jogar Novamente
+                </button>
+            </div>
+        </div>
+
+        <!-- Controlos Mobile (Visíveis apenas ao jogar em ecrãs pequenos) -->
+        <div id="mobile-controls-container" class="w-full flex justify-center pb-6 md:hidden hidden pointer-events-auto">
+            <div class="grid grid-cols-3 gap-2 bg-gray-900/60 p-3 rounded-2xl backdrop-blur-md border border-gray-700">
+                <div></div>
+                <button class="d-pad-btn btn" id="btn-up">⬆️</button>
+                <div></div>
+                <button class="d-pad-btn btn" id="btn-left">⬅️</button>
+                <button class="d-pad-btn btn" id="btn-down">⬇️</button>
+                <button class="d-pad-btn btn" id="btn-right">➡️</button>
+            </div>
+        </div>
+        <p id="desktop-hint" class="hidden md:block text-white/70 mb-4 text-sm text-center drop-shadow-md bg-black/30 w-max mx-auto px-4 py-1 rounded-full">
+            Usa W/S (ou ⬆️⬇️) para avançar/recuar e A/D (ou ⬅️➡️) para rodar a câmara.
+        </p>
+
+    </div>
+
+    <script>
+        // --- DADOS DO JOGO ---
+        let currentPhase = 1;
+
+        const PHASE1_CHARACTERS = [
+            { id: 'yugo', name: 'Yugo', icon: '🌀', escaped: false, 
+              actions: [{ name: 'Usar Portais (Rajada de Wakfu)', winChance: 0.95 }] },
+            { id: 'amalia', name: 'Amalia', icon: '🌸', escaped: false, 
+              actions: [{ name: 'Apertar com Plantas', winChance: 0.75 }, { name: 'Adormecer com a Voz', winChance: 0.85 }] },
+            { id: 'eva', name: 'Eva', icon: '🏹', escaped: false, 
+              actions: [
+                  { name: '1 Flecha de Gelo', winChance: 0.60 }, 
+                  { name: '2 Flechas Rápidas', winChance: 0.70 },
+                  { name: '3 Flechas Mágicas', winChance: 0.80 },
+                  { name: '4 Flechas Perfurantes', winChance: 0.90 },
+                  { name: '5 Flechas Explosivas', winChance: 0.95 }
+              ] },
+            { id: 'percedal', name: 'Percedal', icon: '⚔️', escaped: false, 
+              actions: [{ name: 'Defender com a Espada (Rubilax)', winChance: 0.85 }] },
+            { id: 'ruel', name: 'Ruel', icon: '⛏️', escaped: false, 
+              actions: [{ name: 'Cortar ramos com a pá e fugir', winChance: 0.8 }] },
+            { id: 'az', name: 'Az', icon: '🐤', escaped: false, 
+              actions: [{ name: 'Transformar em Tofu Gigante', winChance: 0.75 }] },
+            { id: 'adamai', name: 'Adamai', icon: '🐉', escaped: false, 
+              actions: [{ name: 'Usar Portais (Rajada de Wakfu)', winChance: 0.98 }] }
+        ];
+
+        const PHASE2_CHARACTERS = [
+            // A Irmandade do Tofu (amigos originais)
+            { id: 'yugo', name: 'Yugo', icon: '🌀', escaped: false, actions: [{ name: 'Usar Portais (Rajada de Wakfu)', winChance: 0.95 }] },
+            { id: 'amalia', name: 'Amalia', icon: '🌸', escaped: false, actions: [{ name: 'Apertar com Plantas Demónicas', winChance: 0.80 }, { name: 'Adormecer com a Voz', winChance: 0.85 }] },
+            { id: 'eva', name: 'Eva', icon: '🏹', escaped: false, actions: [{ name: 'Flechas Explosivas', winChance: 0.95 }] },
+            { id: 'percedal', name: 'Percedal', icon: '⚔️', escaped: false, actions: [{ name: 'Fúria de Rubilax', winChance: 0.95 }] },
+            { id: 'ruel', name: 'Ruel', icon: '⛏️', escaped: false, actions: [{ name: 'Pá Perfurante', winChance: 0.85 }] },
+            { id: 'az', name: 'Az', icon: '🐤', escaped: false, actions: [{ name: 'Transformar em Tofu Gigante', winChance: 0.85 }] },
+            { id: 'adamai', name: 'Adamai', icon: '🐉', escaped: false, actions: [{ name: 'Fogo de Dragão', winChance: 0.98 }] },
+            // Os Irmãos do Yugo (Eliatropes e Dragões)
+            { id: 'chibi', name: 'Chibi', icon: '👶', escaped: false, actions: [{ name: 'Pequena Rajada de Wakfu', winChance: 0.95 }] },
+            { id: 'grougal', name: 'Grougaloragran', icon: '🐲', escaped: false, actions: [{ name: 'Fogo de Dragão Ancestral', winChance: 0.95 }] },
+            { id: 'qilby', name: 'Qilby', icon: '👽', escaped: false, actions: [{ name: 'Foice de Wakfu', winChance: 0.95 }] },
+            { id: 'shinonome', name: 'Shinonome', icon: '🥚', escaped: false, actions: [{ name: 'Ressonância Dracónica', winChance: 0.95 }] },
+            { id: 'mina', name: 'Mina', icon: '🧠', escaped: false, actions: [{ name: 'Ilusão de Wakfu', winChance: 0.95 }] },
+            { id: 'phaeris', name: 'Phaeris', icon: '🐉', escaped: false, actions: [{ name: 'Ataque do Rei Dragão', winChance: 0.95 }] }
+        ];
+
+        let CHARACTERS = PHASE1_CHARACTERS;
+
+        // Mapa: W = Parede, P = Início, . = Chão, H = Noxina (Horiz), V = Noxina (Vert), S = Sadida, T = Árvore, O = Portal Wakfu
+        const MAP_PHASE1 = [
+            "WWWWWWWWWWWWWWWWWWWW",
+            "WP.......H.........W",
+            "WWWWWWW.WWWWWW.WW.WW",
+            "W...H...W....W.W...W",
+            "W.WWWWW.W.WW.W.W.S.W",
+            "W.W...S.W.W..W.W...W",
+            "W.W.WWWWW.WWWW.WWW.W",
+            "W.S.......V........W",
+            "WWWWWWWWW.WWWWWWWW.W",
+            "W.H...W......S.....W",
+            "W.WWW.W.WWWWWWWWWW.W",
+            "W...W.S.W...H....W.W",
+            "W.W.WWWWW.WWWWWW.W.W",
+            "W.W.......V......WTT",
+            "WWWWWWWWWWWWWWWWWWTT"
+        ];
+
+        const MAP_PHASE2 = [
+            "WWWWWWWWWWWWWWWWWWWW",
+            "WP.......V.........W",
+            "WWWWWWW.WWWWWWWW.W.W",
+            "W.S.......W...S..W.W",
+            "W.WWWWWWW.W.WWWW.W.W",
+            "W.W...H...W.W.H..W.W",
+            "W.W.WWWWWWW.W.WWWW.W",
+            "W.S.......W.W....W.W",
+            "WWWWWWWWW.W.WWWW.W.W",
+            "W.V...W.S.......S..W",
+            "W.WWW.W.WWWWWWWWWWWW",
+            "W...W.H.....W......W",
+            "W.W.WWWWWWW.W.WWWW.W",
+            "W.W.......S...W..WOO",
+            "WWWWWWWWWWWWWWWWWWOO"
+        ];
+
+        let RAW_MAP = MAP_PHASE1;
+
+        const TILE_SIZE = 4;
+        const GRID_W = 20;
+        const GRID_H = 15;
+
+        // --- ESTADO DO JOGO ---
+        let state = 'SELECT'; 
+        let currentChar = null;
+        let mapGrid = [];
+        let enemies = [];
+        let sadidas = [];
+        let player = { targetX: 1, targetY: 1, dir: 1, targetRotation: Math.PI / 2 };
+        let lastNoxMove = 0;
+        let currentSadidaBattleIndex = -1;
+        let animStartTime = 0; // Nova variável para a animação do Az
+
+        // --- ELEMENTOS DOM ---
+        const uiLayer = document.getElementById('ui-layer');
+        const screenSelect = document.getElementById('screen-select');
+        const screenBattle = document.getElementById('screen-battle');
+        const screenMessage = document.getElementById('screen-message');
+        const screenVictory = document.getElementById('screen-victory');
+        const mobileControlsContainer = document.getElementById('mobile-controls-container');
+        const desktopHint = document.getElementById('desktop-hint');
+        const charNameDisplay = document.getElementById('char-name-display');
+        const currentCharInfo = document.getElementById('current-char-info');
+
+        // --- VARIÁVEIS THREE.JS ---
+        let scene, camera, renderer, dirLight;
+        let levelGroup = new THREE.Group();
+        let portalMesh = null;
+        let playerMesh = null;
+        let clock = new THREE.Clock();
+
+        // --- INICIALIZAÇÃO GERAL ---
+        window.onload = function() {
+            init3D();
+            renderCharacterSelection();
+            setupInput();
+            animate();
+        };
+
+        // --- SETUP THREE.JS ---
+        function init3D() {
+            const container = document.getElementById('game-container');
+            
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a202c); // Fundo noturno
+            scene.fog = new THREE.Fog(0x1a202c, 10, 40);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+            camera.position.set(0, 15, 15);
+            camera.lookAt(0, 0, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            // Luzes
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambientLight);
+
+            dirLight = new THREE.DirectionalLight(0xfff5b6, 0.8); // Luz lunar/mística
+            dirLight.position.set(10, 20, 10);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 1024;
+            dirLight.shadow.mapSize.height = 1024;
+            dirLight.shadow.camera.left = -25;
+            dirLight.shadow.camera.right = 25;
+            dirLight.shadow.camera.top = 25;
+            dirLight.shadow.camera.bottom = -25;
+            scene.add(dirLight);
+
+            scene.add(levelGroup);
+
+            // Redimensionamento
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        }
+
+        function updateEnvironmentForPhase() {
+            if (currentPhase === 1) {
+                scene.background = new THREE.Color(0x1a202c);
+                scene.fog.color.setHex(0x1a202c);
+                dirLight.color.setHex(0xfff5b6);
+            } else {
+                scene.background = new THREE.Color(0x2a0808); // Shushu Realm (Vermelho escuro)
+                scene.fog.color.setHex(0x2a0808);
+                dirLight.color.setHex(0xff4444); // Luz vermelha infernal
+            }
+        }
+
+        // --- CONSTRUTORES DE MODELOS 3D ---
+        function create3DCharacter(id) {
+            const group = new THREE.Group();
+            
+            // Materiais Base
+            let headCol = 0xffcc99; // Tom de pele
+            let bodyCol = 0xffffff;
+            let isHumanoid = true;
+            let scaleMult = 1.0;
+
+            if (id === 'yugo') { bodyCol = 0x3498db; }
+            else if (id === 'amalia') { bodyCol = 0x2ecc71; }
+            else if (id === 'eva') { bodyCol = 0x8fc23a; headCol = 0xf1c40f; } // Loira
+            else if (id === 'percedal') { bodyCol = 0xe67e22; }
+            else if (id === 'ruel') { bodyCol = 0x95a5a6; }
+            else if (id === 'az' || id === 'adamai') { isHumanoid = false; }
+            // Novos personagens da Fase 2
+            else if (id === 'chibi') { bodyCol = 0x3498db; scaleMult = 0.6; }
+            else if (id === 'qilby') { bodyCol = 0xffffff; headCol = 0xecf0f1; }
+            else if (id === 'mina') { bodyCol = 0xe84393; } // Rosa
+            else if (id === 'grougal') { isHumanoid = false; bodyCol = 0x2d3436; } // Dragão Preto
+            else if (id === 'phaeris') { isHumanoid = false; bodyCol = 0xc0392b; scaleMult = 1.2; } // Dragão Vermelho
+            else if (id === 'shinonome') { isHumanoid = false; bodyCol = 0x8e44ad; scaleMult = 0.5; } // Dragão Roxo Pequeno
+
+            if (isHumanoid) {
+                // Corpo Humanoide
+                const headGeo = new THREE.BoxGeometry(0.6, 0.6, 0.6);
+                const headMat = new THREE.MeshLambertMaterial({color: headCol});
+                const head = new THREE.Mesh(headGeo, headMat);
+                head.position.y = 1.0;
+                head.castShadow = true;
+
+                const bodyGeo = new THREE.BoxGeometry(0.7, 0.8, 0.5);
+                const bodyMat = new THREE.MeshLambertMaterial({color: bodyCol});
+                const body = new THREE.Mesh(bodyGeo, bodyMat);
+                body.position.y = 0.4;
+                body.castShadow = true;
+
+                group.add(head, body);
+
+                // Acessórios Específicos
+                if (['yugo', 'chibi', 'qilby', 'mina'].includes(id)) {
+                    // Chapéu dos Eliatropes (Orelhas de Wakfu)
+                    const earGeo = new THREE.ConeGeometry(0.15, 0.5, 4);
+                    const earMat = new THREE.MeshLambertMaterial({color: bodyCol});
+                    const ear1 = new THREE.Mesh(earGeo, earMat); ear1.position.set(-0.3, 1.3, 0); ear1.rotation.z = Math.PI/6;
+                    const ear2 = new THREE.Mesh(earGeo, earMat); ear2.position.set(0.3, 1.3, 0); ear2.rotation.z = -Math.PI/6;
+                    group.add(ear1, ear2);
+                } else if (id === 'amalia') {
+                    // Vestido planta
+                    const skirtGeo = new THREE.ConeGeometry(0.5, 0.6, 8);
+                    const skirt = new THREE.Mesh(skirtGeo, bodyMat);
+                    skirt.position.y = 0.3;
+                    skirt.castShadow = true;
+                    group.add(skirt);
+                } else if (id === 'percedal') {
+                    // Espada (Rubilax)
+                    const swordGeo = new THREE.BoxGeometry(0.15, 1.2, 0.3);
+                    const swordMat = new THREE.MeshLambertMaterial({color: 0x7f8c8d});
+                    const sword = new THREE.Mesh(swordGeo, swordMat);
+                    sword.position.set(0.5, 0.6, 0.4);
+                    sword.rotation.x = Math.PI/4;
+                    sword.castShadow = true;
+                    group.add(sword);
+                } else if (id === 'ruel') {
+                    // Pá
+                    const shovelHandleGeo = new THREE.CylinderGeometry(0.05, 0.05, 1.5);
+                    const shovelBladeGeo = new THREE.BoxGeometry(0.4, 0.5, 0.1);
+                    const mat = new THREE.MeshLambertMaterial({color: 0x8b4513});
+                    const handle = new THREE.Mesh(shovelHandleGeo, mat);
+                    const blade = new THREE.Mesh(shovelBladeGeo, new THREE.MeshLambertMaterial({color: 0xbdc3c7}));
+                    blade.position.y = 0.75;
+                    const shovel = new THREE.Group();
+                    shovel.add(handle, blade);
+                    shovel.position.set(0.5, 0.5, 0);
+                    shovel.rotation.z = -Math.PI/8;
+                    shovel.castShadow = true;
+                    group.add(shovel);
+                }
+            } else {
+                // Personagens Não Humanoides
+                if (id === 'az') {
+                    // Tofu (Pássaro Amarelo)
+                    const bodyGeo = new THREE.SphereGeometry(0.4, 16, 16);
+                    const bodyMat = new THREE.MeshLambertMaterial({color: 0xf1c40f});
+                    const azBody = new THREE.Mesh(bodyGeo, bodyMat);
+                    azBody.position.y = 0.4;
+                    azBody.castShadow = true;
+                    
+                    const beakGeo = new THREE.ConeGeometry(0.1, 0.3, 4);
+                    const beak = new THREE.Mesh(beakGeo, new THREE.MeshLambertMaterial({color: 0xe67e22}));
+                    beak.position.set(0, 0.4, 0.4);
+                    beak.rotation.x = Math.PI/2;
+                    group.add(azBody, beak);
+                } else {
+                    // Dragões (Adamai, Grougal, Phaeris, Shinonome)
+                    let dColor = bodyCol !== 0xffffff ? bodyCol : 0xecf0f1;
+                    if(id === 'adamai') dColor = 0xecf0f1;
+
+                    const bodyGeo = new THREE.CylinderGeometry(0.3, 0.4, 1.2, 8);
+                    const bodyMat = new THREE.MeshLambertMaterial({color: dColor});
+                    const adBody = new THREE.Mesh(bodyGeo, bodyMat);
+                    adBody.position.y = 0.6;
+                    adBody.rotation.x = Math.PI/6;
+                    adBody.castShadow = true;
+
+                    const headGeo = new THREE.BoxGeometry(0.4, 0.4, 0.6);
+                    const adHead = new THREE.Mesh(headGeo, bodyMat);
+                    adHead.position.set(0, 1.2, 0.3);
+                    adHead.castShadow = true;
+
+                    group.add(adBody, adHead);
+                }
+            }
+            
+            group.scale.set(1.5 * scaleMult, 1.5 * scaleMult, 1.5 * scaleMult);
+            return group;
+        }
+
+        function createNoxine3D() {
+            // Máquinas metálicas do Nox
+            const group = new THREE.Group();
+            const geo = new THREE.IcosahedronGeometry(0.5, 1); 
+            const mat = new THREE.MeshPhongMaterial({color: 0x95a5a6, flatShading: true, shininess: 80});
+            const core = new THREE.Mesh(geo, mat);
+            core.castShadow = true;
+
+            const ringGeo = new THREE.TorusGeometry(0.7, 0.05, 8, 24);
+            const ringMat = new THREE.MeshPhongMaterial({color: 0x3498db}); // Energia azul
+            const ring = new THREE.Mesh(ringGeo, ringMat);
+            ring.rotation.x = Math.PI / 2;
+
+            group.add(core, ring);
+            return group;
+        }
+
+        function createSadida3D() {
+            // Guardas Infetados (Verdes)
+            const group = new THREE.Group();
+            const bodyGeo = new THREE.BoxGeometry(0.8, 1.0, 0.5);
+            const bodyMat = new THREE.MeshLambertMaterial({color: 0x1e4a28}); // Verde escuro
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 0.5;
+            body.castShadow = true;
+            
+            const headGeo = new THREE.BoxGeometry(0.6, 0.6, 0.6);
+            const headMat = new THREE.MeshLambertMaterial({color: 0x276749});
+            const head = new THREE.Mesh(headGeo, headMat);
+            head.position.y = 1.3;
+            head.castShadow = true;
+
+            // Olhos brilhantes assustadores
+            const eyeGeo = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+            const eyeMat = new THREE.MeshBasicMaterial({color: 0xe74c3c});
+            const eyeL = new THREE.Mesh(eyeGeo, eyeMat); eyeL.position.set(-0.15, 1.4, 0.31);
+            const eyeR = new THREE.Mesh(eyeGeo, eyeMat); eyeR.position.set(0.15, 1.4, 0.31);
+
+            group.add(body, head, eyeL, eyeR);
+            return group;
+        }
+
+        function createPiranhashu3D() {
+            // Inimigos Fase 2 (Demónios voadores)
+            const group = new THREE.Group();
+            const geo = new THREE.SphereGeometry(0.6, 16, 16); 
+            const mat = new THREE.MeshPhongMaterial({color: 0x8b0000, shininess: 100});
+            const body = new THREE.Mesh(geo, mat);
+            body.castShadow = true;
+
+            const teethGeo = new THREE.ConeGeometry(0.1, 0.3, 4);
+            const teethMat = new THREE.MeshBasicMaterial({color: 0xffffff});
+            const t1 = new THREE.Mesh(teethGeo, teethMat); t1.position.set(-0.2, -0.4, 0.4); t1.rotation.x = Math.PI;
+            const t2 = new THREE.Mesh(teethGeo, teethMat); t2.position.set(0.2, -0.4, 0.4); t2.rotation.x = Math.PI;
+
+            const eyeGeo = new THREE.BoxGeometry(0.2, 0.1, 0.1);
+            const eyeMat = new THREE.MeshBasicMaterial({color: 0xffff00});
+            const eye = new THREE.Mesh(eyeGeo, eyeMat); eye.position.set(0, 0.2, 0.55);
+
+            group.add(body, t1, t2, eye);
+            return group;
+        }
+
+        function createShushuGuard3D() {
+            // Guarda Shushu Estático (Fase 2)
+            const group = new THREE.Group();
+            const bodyGeo = new THREE.BoxGeometry(1.2, 1.5, 0.8);
+            const bodyMat = new THREE.MeshLambertMaterial({color: 0x3d0c02});
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 0.75;
+            body.castShadow = true;
+
+            const eyeGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.1, 16);
+            const eyeMat = new THREE.MeshBasicMaterial({color: 0xff0000});
+            const eye = new THREE.Mesh(eyeGeo, eyeMat);
+            eye.position.set(0, 1.0, 0.4);
+            eye.rotation.x = Math.PI/2;
+
+            group.add(body, eye);
+            return group;
+        }
+
+        // --- LÓGICA DO JOGO ---
+        function renderCharacterSelection() {
+            const grid = document.getElementById('character-grid');
+            grid.innerHTML = '';
+            
+            let allEscaped = true;
+
+            CHARACTERS.forEach(char => {
+                if (!char.escaped) allEscaped = false;
+
+                const btn = document.createElement('button');
+                btn.className = `btn p-4 rounded-xl border-2 flex flex-col items-center justify-center gap-2 ${char.escaped ? 'bg-green-900 border-green-500 opacity-60 cursor-not-allowed' : 'bg-gray-800 border-gray-600 hover:bg-gray-700 hover:border-blue-400'}`;
+                btn.disabled = char.escaped;
+                btn.innerHTML = `
+                    <span class="text-4xl">${char.icon}</span>
+                    <span class="font-bold ${char.escaped ? 'text-green-400' : 'text-white'}">${char.name}</span>
+                    ${char.escaped ? '<span class="text-xs text-green-300 font-bold">Na Árvore!</span>' : ''}
+                `;
+                
+                if (!char.escaped) {
+                    btn.onclick = () => startGameForCharacter(char);
+                }
+                grid.appendChild(btn);
+            });
+
+            if (allEscaped) {
+                if (currentPhase === 1) {
+                    showMessage("A Irmandade Triunfou!", "A Irmandade do Tofu escapou do Reino Sadida! Mas a aventura continua... O Yugo e os seus amigos precisam de mergulhar no Reino dos Shushus para resgatar os seus irmãos Dragões e Eliatropes!", "Entrar no Reino dos Shushus", () => {
+                        currentPhase = 2;
+                        CHARACTERS = PHASE2_CHARACTERS;
+                        RAW_MAP = MAP_PHASE2;
+                        document.getElementById('game-main-title').innerText = "Fuga do Reino dos Shushus 3D";
+                        document.getElementById('game-main-title').className = "text-3xl md:text-4xl font-bold text-red-500 drop-shadow-lg";
+                        updateEnvironmentForPhase();
+                        renderCharacterSelection();
+                    }, '🔥');
+                } else {
+                    showScreen('VICTORY');
+                }
+            } else {
+                showScreen('SELECT');
+            }
+        }
+
+        function loadLevel() {
+            // Limpar nível 3D anterior
+            scene.remove(levelGroup);
+            levelGroup = new THREE.Group();
+            scene.add(levelGroup);
+            portalMesh = null;
+
+            mapGrid = [];
+            enemies = [];
+            sadidas = [];
+            
+            const floorMat = currentPhase === 1 ? new THREE.MeshLambertMaterial({color: 0x3d4c53}) : new THREE.MeshLambertMaterial({color: 0x1f0b0b});
+            const wallMat = currentPhase === 1 ? new THREE.MeshLambertMaterial({color: 0x2d4a22}) : new THREE.MeshLambertMaterial({color: 0x4a1111});
+
+            for (let y = 0; y < GRID_H; y++) {
+                let row = [];
+                for (let x = 0; x < GRID_W; x++) {
+                    const char = RAW_MAP[y][x];
+                    const posX = x * TILE_SIZE;
+                    const posZ = y * TILE_SIZE;
+
+                    // Criar Chão base para todos os blocos válidos
+                    const floorGeo = new THREE.PlaneGeometry(TILE_SIZE, TILE_SIZE);
+                    const floor = new THREE.Mesh(floorGeo, floorMat);
+                    floor.rotation.x = -Math.PI / 2;
+                    floor.position.set(posX, 0, posZ);
+                    floor.receiveShadow = true;
+                    levelGroup.add(floor);
+
+                    if (char === 'W') {
+                        row.push(1); // Parede
+                        const wallGeo = new THREE.BoxGeometry(TILE_SIZE, TILE_SIZE * 1.5, TILE_SIZE);
+                        const wall = new THREE.Mesh(wallGeo, wallMat);
+                        wall.position.set(posX, (TILE_SIZE * 1.5) / 2, posZ);
+                        wall.castShadow = true;
+                        wall.receiveShadow = true;
+                        levelGroup.add(wall);
+                    } 
+                    else if (char === 'T') {
+                        row.push(2); // Árvore da Vida
+                        
+                        const trunkGeo = new THREE.CylinderGeometry(TILE_SIZE*0.4, TILE_SIZE*0.8, TILE_SIZE*3);
+                        const trunkMat = new THREE.MeshLambertMaterial({color: 0x5c4033});
+                        const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+                        trunk.position.set(posX, TILE_SIZE*1.5, posZ);
+                        trunk.castShadow = true;
+
+                        const leavesGeo = new THREE.DodecahedronGeometry(TILE_SIZE * 2);
+                        const leavesMat = new THREE.MeshLambertMaterial({color: 0x2ecc71});
+                        const leaves = new THREE.Mesh(leavesGeo, leavesMat);
+                        leaves.position.set(posX, TILE_SIZE * 3.5, posZ);
+                        leaves.castShadow = true;
+
+                        levelGroup.add(trunk, leaves);
+                    } 
+                    else if (char === 'O') {
+                        row.push(2); // Portal Wakfu (Objetivo Fase 2)
+                        
+                        const portalGeo = new THREE.TorusGeometry(TILE_SIZE*0.6, 0.3, 16, 64);
+                        const portalMat = new THREE.MeshBasicMaterial({color: 0x00ffff});
+                        portalMesh = new THREE.Mesh(portalGeo, portalMat);
+                        portalMesh.position.set(posX, TILE_SIZE*0.8, posZ);
+                        levelGroup.add(portalMesh);
+
+                        // Efeito de luz do portal
+                        const portalLight = new THREE.PointLight(0x00ffff, 1.5, 20);
+                        portalLight.position.set(posX, TILE_SIZE*0.8, posZ);
+                        levelGroup.add(portalLight);
+                    }
+                    else {
+                        row.push(0); // Caminho livre
+                        
+                        if (char === 'P') {
+                            player.targetX = x;
+                            player.targetY = y;
+                            player.dir = 1; // Começa a olhar para a Direita (Este)
+                            player.targetRotation = Math.PI / 2;
+                        } else if (char === 'H' || char === 'V') {
+                            const enemyMesh = currentPhase === 1 ? createNoxine3D() : createPiranhashu3D();
+                            enemyMesh.position.set(posX, 1.5, posZ);
+                            enemyMesh.scale.set(1.5, 1.5, 1.5);
+                            levelGroup.add(enemyMesh);
+                            enemies.push({ x, y, type: char, dir: 1, mesh: enemyMesh });
+                        } else if (char === 'S') {
+                            const staticMesh = currentPhase === 1 ? createSadida3D() : createShushuGuard3D();
+                            staticMesh.position.set(posX, 0, posZ);
+                            staticMesh.scale.set(1.5, 1.5, 1.5);
+                            levelGroup.add(staticMesh);
+                            sadidas.push({ x, y, active: true, mesh: staticMesh });
+                        }
+                    }
+                }
+                mapGrid.push(row);
+            }
+
+            // Gerar o Jogador 3D
+            playerMesh = create3DCharacter(currentChar.id);
+            playerMesh.position.set(player.targetX * TILE_SIZE, 0, player.targetY * TILE_SIZE);
+            playerMesh.rotation.y = player.targetRotation;
+            playerMesh.scale.set(1.5, 1.5, 1.5);
+            levelGroup.add(playerMesh);
+
+            // Posicionar câmara inicialmente (Câmara na Primeira Pessoa)
+            const dirX = Math.sin(player.targetRotation);
+            const dirZ = Math.cos(player.targetRotation);
+            camera.position.set(
+                playerMesh.position.x + dirX * 0.4,
+                playerMesh.position.y + 1.2,
+                playerMesh.position.z + dirZ * 0.4
+            );
+            camera.lookAt(camera.position.x + dirX, camera.position.y, camera.position.z + dirZ);
+        }
+
+        function startGameForCharacter(char) {
+            currentChar = char;
+            charNameDisplay.innerText = char.name;
+            loadLevel();
+            showScreen('PLAYING');
+            state = 'PLAYING';
+            lastNoxMove = Date.now();
+        }
+
+        function showScreen(screenName) {
+            screenSelect.classList.add('hidden');
+            screenBattle.classList.add('hidden');
+            screenMessage.classList.add('hidden');
+            screenVictory.classList.add('hidden');
+            currentCharInfo.classList.add('hidden');
+            mobileControlsContainer.classList.add('hidden');
+            desktopHint.classList.add('hidden');
+
+            if (screenName === 'SELECT') {
+                screenSelect.classList.remove('hidden');
+            } else if (screenName === 'BATTLE') {
+                screenBattle.classList.remove('hidden');
+                currentCharInfo.classList.remove('hidden');
+            } else if (screenName === 'MESSAGE') {
+                screenMessage.classList.remove('hidden');
+                currentCharInfo.classList.remove('hidden');
+            } else if (screenName === 'VICTORY') {
+                screenVictory.classList.remove('hidden');
+            } else if (screenName === 'PLAYING') {
+                currentCharInfo.classList.remove('hidden');
+                mobileControlsContainer.classList.remove('hidden');
+                desktopHint.classList.remove('hidden');
+            }
+        }
+
+        // --- CONTROLOS ---
+        function setupInput() {
+            window.addEventListener('keydown', (e) => {
+                if (state !== 'PLAYING') return;
+                if (e.key === 'ArrowUp' || e.key === 'w') moveFPP(1);
+                else if (e.key === 'ArrowDown' || e.key === 's') moveFPP(-1);
+                else if (e.key === 'ArrowLeft' || e.key === 'a') turnFPP(-1);
+                else if (e.key === 'ArrowRight' || e.key === 'd') turnFPP(1);
+            });
+
+            // Controlos Touch
+            const setupBtn = (id, isMove, val) => {
+                const btn = document.getElementById(id);
+                const action = (e) => {
+                    e.preventDefault();
+                    if (state === 'PLAYING') {
+                        if (isMove) moveFPP(val);
+                        else turnFPP(val);
+                    }
+                };
+                btn.addEventListener('touchstart', action);
+                btn.addEventListener('mousedown', action);
+            };
+            
+            setupBtn('btn-up', true, 1);     // Frente
+            setupBtn('btn-down', true, -1);  // Trás
+            setupBtn('btn-left', false, -1); // Rodar Esq
+            setupBtn('btn-right', false, 1); // Rodar Dir
+        }
+
+        function turnFPP(turn) {
+            player.dir = (player.dir + turn + 4) % 4;
+            player.targetRotation -= turn * (Math.PI / 2);
+        }
+
+        function moveFPP(forward) {
+            let dx = 0, dy = 0;
+            if (player.dir === 0) dy = -forward; // Norte
+            else if (player.dir === 1) dx = forward;  // Este
+            else if (player.dir === 2) dy = forward;  // Sul
+            else if (player.dir === 3) dx = -forward; // Oeste
+
+            const nx = player.targetX + dx;
+            const ny = player.targetY + dy;
+
+            if (nx >= 0 && nx < GRID_W && ny >= 0 && ny < GRID_H) {
+                if (mapGrid[ny][nx] !== 1) { // Não é parede
+                    player.targetX = nx;
+                    player.targetY = ny;
+                    checkCollisions();
+                }
+            }
+        }
+
+        function checkCollisions() {
+            // Verificar Árvore da Vida
+            if (mapGrid[player.targetY][player.targetX] === 2) {
+                handleEscape();
+                return;
+            }
+
+            // Verificar Sadidas
+            for (let i = 0; i < sadidas.length; i++) {
+                if (sadidas[i].active && sadidas[i].x === player.targetX && sadidas[i].y === player.targetY) {
+                    triggerBattle(i);
+                    return;
+                }
+            }
+
+            // Verificar Noxinas
+            for (let e of enemies) {
+                if (e.x === player.targetX && e.y === player.targetY) {
+                    handleCapture();
+                    return;
+                }
+            }
+        }
+
+        function updateNoxinesLogic() {
+            for (let e of enemies) {
+                let nx = e.x, ny = e.y;
+                if (e.type === 'H') nx += e.dir;
+                else if (e.type === 'V') ny += e.dir;
+
+                // Bateu numa parede ou limite, inverte direção
+                if (nx < 0 || nx >= GRID_W || ny < 0 || ny >= GRID_H || mapGrid[ny][nx] === 1) {
+                    e.dir *= -1; 
+                } else {
+                    e.x = nx;
+                    e.y = ny;
+                }
+            }
+            if (state === 'PLAYING') checkCollisions();
+        }
+
+        // --- EVENTOS DE JOGO ---
+        function triggerBattle(sadidaIndex) {
+            state = 'BATTLE';
+            currentSadidaBattleIndex = sadidaIndex;
+            
+            const actionContainer = document.getElementById('battle-actions');
+            actionContainer.innerHTML = '';
+            
+            // Alterar o texto da batalha conforme a fase
+            if (currentPhase === 2) {
+                document.querySelector('#screen-battle h2').innerText = 'Guarda Shushu!';
+                document.querySelector('#screen-battle .text-5xl').innerText = '👹';
+            } else {
+                document.querySelector('#screen-battle h2').innerText = 'Sadida Infetado!';
+                document.querySelector('#screen-battle .text-5xl').innerText = '🧟';
+            }
+
+            currentChar.actions.forEach(action => {
+                const btn = document.createElement('button');
+                btn.className = 'btn bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-4 rounded-lg text-left flex justify-between items-center text-sm md:text-base';
+                btn.innerHTML = `<span>${action.name}</span> <span class="text-xl">⚔️</span>`;
+                btn.onclick = () => resolveBattle(action);
+                actionContainer.appendChild(btn);
+            });
+
+            showScreen('BATTLE');
+        }
+
+        function resolveBattle(action) {
+            const won = Math.random() <= action.winChance;
+
+            if (won) {
+                sadidas[currentSadidaBattleIndex].active = false;
+                
+                if (currentChar.id === 'az') {
+                    // Iniciar a animação especial do Az
+                    screenBattle.classList.add('hidden');
+                    currentCharInfo.classList.add('hidden');
+                    state = 'ANIMATING_AZ';
+                    animStartTime = Date.now();
+                } else {
+                    sadidas[currentSadidaBattleIndex].mesh.visible = false; // Ocultar do 3D
+                    
+                    const inimigoNome = currentPhase === 1 ? "Guarda Sadida" : "Guarda Shushu";
+                    showMessage("Sucesso!", `Usaste "${action.name}" e passaste o ${inimigoNome}! Continua em frente.`, "Continuar", () => {
+                        showScreen('PLAYING');
+                        state = 'PLAYING';
+                    }, '✅');
+                }
+            } else {
+                let failMsg = `O teu ataque falhou e foste capturado!`;
+                if (currentChar.id === 'eva') {
+                    failMsg = `Foste capturada, mas a Eva conseguiu disparar uma flecha de aviso aos outros!`;
+                }
+
+                showMessage("Derrota!", `${failMsg} Voltaste ao início do labirinto.`, "Tentar Novamente", () => {
+                    loadLevel(); 
+                    showScreen('PLAYING');
+                    state = 'PLAYING';
+                }, '❌');
+            }
+        }
+
+        function handleCapture() {
+            state = 'MESSAGE';
+            const inimigoNome = currentPhase === 1 ? "patrulha Noxina" : "Piranhashus";
+            const vilaoNome = currentPhase === 1 ? "Nox" : "Rushu";
+            showMessage("Capturado!", `Foste apanhado pela ${inimigoNome}! O ${vilaoNome} controla agora o/a ${currentChar.name}.`, "Recomeçar", () => {
+                loadLevel(); 
+                showScreen('PLAYING');
+                state = 'PLAYING';
+            }, '⚙️');
+        }
+
+        function handleEscape() {
+            state = 'MESSAGE';
+            currentChar.escaped = true;
+            if (currentPhase === 1) {
+                showMessage("Escapaste!", `Encontraste a camuflagem da Árvore da Vida com o Rei Sheran Sharm! O/a ${currentChar.name} está a salvo.`, "Selecionar Outro", () => {
+                    renderCharacterSelection();
+                }, '🌳');
+            } else {
+                showMessage("Escapaste pelo Portal!", `Entraste no Portal de Wakfu! O/a ${currentChar.name} conseguiu fugir do Reino dos Shushus.`, "Selecionar Outro", () => {
+                    renderCharacterSelection();
+                }, '🌀');
+            }
+        }
+
+        function showMessage(title, text, btnText, callback, icon) {
+            document.getElementById('msg-title').innerText = title;
+            document.getElementById('msg-text').innerText = text;
+            document.getElementById('msg-icon').innerText = icon || '⚠️';
+            
+            const btn = document.getElementById('msg-btn');
+            btn.innerText = btnText;
+            btn.onclick = callback;
+            
+            showScreen('MESSAGE');
+        }
+
+        // --- LOOP DE ANIMAÇÃO 3D ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (state === 'PLAYING' && playerMesh) {
+                const now = Date.now();
+                
+                // Mover Noxinas (lógica a cada 600ms)
+                if (now - lastNoxMove > 600) {
+                    updateNoxinesLogic();
+                    lastNoxMove = now;
+                }
+
+                // Interpolação suave do movimento do jogador (Lerp)
+                const targetWorldX = player.targetX * TILE_SIZE;
+                const targetWorldZ = player.targetY * TILE_SIZE;
+                
+                playerMesh.position.x += (targetWorldX - playerMesh.position.x) * 0.2;
+                playerMesh.position.z += (targetWorldZ - playerMesh.position.z) * 0.2;
+                
+                // Animação de "saltitar" ao andar
+                const dist = Math.abs(targetWorldX - playerMesh.position.x) + Math.abs(targetWorldZ - playerMesh.position.z);
+                if (dist > 0.1) {
+                    playerMesh.position.y = Math.abs(Math.sin(now * 0.015)) * 0.5;
+                } else {
+                    playerMesh.position.y = 0;
+                }
+
+                // Interpolação da rotação do jogador (Tank Controls FPP)
+                playerMesh.rotation.y += (player.targetRotation - playerMesh.rotation.y) * 0.15;
+
+                // Interpolação do movimento dos Inimigos
+                enemies.forEach(e => {
+                    const eWorldX = e.x * TILE_SIZE;
+                    const eWorldZ = e.y * TILE_SIZE;
+                    e.mesh.position.x += (eWorldX - e.mesh.position.x) * 0.15;
+                    e.mesh.position.z += (eWorldZ - e.mesh.position.z) * 0.15;
+                    
+                    // Animação dos inimigos voadores
+                    if (currentPhase === 1) {
+                        e.mesh.rotation.y += 0.05;
+                        e.mesh.rotation.z += 0.02;
+                    } else {
+                        // Piranhashus olham na direção do movimento e abanam os dentes
+                        if (e.type === 'H') e.mesh.rotation.y = e.dir === 1 ? Math.PI/2 : -Math.PI/2;
+                        else e.mesh.rotation.y = e.dir === 1 ? 0 : Math.PI;
+                        e.mesh.rotation.z = Math.sin(now * 0.01) * 0.2;
+                    }
+                    e.mesh.position.y = 1.5 + Math.sin(now * 0.003 + e.x) * 0.2;
+                });
+
+                // Animação estática dos Guardas
+                sadidas.forEach(s => {
+                    if (s.active) {
+                        s.mesh.rotation.y = Math.sin(now * 0.002 + s.x) * 0.3; // Olhar em volta
+                    }
+                });
+
+                // Animação do Portal de Wakfu (Fase 2)
+                if (portalMesh) {
+                    portalMesh.rotation.y += 0.02;
+                    portalMesh.rotation.z += 0.01;
+                }
+
+                // Câmara na Primeira Pessoa (FPP)
+                const dirX = Math.sin(playerMesh.rotation.y);
+                const dirZ = Math.cos(playerMesh.rotation.y);
+                
+                // Posição: nos olhos do personagem (ligeiramente à frente para não ver dentro da cabeça)
+                const idealCamX = playerMesh.position.x + dirX * 0.4;
+                const idealCamZ = playerMesh.position.z + dirZ * 0.4;
+                const idealCamY = playerMesh.position.y + 1.2; // Altura da visão
+
+                camera.position.x += (idealCamX - camera.position.x) * 0.3;
+                camera.position.y += (idealCamY - camera.position.y) * 0.3;
+                camera.position.z += (idealCamZ - camera.position.z) * 0.3;
+                
+                // Olhar em frente
+                camera.lookAt(camera.position.x + dirX, camera.position.y, camera.position.z + dirZ);
+
+            } else if (state === 'ANIMATING_AZ' && playerMesh) {
+                const now = Date.now();
+                const duration = 2000; // 2 segundos de voo
+                const animProgress = (now - animStartTime) / duration;
+                
+                if (animProgress < 1) {
+                    // 1. Escala: Cresce para Tofu Gigante e depois volta ao normal
+                    const scale = 1.5 + Math.sin(animProgress * Math.PI) * 3.5;
+                    playerMesh.scale.set(scale, scale, scale);
+                    
+                    // 2. Voo (Eixo Y): Sobe para passar por cima do Sadida (vê por cima das paredes!)
+                    const height = Math.sin(animProgress * Math.PI) * 6; 
+                    playerMesh.position.y = height;
+
+                    // 3. Suavizar movimento no labirinto
+                    const targetWorldX = player.targetX * TILE_SIZE;
+                    const targetWorldZ = player.targetY * TILE_SIZE;
+                    playerMesh.position.x += (targetWorldX - playerMesh.position.x) * 0.1;
+                    playerMesh.position.z += (targetWorldZ - playerMesh.position.z) * 0.1;
+
+                    // Ocultar Sadida quando o Az está no ar (passou por ele)
+                    if (animProgress > 0.5 && sadidas[currentSadidaBattleIndex].mesh.visible) {
+                        sadidas[currentSadidaBattleIndex].mesh.visible = false;
+                    }
+
+                    // 4. Câmara FPP adaptada ao tamanho Gigante
+                    const scaleRatio = playerMesh.scale.x / 1.5;
+                    const dirX = Math.sin(playerMesh.rotation.y);
+                    const dirZ = Math.cos(playerMesh.rotation.y);
+                    
+                    // Manter a câmara nos olhos, mesmo enquanto o boneco cresce
+                    const idealCamX = playerMesh.position.x + dirX * (0.4 * scaleRatio);
+                    const idealCamZ = playerMesh.position.z + dirZ * (0.4 * scaleRatio);
+                    const idealCamY = playerMesh.position.y + (1.2 * scaleRatio);
+
+                    camera.position.x += (idealCamX - camera.position.x) * 0.3;
+                    camera.position.y += (idealCamY - camera.position.y) * 0.3;
+                    camera.position.z += (idealCamZ - camera.position.z) * 0.3;
+                    
+                    // Olhar ligeiramente para baixo ao voar para ver o Sadida a desaparecer
+                    const lookYOffset = -Math.sin(animProgress * Math.PI) * 2; 
+                    camera.lookAt(camera.position.x + dirX, camera.position.y + lookYOffset, camera.position.z + dirZ);
+
+                } else {
+                    // Fim da animação
+                    playerMesh.scale.set(1.5, 1.5, 1.5);
+                    playerMesh.position.y = 0;
+                    sadidas[currentSadidaBattleIndex].mesh.visible = false;
+                    
+                    showMessage("Tofu Gigante!", `Transformaste-te e voaste majestosamente por cima do guarda Sadida!`, "Continuar", () => {
+                        showScreen('PLAYING');
+                        state = 'PLAYING';
+                    }, '🐤');
+                }
+            } else if (state === 'BATTLE' || state === 'MESSAGE') {
+                // Rotação subtil da câmara enquanto os menus estão abertos
+                camera.position.x += Math.sin(Date.now() * 0.0005) * 0.02;
+                if (playerMesh) {
+                    const dirX = Math.sin(playerMesh.rotation.y);
+                    const dirZ = Math.cos(playerMesh.rotation.y);
+                    camera.lookAt(camera.position.x + dirX, camera.position.y, camera.position.z + dirZ);
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+    </script>
+</body>
+</html>
