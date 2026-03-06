@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A Fuga da Alice</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; border-radius: 10px; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(-5%); animation-timing-function: cubic-bezier(0.8, 0, 1, 1); }
+            50% { transform: translateY(0); animation-timing-function: cubic-bezier(0, 0, 0.2, 1); }
+        }
+        .animate-bounce-slow { animation: bounce 2s infinite; }
+    </style>
+</head>
+<body class="bg-slate-800 text-slate-100 font-sans min-h-screen">
+
+    <div id="game-container" class="flex flex-col items-center p-4 sm:p-8 min-h-screen">
+        <!-- O conteúdo será injetado pelo JavaScript -->
+    </div>
+
+    <script>
+        // --- CONFIGURAÇÕES E DADOS ---
+        const EVENT_START = {
+            id: 'start', icon: '🛏️', title: 'O Teu Quarto',
+            description: 'Estás em segurança no teu quarto. Mas o labirinto lá fora é implacável e o Chapeleiro odeia atrasos.',
+            options: [
+                { text: 'Ficar na cama a tremer', action: 'STAY' },
+                { text: 'Sair de fininho', action: 'ADVANCE', value: 2 }
+            ]
+        };
+
+        const NORMAL_EVENTS = [
+            { icon: '🚪', title: 'Corredor Sombrio', description: 'O chão range absurdamente alto. Cada passo é um risco.', options: [{ text: 'Andar devagar', action: 'ADVANCE', value: 2 }, { text: 'Correr e rezar', action: 'RISK_ADVANCE', value: 12, failChance: 0.75 }] },
+            { icon: '👑', title: 'A Sala do Trono', description: 'Vês grandes portas vermelhas. O som de machados a afiar.', options: [{ text: 'Espreitar', action: 'TRIGGER_CHASE', enemy: 'Rainha', enemyIcon: '👑' }, { text: 'Rastejar', action: 'ADVANCE', value: 3 }] },
+            { icon: '🃏', title: 'Sala de Convívio', description: 'As cartas estão histéricas. A porta está entreaberta.', options: [{ text: 'Entrar', action: 'TRIGGER_CHASE', enemy: 'Cartas', enemyIcon: '♠️' }, { text: 'Avançar', action: 'ADVANCE', value: 3 }] },
+            { icon: '⚖️', title: 'O Tribunal', description: 'O Coelho está furioso e distribui sentenças de morte.', options: [{ text: 'Assistir', action: 'TRIGGER_CHASE', enemy: 'Coelho Branco', enemyIcon: '🐇' }, { text: 'Sombras', action: 'ADVANCE', value: 4 }] },
+            { icon: '🧪', title: 'Mesa Pequena', description: 'Um frasco que diz "BEBAM-ME". Borbulha ruidosamente.', options: [{ text: 'Beber (Barulho!)', action: 'RISK_ADVANCE', value: 15, failChance: 0.80 }, { text: 'Ignorar', action: 'ADVANCE', value: 1 }] },
+            { icon: '🐈‍⬛', title: 'Gato de Cheshire', description: '"A ALICE ESTÁ AQUI!". O gato gritou emboscada!', options: [{ text: 'Maldito Gato!', action: 'TRIGGER_CHASE', enemy: 'Guardas', enemyIcon: '🛡️' }] }
+        ];
+
+        const CHASE_EVENTS = [
+            { icon: '🏃‍♀️', title: 'MORTE CERTA!', description: 'Estão a milímetros de ti! Salva-te no teu quarto!', options: [{ text: 'Despistar (Arriscado)', action: 'CHASE_RISK', value: 5, failChance: 0.90 }, { text: 'FUGIR PARA O QUARTO', action: 'FLEE_TO_ROOM' }] },
+            { icon: '🫣', title: 'Sem Saída!', description: 'Encurralada! Porta azul ou esconderes-te?', options: [{ text: 'Esconder', action: 'CHASE_RISK', value: 5, failChance: 0.95 }, { text: 'FUGIR PARA O QUARTO', action: 'FLEE_TO_ROOM' }] }
+        ];
+
+        // --- ESTADO DO JOGO ---
+        let state = {
+            gameState: 'PLAYING',
+            progress: 0,
+            pursuers: [],
+            currentEvent: EVENT_START,
+            timeLeft: 180,
+            messages: [{ sender: 'hatter', text: 'Alice! O chá das cinco não espera! Onde estás?!' }],
+            playerReplies: ['Já vou!', 'Calma!', 'Guarda-me bolo!'],
+            lastNormalEvent: null,
+            hasSeenCat: false
+        };
+
+        let timerInterval;
+
+        function init() {
+            render();
+            startTimer();
+        }
+
+        function startTimer() {
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                if (state.gameState !== 'PLAYING') return;
+                state.timeLeft--;
+                
+                checkChatTriggers();
+
+                if (state.timeLeft <= 0) {
+                    state.gameState = 'LOST_TIME';
+                    clearInterval(timerInterval);
+                }
+                render();
+            }, 1000);
+        }
+
+        function checkChatTriggers() {
+            const triggers = {
+                150: { sender: 'rabbit', text: 'Oh, as minhas orelhas! Estás atrasada!', replies: ['O relógio está mal!', 'Desculpa!'] },
+                120: { sender: 'hare', text: 'Queres vinho? Ah, não há vinho!', replies: ['Que indelicadeza!', 'Estou a ir!'] },
+                90: { sender: 'hatter', text: 'O tempo voa e tu rastejas!', replies: ['Estou a correr!', 'Guarda o lugar!'] },
+                30: { sender: 'hare', text: 'TIC-TAC! VOU PARTIR AS CHÁVENAS!', replies: ['NÃO PARTAS NADA!', 'Acelera!'] }
+            };
+
+            if (triggers[state.timeLeft]) {
+                state.messages.push({ sender: triggers[state.timeLeft].sender, text: triggers[state.timeLeft].text });
+                state.playerReplies = triggers[state.timeLeft].replies;
+            }
+        }
+
+        function handleOption(action, value, failChance, enemy, enemyIcon) {
+            if (state.gameState !== 'PLAYING') return;
+
+            switch (action) {
+                case 'STAY': break;
+                case 'ADVANCE': state.progress += value; break;
+                case 'RISK_ADVANCE':
+                    if (Math.random() < failChance) {
+                        state.pursuers.push({ name: 'Cartas', icon: '🃏' });
+                        state.currentEvent = { icon: '💥', title: 'Tropeçaste!', description: 'As Cartas viram-te!', options: [{ text: 'CORRER!', action: 'ADVANCE', value: 0 }] };
+                        render(); return;
+                    } else state.progress += value;
+                    break;
+                case 'TRIGGER_CHASE':
+                    state.pursuers.push({ name: enemy, icon: enemyIcon });
+                    state.currentEvent = { icon: '🚨', title: 'APANNADA!', description: `O(A) ${enemy} viu-te!`, options: [{ text: 'CORRER!', action: 'ADVANCE', value: 0 }] };
+                    render(); return;
+                case 'FLEE_TO_ROOM':
+                    state.pursuers = [];
+                    state.progress = Math.max(0, state.progress - 5);
+                    state.currentEvent = { icon: '🚪', title: 'A Salvo', description: 'Bateste com a porta. Estás segura por agora.', options: [{ text: 'Sair de novo', action: 'ADVANCE', value: 2 }] };
+                    render(); return;
+                case 'CHASE_RISK':
+                    if (Math.random() < failChance) { state.gameState = 'LOST'; render(); return; }
+                    else state.progress += value;
+                    break;
+            }
+
+            if (state.progress >= 100) {
+                state.progress = 100;
+                state.gameState = 'WON';
+            } else {
+                drawNextCard();
+            }
+            render();
+        }
+
+        function drawNextCard() {
+            if (state.pursuers.length > 0) {
+                state.currentEvent = CHASE_EVENTS[Math.floor(Math.random() * CHASE_EVENTS.length)];
+            } else {
+                let pool = NORMAL_EVENTS.filter(e => e.title !== state.lastNormalEvent);
+                if (state.hasSeenCat) pool = pool.filter(e => e.title !== 'Gato de Cheshire');
+                const next = pool[Math.floor(Math.random() * pool.length)];
+                if (next.title === 'Gato de Cheshire') state.hasSeenCat = true;
+                state.lastNormalEvent = next.title;
+                state.currentEvent = next;
+            }
+        }
+
+        function handleReply(text) {
+            state.messages.push({ sender: 'alice', text });
+            state.playerReplies = [];
+            render();
+        }
+
+        function restart() {
+            state = {
+                gameState: 'PLAYING', progress: 0, pursuers: [], currentEvent: EVENT_START,
+                timeLeft: 180, lastNormalEvent: null, hasSeenCat: false,
+                messages: [{ sender: 'hatter', text: 'Alice! O chá das cinco não espera!' }],
+                playerReplies: ['Já vou!', 'Calma!']
+            };
+            init();
+        }
+
+        function render() {
+            const container = document.getElementById('game-container');
+            
+            if (state.gameState === 'WON') {
+                container.innerHTML = `
+                    <div class="flex flex-col items-center justify-center text-center py-20">
+                        <div class="text-8xl mb-6 animate-bounce">🫖🎩</div>
+                        <h1 class="text-4xl font-black text-pink-400 mb-4">Chegaste ao Chá!</h1>
+                        <button onclick="restart()" class="bg-pink-500 px-8 py-4 rounded-full font-bold text-xl">Jogar de Novo</button>
+                    </div>`;
+                return;
+            }
+
+            if (state.gameState === 'LOST' || state.gameState === 'LOST_TIME') {
+                container.innerHTML = `
+                    <div class="flex flex-col items-center justify-center text-center py-20">
+                        <div class="text-8xl mb-6">${state.gameState === 'LOST' ? '🪓' : '⏰'}</div>
+                        <h1 class="text-4xl font-black text-red-500 mb-4">${state.gameState === 'LOST' ? 'Foste Apanhada!' : 'O Tempo Acabou!'}</h1>
+                        <button onclick="restart()" class="bg-red-600 px-8 py-4 rounded-full font-bold text-xl">Tentar de Novo</button>
+                    </div>`;
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="w-full max-w-md mb-8">
+                    <div class="flex justify-between items-center mb-4">
+                        <h1 class="text-2xl font-bold text-amber-300">A Fuga da Alice</h1>
+                        <div class="text-xl font-mono font-bold px-3 py-1 rounded-lg border-2 ${state.timeLeft <= 30 ? 'bg-red-600 animate-pulse' : 'bg-slate-700 text-amber-300 border-slate-600'}">
+                            ⏳ ${Math.floor(state.timeLeft / 60)}:${(state.timeLeft % 60).toString().padStart(2, '0')}
+                        </div>
+                    </div>
+                    <div class="bg-slate-900 rounded-full h-8 w-full p-1 relative border-2 border-slate-700 overflow-hidden mb-4">
+                        <div class="bg-gradient-to-r from-blue-400 to-pink-400 h-full rounded-full transition-all duration-500" style="width: ${state.progress}%"></div>
+                        <div class="absolute inset-0 flex justify-between items-center px-2 text-xs font-bold text-white uppercase">
+                            <span>🛏️ Quarto</span>
+                            <span>${state.progress}%</span>
+                            <span>🫖 Saída</span>
+                        </div>
+                    </div>
+                    <div class="h-12 flex items-center justify-center gap-2 rounded-lg ${state.pursuers.length > 0 ? 'bg-red-900/80 border border-red-500 animate-pulse' : ''}">
+                        ${state.pursuers.length > 0 ? `<span class="text-xs font-bold">PERSEGUIDA POR:</span> ${state.pursuers.map(p => `<span class="text-2xl">${p.icon}</span>`).join('')}` : '<span class="text-slate-500 italic text-sm">Silêncio no corredor...</span>'}
+                    </div>
+
+                    <div class="mt-4 bg-slate-700 border-2 border-slate-600 rounded-xl p-2 h-44 flex flex-col relative shadow-inner">
+                        <div class="absolute -top-3 left-4 bg-amber-500 text-white text-[10px] font-bold px-2 py-1 rounded-full z-10">☕ Grupo do Chá</div>
+                        <div id="chat-box" class="flex-1 overflow-y-auto mt-2 p-1 space-y-3 text-sm custom-scrollbar">
+                            ${state.messages.map(m => `
+                                <div class="flex flex-col ${m.sender === 'alice' ? 'items-end' : 'items-start'}">
+                                    <span class="text-[10px] text-slate-400 font-bold mb-0.5">${m.sender === 'alice' ? '' : m.sender.toUpperCase()}</span>
+                                    <div class="px-3 py-1.5 max-w-[85%] rounded-2xl ${m.sender === 'alice' ? 'bg-blue-500 text-white rounded-br-none' : 'bg-slate-100 text-slate-800 rounded-bl-none'}">${m.text}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="flex gap-2 mt-2 overflow-x-auto no-scrollbar pb-1">
+                            ${state.playerReplies.map(r => `<button onclick="handleReply('${r}')" class="whitespace-nowrap bg-slate-800 text-amber-200 text-xs font-bold py-1.5 px-3 rounded-full border border-slate-500 hover:bg-slate-900">${r}</button>`).join('')}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="w-full max-w-sm bg-amber-50 rounded-2xl shadow-2xl overflow-hidden border-4 ${state.pursuers.length > 0 ? 'border-red-500' : 'border-amber-900'} transition-all">
+                    <div class="h-40 flex items-center justify-center text-8xl bg-amber-200 border-b-4 ${state.pursuers.length > 0 ? 'bg-red-200 border-red-500' : 'border-amber-900'}">
+                        <span class="${state.pursuers.length > 0 ? 'animate-bounce' : ''}">${state.currentEvent.icon}</span>
+                    </div>
+                    <div class="p-6 min-h-[140px] flex flex-col justify-center text-center bg-white text-amber-950">
+                        <h2 class="text-xl font-black mb-2">${state.currentEvent.title}</h2>
+                        <p class="text-sm font-medium leading-tight">${state.currentEvent.description}</p>
+                    </div>
+                </div>
+
+                <div class="w-full max-w-sm mt-6 flex flex-col gap-3">
+                    ${state.currentEvent.options.map(o => `
+                        <button onclick="handleOption('${o.action}', ${o.value || 0}, ${o.failChance || 0}, '${o.enemy || ''}', '${o.enemyIcon || ''}')" 
+                            class="w-full p-4 rounded-xl font-bold text-base shadow-md border-b-4 transition-all active:scale-95 flex items-center justify-center gap-2
+                            ${o.action === 'FLEE_TO_ROOM' ? 'bg-blue-600 text-white border-blue-800' : o.action === 'TRIGGER_CHASE' ? 'bg-red-600 text-white border-red-800' : 'bg-white text-amber-900 border-amber-300'}">
+                            ${o.text}
+                        </button>
+                    `).join('')}
+                </div>
+            `;
+
+            const chat = document.getElementById('chat-box');
+            if(chat) chat.scrollTop = chat.scrollHeight;
+        }
+
+        init();
+    </script>
+</body>
+</html>
