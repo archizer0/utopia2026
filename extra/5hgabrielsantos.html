@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Caçador de Estrelas Mágicas - Modo Câmara</title>
+    <!-- Importar Mediapipe para deteção de mãos -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+   
+    <style>
+        :root {
+            --star-color: #fbbf24;
+            --hand-cursor-color: #00ff00;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+            font-family: 'Segoe UI', sans-serif;
+            color: white;
+        }
+
+        /* Vídeo da Webcam (espelhado) */
+        #video-container {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            transform: scaleX(-1); /* Espelhar a câmara */
+        }
+       
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0.6; /* Deixar o vídeo suave para as estrelas brilharem */
+        }
+
+        #game-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: space-around;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        .stat-box {
+            background: rgba(0, 0, 0, 0.6);
+            padding: 10px 25px;
+            border-radius: 30px;
+            border: 2px solid var(--star-color);
+            font-size: 1.8rem;
+            font-weight: bold;
+        }
+
+        #start-screen {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            text-align: center;
+        }
+
+        .btn {
+            background: var(--star-color);
+            color: #000;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.5rem;
+            border-radius: 50px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-top: 20px;
+        }
+
+        /* Cursor que segue a mão */
+        #hand-pointer {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            background: rgba(255, 255, 255, 0.5);
+            border: 3px solid var(--hand-cursor-color);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 15;
+            pointer-events: none;
+            box-shadow: 0 0 15px var(--hand-cursor-color);
+            display: none;
+        }
+
+        .star {
+            position: absolute;
+            filter: drop-shadow(0 0 15px var(--star-color));
+            pointer-events: none;
+            z-index: 20;
+        }
+
+        .star svg {
+            width: 60px;
+            height: 60px;
+            fill: var(--star-color);
+        }
+
+        #loading-msg {
+            font-size: 1.2rem;
+            color: #aaa;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="video-container">
+        <video id="input_video" playsinline></video>
+    </div>
+   
+    <div id="hand-pointer"></div>
+
+    <div id="ui-layer">
+        <div class="stat-box">Estrelas: <span id="score">0</span></div>
+        <div class="stat-box">Tempo: <span id="timer">2:00</span></div>
+    </div>
+
+    <div id="start-screen">
+        <h1>Estrelas com a Mão! 🖐️</h1>
+        <p>Permite o acesso à câmara e usa a tua mão para apanhar as estrelas.</p>
+        <button id="start-btn" class="btn">Começar Agora</button>
+        <div id="loading-msg">A carregar inteligência artificial...</div>
+    </div>
+
+    <div id="game-container"></div>
+
+    <script>
+        const videoElement = document.getElementById('input_video');
+        const pointer = document.getElementById('hand-pointer');
+        const scoreElement = document.getElementById('score');
+        const timerElement = document.getElementById('timer');
+        const startScreen = document.getElementById('start-screen');
+        const startBtn = document.getElementById('start-btn');
+        const gameContainer = document.getElementById('game-container');
+
+        let score = 0;
+        let timeLeft = 120; // 2 minutos
+        let gameActive = false;
+        let handX = 0;
+        let handY = 0;
+
+        // Configuração do Mediapipe Hands
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        hands.onResults(onResults);
+
+        function onResults(results) {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                // Usamos a ponta do dedo indicador (Landmark 8) para o cursor
+                const point = landmarks[8];
+               
+                // Converter coordenadas normalizadas (0-1) para pixels do ecrã
+                // Como o vídeo está espelhado, invertemos o X
+                handX = (1 - point.x) * window.innerWidth;
+                handY = point.y * window.innerHeight;
+
+                pointer.style.display = 'block';
+                pointer.style.left = `${handX}px`;
+                pointer.style.top = `${handY}px`;
+
+                checkCollision();
+            } else {
+                pointer.style.display = 'none';
+            }
+        }
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({image: videoElement});
+            },
+            width: 1280,
+            height: 720
+        });
+
+        function checkCollision() {
+            if (!gameActive) return;
+            const stars = document.querySelectorAll('.star');
+            stars.forEach(star => {
+                const rect = star.getBoundingClientRect();
+                const starCenterX = rect.left + rect.width / 2;
+                const starCenterY = rect.top + rect.height / 2;
+
+                // Distância entre a mão e o centro da estrela
+                const dist = Math.hypot(handX - starCenterX, handY - starCenterY);
+               
+                if (dist < 40) { // Se estiver perto o suficiente, apanha
+                    collectStar(star);
+                }
+            });
+        }
+
+        function createStar() {
+            if (!gameActive) return;
+
+            const star = document.createElement('div');
+            star.className = 'star';
+            const x = Math.random() * (window.innerWidth - 80) + 40;
+            const y = Math.random() * (window.innerHeight - 80) + 40;
+           
+            star.style.left = `${x}px`;
+            star.style.top = `${y}px`;
+            star.innerHTML = `
+                <svg viewBox="0 0 24 24">
+                    <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+                </svg>
+            `;
+            gameContainer.appendChild(star);
+
+            setTimeout(() => {
+                if (star.parentElement) star.remove();
+            }, 3000);
+        }
+
+        function collectStar(star) {
+            score++;
+            scoreElement.textContent = score;
+            star.style.transform = 'scale(2)';
+            star.style.opacity = '0';
+            star.style.transition = '0.3s';
+            setTimeout(() => star.remove(), 300);
+        }
+
+        function startGame() {
+            startScreen.style.display = 'none';
+            score = 0;
+            timeLeft = 120;
+            gameActive = true;
+            scoreElement.textContent = score;
+           
+            setInterval(createStar, 1000);
+           
+            const timer = setInterval(() => {
+                timeLeft--;
+                const mins = Math.floor(timeLeft / 60);
+                const secs = timeLeft % 60;
+                timerElement.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+               
+                if (timeLeft <= 0) {
+                    clearInterval(timer);
+                    gameActive = false;
+                    alert("Fim do Jogo! Pontuação: " + score);
+                    location.reload();
+                }
+            }, 1000);
+        }
+
+        startBtn.onclick = () => {
+            camera.start();
+            startGame();
+        };
+
+        // Remover mensagem de carregamento quando pronto
+        hands.initialize().then(() => {
+            document.getElementById('loading-msg').textContent = "Pronto! Clica em começar.";
+        });
+
+    </script>
+</body>
+</html>
