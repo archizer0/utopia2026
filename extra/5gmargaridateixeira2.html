@@ -68,13 +68,36 @@
             <canvas id="overlay" class="mirror"></canvas>
         </div>
 
-        <div class="grid grid-cols-3 sm:grid-cols-6 gap-3 w-full">
-            <button onclick="setFilter('none')" class="bg-slate-700 p-3 rounded-xl hover:bg-slate-600 transition">Off</button>
-            <button onclick="setFilter('party')" class="bg-indigo-600 p-3 rounded-xl hover:bg-indigo-500 transition">Festa 🕶️</button>
-            <button onclick="setFilter('emoji')" class="bg-yellow-600 p-3 rounded-xl hover:bg-yellow-500 transition">Emoji 😂</button>
-            <button onclick="setFilter('makeup')" class="bg-rose-600 p-3 rounded-xl hover:bg-rose-500 transition">Batom 💄</button>
-            <button onclick="setFilter('pop')" class="bg-emerald-600 p-3 rounded-xl hover:bg-emerald-500 transition">PopArt 🎨</button>
-            <button onclick="setFilter('sketch')" class="bg-pink-600 p-3 rounded-xl hover:bg-pink-500 transition">Arte ✍️</button>
+        <div class="flex flex-wrap justify-center gap-3 w-full max-w-4xl">
+            <button onclick="setFilter('none')" class="bg-slate-700 px-4 py-2 rounded-xl hover:bg-slate-600 transition shadow-lg">Off</button>
+            <button onclick="setFilter('party')" class="bg-indigo-600 px-4 py-2 rounded-xl hover:bg-indigo-500 transition shadow-lg">Festa 🕶️</button>
+            <button onclick="setFilter('emoji')" class="bg-yellow-600 px-4 py-2 rounded-xl hover:bg-yellow-500 transition shadow-lg">Emoji 😂</button>
+            <button onclick="setFilter('makeup')" class="bg-rose-600 px-4 py-2 rounded-xl hover:bg-rose-500 transition shadow-lg">Básico 💄</button>
+            <button onclick="setFilter('glam')" class="bg-fuchsia-600 px-4 py-2 rounded-xl hover:bg-fuchsia-500 transition shadow-lg">Glam ✨</button>
+            <button onclick="setFilter('goth')" class="bg-gray-800 px-4 py-2 rounded-xl hover:bg-gray-700 transition shadow-lg">Gótico 🦇</button>
+            <button onclick="setFilter('pop')" class="bg-emerald-600 px-4 py-2 rounded-xl hover:bg-emerald-500 transition shadow-lg">PopArt 🎨</button>
+            <button onclick="setFilter('sketch')" class="bg-pink-600 px-4 py-2 rounded-xl hover:bg-pink-500 transition shadow-lg">Arte ✍️</button>
+            <button onclick="setFilter('cyborg')" class="bg-cyan-600 px-4 py-2 rounded-xl hover:bg-cyan-500 transition shadow-lg">Ciborgue 🤖</button>
+            <button onclick="setFilter('cat')" class="bg-orange-500 px-4 py-2 rounded-xl hover:bg-orange-400 transition shadow-lg">Gato 🐱</button>
+            <button onclick="setFilter('clown')" class="bg-red-600 px-4 py-2 rounded-xl hover:bg-red-500 transition shadow-lg">Palhaço 🤡</button>
+            <button onclick="setFilter('pirate')" class="bg-amber-800 px-4 py-2 rounded-xl hover:bg-amber-700 transition shadow-lg text-white">Pirata 🏴‍☠️</button>
+            <button onclick="setFilter('alien')" class="bg-lime-600 px-4 py-2 rounded-xl hover:bg-lime-500 transition shadow-lg text-slate-900 font-bold">Alien 👽</button>
+            <button onclick="setFilter('dog')" class="bg-yellow-700 px-4 py-2 rounded-xl hover:bg-yellow-600 transition shadow-lg text-white">Cão 🐶</button>
+            <button onclick="setFilter('vampire')" class="bg-red-900 px-4 py-2 rounded-xl hover:bg-red-800 transition shadow-lg text-white">Vampiro 🧛‍♂️</button>
+            <button onclick="setFilter('ninja')" class="bg-slate-900 px-4 py-2 rounded-xl hover:bg-slate-800 transition shadow-lg text-white border border-slate-700">Ninja 🥷</button>
+            <button onclick="setFilter('nerd')" class="bg-blue-600 px-4 py-2 rounded-xl hover:bg-blue-500 transition shadow-lg text-white">Nerd 🤓</button>
+           
+            <!-- Os 10 novos botões -->
+            <button onclick="setFilter('angel')" class="bg-yellow-100 px-4 py-2 rounded-xl hover:bg-yellow-200 transition shadow-lg text-yellow-600 font-bold border border-yellow-300">Anjo 😇</button>
+            <button onclick="setFilter('devil')" class="bg-red-700 px-4 py-2 rounded-xl hover:bg-red-600 transition shadow-lg text-red-100">Diabo 😈</button>
+            <button onclick="setFilter('rabbit')" class="bg-pink-100 px-4 py-2 rounded-xl hover:bg-pink-200 transition shadow-lg text-pink-500 font-bold border border-pink-300">Coelho 🐰</button>
+            <button onclick="setFilter('magician')" class="bg-purple-900 px-4 py-2 rounded-xl hover:bg-purple-800 transition shadow-lg text-white">Mágico 🎩</button>
+            <button onclick="setFilter('zombie')" class="bg-green-800 px-4 py-2 rounded-xl hover:bg-green-700 transition shadow-lg text-green-200">Zumbi 🧟</button>
+            <button onclick="setFilter('crown')" class="bg-yellow-500 px-4 py-2 rounded-xl hover:bg-yellow-400 transition shadow-lg text-yellow-900 font-bold">Coroa 👑</button>
+            <button onclick="setFilter('lion')" class="bg-orange-600 px-4 py-2 rounded-xl hover:bg-orange-500 transition shadow-lg text-orange-100">Leão 🦁</button>
+            <button onclick="setFilter('panda')" class="bg-black px-4 py-2 rounded-xl hover:bg-gray-800 transition shadow-lg text-white border-2 border-white">Panda 🐼</button>
+            <button onclick="setFilter('ghost')" class="bg-slate-200 px-4 py-2 rounded-xl hover:bg-slate-300 transition shadow-lg text-slate-600 opacity-90">Fantasma 👻</button>
+            <button onclick="setFilter('dragon')" class="bg-teal-700 px-4 py-2 rounded-xl hover:bg-teal-600 transition shadow-lg text-teal-100">Dragão 🐉</button>
         </div>
 
         <div id="filter-display" class="mt-6 text-indigo-300 font-mono text-sm uppercase tracking-widest">
@@ -95,30 +118,44 @@
         // Inicialização
         async function setup() {
             try {
-                // Link para modelos hospedados publicamente (essencial para face-api.js)
-                const MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights/';
-               
-                statusText.innerText = "A descarregar modelos (2MB~)...";
-                await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
-                await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
-                await faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL);
-
-                statusText.innerText = "A ligar câmara...";
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+                // 1. Ligar a câmara IMEDIATAMENTE (antes de carregar a IA)
+                statusText.innerText = "Por favor, permite o acesso à câmara no teu browser...";
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: "user" } });
                 video.srcObject = stream;
 
-                video.addEventListener('play', () => {
-                    const displaySize = { width: video.videoWidth, height: video.videoHeight };
-                    faceapi.matchDimensions(overlay, displaySize);
-                   
-                    loadingScreen.classList.add('hidden');
-                    gameContainer.classList.remove('hidden');
-                   
-                    startDetection(displaySize);
+                // Esperar que o vídeo inicie para mostrar a interface
+                await new Promise((resolve) => {
+                    video.onloadedmetadata = () => {
+                        loadingScreen.classList.add('hidden');
+                        gameContainer.classList.remove('hidden');
+                        resolve();
+                    };
                 });
 
+                // Mostrar aviso de que os filtros estão a carregar
+                filterDisplay.innerText = "A DESCARREGAR IA DOS FILTROS... ⏳";
+                filterDisplay.classList.add('text-yellow-400', 'animate-pulse');
+                filterDisplay.classList.remove('text-indigo-300');
+
+                // 2. Carregar os modelos de IA em segundo plano
+                const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models/';
+                await Promise.all([
+                    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL)
+                ]);
+
+                // 3. Tudo pronto! Iniciar a deteção
+                filterDisplay.classList.remove('text-yellow-400', 'animate-pulse');
+                filterDisplay.classList.add('text-indigo-300');
+                setFilter('none'); // Atualiza o texto visualmente
+
+                const displaySize = { width: video.videoWidth, height: video.videoHeight };
+                faceapi.matchDimensions(overlay, displaySize);
+                startDetection(displaySize);
+
             } catch (err) {
-                statusText.innerHTML = `<span class="text-red-400">Erro: ${err.message}</span><br><small>Certifica-te que usas HTTPS ou localhost.</small>`;
+                statusText.innerHTML = `<span class="text-red-400">Erro: ${err.message}</span><br><small>Certifica-te que usas HTTPS ou localhost e que deste permissão à câmara.</small>`;
                 console.error(err);
             }
         }
@@ -147,9 +184,32 @@
                     resized.forEach(det => {
                         if (currentFilter === 'party') drawParty(ctx, det);
                         if (currentFilter === 'emoji') drawEmoji(ctx, det);
-                        if (currentFilter === 'makeup') drawMakeup(ctx, det);
+                        if (currentFilter === 'makeup') drawMakeup(ctx, det, 'basic');
+                        if (currentFilter === 'glam') drawMakeup(ctx, det, 'glam');
+                        if (currentFilter === 'goth') drawMakeup(ctx, det, 'goth');
                         if (currentFilter === 'pop') drawPop(ctx, det);
                         if (currentFilter === 'sketch') drawSketch(ctx, det);
+                        if (currentFilter === 'cyborg') drawCyborg(ctx, det);
+                        if (currentFilter === 'cat') drawCat(ctx, det);
+                        if (currentFilter === 'clown') drawClown(ctx, det);
+                        if (currentFilter === 'pirate') drawPirate(ctx, det);
+                        if (currentFilter === 'alien') drawAlien(ctx, det);
+                        if (currentFilter === 'dog') drawDog(ctx, det);
+                        if (currentFilter === 'vampire') drawVampire(ctx, det);
+                        if (currentFilter === 'ninja') drawNinja(ctx, det);
+                        if (currentFilter === 'nerd') drawNerd(ctx, det);
+                       
+                        // Chamadas para os 10 novos filtros
+                        if (currentFilter === 'angel') drawAngel(ctx, det);
+                        if (currentFilter === 'devil') drawDevil(ctx, det);
+                        if (currentFilter === 'rabbit') drawRabbit(ctx, det);
+                        if (currentFilter === 'magician') drawMagician(ctx, det);
+                        if (currentFilter === 'zombie') drawZombie(ctx, det);
+                        if (currentFilter === 'crown') drawCrown(ctx, det);
+                        if (currentFilter === 'lion') drawLion(ctx, det);
+                        if (currentFilter === 'panda') drawPanda(ctx, det);
+                        if (currentFilter === 'ghost') drawGhost(ctx, det);
+                        if (currentFilter === 'dragon') drawDragon(ctx, det);
                     });
                 }
 
@@ -185,25 +245,91 @@
             if (exp.surprised > 0.4) emoji = '😲';
             if (exp.angry > 0.4) emoji = '😠';
 
+            // Repor a opacidade e cor para garantir que o emoji fica 100% visível
+            ctx.globalAlpha = 1.0;
+            ctx.fillStyle = '#000000';
+           
             ctx.font = `${box.width}px serif`;
             ctx.textAlign = 'center';
             ctx.fillText(emoji, box.x + box.width/2, box.y + box.height/1.5);
         }
 
-        function drawMakeup(ctx, det) {
+        function drawMakeup(ctx, det, style) {
             const mouth = det.landmarks.getMouth();
-            ctx.fillStyle = 'rgba(255, 0, 80, 0.5)';
+            const pos = det.landmarks.positions;
+           
+            ctx.globalAlpha = 1.0;
+           
+            // Definir cores com base no estilo selecionado
+            let lipColor = 'rgba(255, 0, 80, 0.5)';
+            let blushColor = 'rgba(255, 150, 150, 0.3)';
+            let shadowColor = null;
+
+            if (style === 'glam') {
+                lipColor = 'rgba(220, 20, 60, 0.7)'; // Vermelho intenso
+                blushColor = 'rgba(255, 105, 180, 0.4)'; // Rosa choque
+                shadowColor = 'rgba(218, 165, 32, 0.5)'; // Sombra dourada
+            } else if (style === 'goth') {
+                lipColor = 'rgba(30, 30, 30, 0.85)'; // Batom escuro
+                blushColor = null; // Góticos preferem o rosto pálido
+                shadowColor = 'rgba(50, 0, 50, 0.7)'; // Sombra roxa escura
+            }
+
+            // Batom
+            ctx.fillStyle = lipColor;
             ctx.beginPath();
             mouth.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
             ctx.closePath();
             ctx.fill();
            
             // Blush
-            ctx.fillStyle = 'rgba(255, 150, 150, 0.3)';
-            const left = det.landmarks.getPositions()[13];
-            const right = det.landmarks.getPositions()[3];
-            ctx.beginPath(); ctx.arc(left.x, left.y, 25, 0, Math.PI*2); ctx.fill();
-            ctx.beginPath(); ctx.arc(right.x, right.y, 25, 0, Math.PI*2); ctx.fill();
+            if (blushColor) {
+                ctx.fillStyle = blushColor;
+                const left = pos[13];
+                const right = pos[3];
+                if (left && right) {
+                    ctx.beginPath(); ctx.arc(left.x, left.y, 25, 0, Math.PI*2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(right.x, right.y, 25, 0, Math.PI*2); ctx.fill();
+                }
+            }
+           
+            // Sombra e Eyeliner (para Glam e Gótico)
+            if (shadowColor) {
+                const leftEye = det.landmarks.getLeftEye();
+                const rightEye = det.landmarks.getRightEye();
+                const leftBrow = det.landmarks.getLeftEyeBrow();
+                const rightBrow = det.landmarks.getRightEyeBrow();
+
+                ctx.fillStyle = shadowColor;
+               
+                // Preencher pálpebra esquerda (da sobrancelha até ao topo do olho)
+                ctx.beginPath();
+                leftBrow.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+                ctx.lineTo(leftEye[3].x, leftEye[3].y);
+                ctx.lineTo(leftEye[2].x, leftEye[2].y);
+                ctx.lineTo(leftEye[1].x, leftEye[1].y);
+                ctx.lineTo(leftEye[0].x, leftEye[0].y);
+                ctx.closePath();
+                ctx.fill();
+
+                // Preencher pálpebra direita
+                ctx.beginPath();
+                rightBrow.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+                ctx.lineTo(rightEye[3].x, rightEye[3].y);
+                ctx.lineTo(rightEye[2].x, rightEye[2].y);
+                ctx.lineTo(rightEye[1].x, rightEye[1].y);
+                ctx.lineTo(rightEye[0].x, rightEye[0].y);
+                ctx.closePath();
+                ctx.fill();
+               
+                // Adicionar eyeliner carregado à volta dos olhos para o estilo Gótico
+                if (style === 'goth') {
+                    ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+                    ctx.lineWidth = 4;
+                    ctx.beginPath(); leftEye.forEach((p,i)=> i===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y)); ctx.closePath(); ctx.stroke();
+                    ctx.beginPath(); rightEye.forEach((p,i)=> i===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y)); ctx.closePath(); ctx.stroke();
+                }
+            }
         }
 
         function drawPop(ctx, det) {
@@ -227,7 +353,8 @@
         }
 
         function drawSketch(ctx, det) {
-            const points = det.landmarks.getPositions();
+            // Correção: Usar propriedade 'positions'
+            const points = det.landmarks.positions;
             ctx.strokeStyle = '#f472b6';
             ctx.lineWidth = 2;
             ctx.beginPath();
@@ -238,6 +365,801 @@
                 }
             });
             ctx.stroke();
+        }
+
+        function drawCyborg(ctx, det) {
+            const rightEye = det.landmarks.getRightEye();
+            const jaw = det.landmarks.getJawOutline();
+           
+            const eyeWidth = Math.abs(rightEye[3].x - rightEye[0].x);
+            const cx = (rightEye[0].x + rightEye[3].x) / 2;
+            const cy = (rightEye[0].y + rightEye[3].y) / 2;
+
+            ctx.globalAlpha = 1.0;
+           
+            // Olho robótico brilhante
+            const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, eyeWidth);
+            grad.addColorStop(0, 'rgba(255, 50, 50, 1)');
+            grad.addColorStop(0.5, 'rgba(255, 0, 0, 0.8)');
+            grad.addColorStop(1, 'rgba(255, 0, 0, 0)');
+           
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.arc(cx, cy, eyeWidth * 1.5, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Placa de circuito na face
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.7)';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(jaw[0].x, jaw[0].y);
+            ctx.lineTo(jaw[4].x, jaw[4].y);
+            ctx.lineTo(jaw[4].x + 30, jaw[4].y + 10);
+            ctx.stroke();
+        }
+
+        function drawCat(ctx, det) {
+            const nose = det.landmarks.getNose();
+            const noseTip = nose[3];
+
+            ctx.globalAlpha = 1.0;
+           
+            // Nariz de gato (rosa)
+            ctx.fillStyle = '#ff99cc';
+            ctx.beginPath();
+            // Triângulo invertido para o nariz
+            ctx.moveTo(noseTip.x - 10, noseTip.y - 5);
+            ctx.lineTo(noseTip.x + 10, noseTip.y - 5);
+            ctx.lineTo(noseTip.x, noseTip.y + 10);
+            ctx.closePath();
+            ctx.fill();
+           
+            // Bigodes
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+            ctx.lineWidth = 2;
+            ctx.lineCap = 'round';
+           
+            const leftCheekX = noseTip.x - 20;
+            ctx.beginPath(); ctx.moveTo(leftCheekX, noseTip.y); ctx.lineTo(leftCheekX - 60, noseTip.y - 15); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(leftCheekX, noseTip.y + 5); ctx.lineTo(leftCheekX - 65, noseTip.y + 5); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(leftCheekX, noseTip.y + 10); ctx.lineTo(leftCheekX - 60, noseTip.y + 25); ctx.stroke();
+
+            const rightCheekX = noseTip.x + 20;
+            ctx.beginPath(); ctx.moveTo(rightCheekX, noseTip.y); ctx.lineTo(rightCheekX + 60, noseTip.y - 15); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(rightCheekX, noseTip.y + 5); ctx.lineTo(rightCheekX + 65, noseTip.y + 5); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(rightCheekX, noseTip.y + 10); ctx.lineTo(rightCheekX + 60, noseTip.y + 25); ctx.stroke();
+        }
+
+        function drawClown(ctx, det) {
+            const nose = det.landmarks.getNose();
+            const leftEye = det.landmarks.getLeftEye();
+            const rightEye = det.landmarks.getRightEye();
+            const mouth = det.landmarks.getMouth();
+            const noseTip = nose[3];
+
+            ctx.globalAlpha = 1.0;
+
+            // Fundo branco à volta da boca
+            const mouthCX = (mouth[0].x + mouth[6].x)/2;
+            const mouthCY = (mouth[3].y + mouth[9].y)/2;
+            const mouthW = Math.abs(mouth[6].x - mouth[0].x) * 1.5;
+            const mouthH = Math.abs(mouth[9].y - mouth[3].y) * 2 + 20;
+           
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.beginPath();
+            ctx.ellipse(mouthCX, mouthCY, mouthW/2, mouthH/2, 0, 0, Math.PI*2);
+            ctx.fill();
+
+            // Lábios vermelhos exagerados
+            ctx.fillStyle = '#ff0000';
+            ctx.beginPath();
+            mouth.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+            ctx.closePath();
+            ctx.fill();
+
+            // Nariz de palhaço
+            ctx.fillStyle = '#ff0000';
+            ctx.beginPath();
+            ctx.arc(noseTip.x, noseTip.y, 20, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+            ctx.beginPath();
+            ctx.arc(noseTip.x - 6, noseTip.y - 6, 5, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Triângulos azuis nos olhos
+            ctx.fillStyle = '#0066ff';
+            const drawTriangle = (eye, up) => {
+                const cx = (eye[0].x + eye[3].x) / 2;
+                const cy = (eye[0].y + eye[3].y) / 2;
+                const width = Math.abs(eye[3].x - eye[0].x);
+                ctx.beginPath();
+                if (up) {
+                    ctx.moveTo(cx - width/1.5, cy - 10);
+                    ctx.lineTo(cx + width/1.5, cy - 10);
+                    ctx.lineTo(cx, cy - 40);
+                } else {
+                    ctx.moveTo(cx - width/1.5, cy + 10);
+                    ctx.lineTo(cx + width/1.5, cy + 10);
+                    ctx.lineTo(cx, cy + 40);
+                }
+                ctx.closePath();
+                ctx.fill();
+            };
+            drawTriangle(leftEye, true);
+            drawTriangle(leftEye, false);
+            drawTriangle(rightEye, true);
+            drawTriangle(rightEye, false);
+        }
+
+        function drawPirate(ctx, det) {
+            const rightEye = det.landmarks.getRightEye();
+            const jaw = det.landmarks.getJawOutline();
+            const pos = det.landmarks.positions;
+           
+            ctx.globalAlpha = 1.0;
+            const cx = (rightEye[0].x + rightEye[3].x) / 2;
+            const cy = (rightEye[0].y + rightEye[3].y) / 2;
+            const patchRadius = Math.abs(rightEye[3].x - rightEye[0].x) * 1.3;
+
+            // Pala de pirata (no olho direito)
+            ctx.fillStyle = '#111';
+            ctx.beginPath();
+            ctx.arc(cx, cy, patchRadius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Fio da pala
+            ctx.strokeStyle = '#111';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(jaw[1].x, jaw[1].y); // Lado do rosto
+            ctx.lineTo(cx, cy);
+            ctx.lineTo(pos[19].x, pos[19].y - 20); // Sobrancelha oposta
+            ctx.stroke();
+
+            // Cicatriz (na bochecha esquerda)
+            ctx.strokeStyle = '#8b0000'; // Vermelho escuro
+            ctx.lineWidth = 3;
+            const scarX = jaw[13].x - 10;
+            const scarY = jaw[13].y - 30;
+            ctx.beginPath();
+            ctx.moveTo(scarX, scarY);
+            ctx.lineTo(scarX - 20, scarY + 40);
+            ctx.stroke();
+            // Pequenos cortes da cicatriz
+            for(let i=0; i<3; i++) {
+                ctx.beginPath();
+                ctx.moveTo(scarX - 5 - (i*5), scarY + 10 + (i*10) - 5);
+                ctx.lineTo(scarX - 5 - (i*5) + 10, scarY + 10 + (i*10) + 5);
+                ctx.stroke();
+            }
+        }
+
+        function drawAlien(ctx, det) {
+            const leftEye = det.landmarks.getLeftEye();
+            const rightEye = det.landmarks.getRightEye();
+           
+            ctx.globalAlpha = 0.95;
+            ctx.fillStyle = '#000'; // Olhos totalmente pretos
+           
+            // Função para desenhar o olho oval de alien
+            const drawAlienEye = (eye, angle) => {
+                const cx = (eye[0].x + eye[3].x) / 2;
+                const cy = (eye[0].y + eye[3].y) / 2;
+                const width = Math.abs(eye[3].x - eye[0].x) * 2;
+                const height = width * 1.5;
+               
+                ctx.beginPath();
+                ctx.ellipse(cx, cy, width, height, angle, 0, Math.PI * 2);
+                ctx.fill();
+               
+                // Pequeno reflexo branco (para dar vida)
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+                ctx.beginPath();
+                ctx.ellipse(cx + width/4, cy - height/3, width/4, height/4, angle, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#000'; // Repor preto para o próximo olho
+            };
+
+            // Olho esquerdo (inclinado para a direita)
+            drawAlienEye(leftEye, Math.PI / 6);
+            // Olho direito (inclinado para a esquerda)
+            drawAlienEye(rightEye, -Math.PI / 6);
+        }
+
+        function drawDog(ctx, det) {
+            const nose = det.landmarks.getNose();
+            const leftBrow = det.landmarks.getLeftEyeBrow();
+            const rightBrow = det.landmarks.getRightEyeBrow();
+            const mouth = det.landmarks.getMouth();
+            const noseTip = nose[3];
+
+            ctx.globalAlpha = 1.0;
+           
+            // Nariz grande de cão (preto/castanho escuro)
+            ctx.fillStyle = '#2d1b15';
+            ctx.beginPath();
+            ctx.ellipse(noseTip.x, noseTip.y + 5, 25, 18, 0, 0, Math.PI * 2);
+            ctx.fill();
+            // Reflexo no nariz
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.beginPath();
+            ctx.ellipse(noseTip.x - 8, noseTip.y + 2, 8, 4, -Math.PI/6, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Orelhas de cão (por cima das sobrancelhas)
+            ctx.fillStyle = '#8b5a2b'; // Castanho
+            const drawEar = (brow, isLeft) => {
+                const startX = brow[0].x;
+                const startY = brow[0].y - 20;
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                if(isLeft) {
+                    ctx.quadraticCurveTo(startX - 50, startY - 80, startX - 30, startY + 40);
+                    ctx.quadraticCurveTo(startX - 10, startY + 20, brow[4].x, brow[4].y - 20);
+                } else {
+                    ctx.quadraticCurveTo(startX + 50, startY - 80, startX + 30, startY + 40);
+                    ctx.quadraticCurveTo(startX + 10, startY + 20, brow[4].x, brow[4].y - 20);
+                }
+                ctx.fill();
+            };
+            drawEar(leftBrow, true);
+            drawEar(rightBrow, false);
+
+            // Língua (aparece se abrires a boca!)
+            // Os pontos 14 e 18 são do interior da boca na API
+            const topInnerLip = mouth[14];
+            const bottomInnerLip = mouth[18];
+            const mouthOpenness = Math.abs(bottomInnerLip.y - topInnerLip.y);
+           
+            if (mouthOpenness > 15) {
+                const tongueX = (topInnerLip.x + bottomInnerLip.x) / 2;
+                const tongueY = bottomInnerLip.y;
+                const tongueWidth = 25;
+                const tongueLength = mouthOpenness * 1.5 + 20; // Cresce consoante a abertura
+               
+                ctx.fillStyle = '#ff6680'; // Cor da língua
+                ctx.beginPath();
+                ctx.ellipse(tongueX, tongueY + tongueLength/2, tongueWidth, tongueLength/2, 0, 0, Math.PI * 2);
+                ctx.fill();
+                // Linha central da língua
+                ctx.strokeStyle = '#cc0033';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(tongueX, tongueY);
+                ctx.lineTo(tongueX, tongueY + tongueLength - 10);
+                ctx.stroke();
+            }
+        }
+
+        function drawVampire(ctx, det) {
+            const mouth = det.landmarks.getMouth();
+            const leftEye = det.landmarks.getLeftEye();
+            const rightEye = det.landmarks.getRightEye();
+
+            ctx.globalAlpha = 1.0;
+
+            // Olhos Vermelhos
+            ctx.fillStyle = 'rgba(255, 0, 0, 0.4)';
+            [leftEye, rightEye].forEach(eye => {
+                ctx.beginPath();
+                eye.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+                ctx.fill();
+            });
+
+            // Presas (aparecem quando a boca abre)
+            const topInnerLip = mouth[14];
+            const bottomInnerLip = mouth[18];
+            const mouthOpenness = Math.abs(bottomInnerLip.y - topInnerLip.y);
+
+            if (mouthOpenness > 5) {
+                ctx.fillStyle = '#ffffff';
+                // Presa esquerda
+                ctx.beginPath();
+                ctx.moveTo(mouth[13].x, mouth[13].y);
+                ctx.lineTo(mouth[14].x, mouth[14].y);
+                ctx.lineTo((mouth[13].x + mouth[14].x)/2, mouth[14].y + 20);
+                ctx.fill();
+
+                // Presa direita
+                ctx.beginPath();
+                ctx.moveTo(mouth[15].x, mouth[15].y);
+                ctx.lineTo(mouth[14].x, mouth[14].y);
+                ctx.lineTo((mouth[15].x + mouth[14].x)/2, mouth[14].y + 20);
+                ctx.fill();
+            }
+
+            // Fio de sangue no canto da boca
+            ctx.fillStyle = '#8a0303';
+            ctx.beginPath();
+            ctx.moveTo(mouth[0].x, mouth[0].y);
+            ctx.quadraticCurveTo(mouth[0].x - 10, mouth[0].y + 20, mouth[0].x, mouth[0].y + 40);
+            ctx.quadraticCurveTo(mouth[0].x + 5, mouth[0].y + 20, mouth[0].x + 5, mouth[0].y);
+            ctx.fill();
+        }
+
+        function drawNinja(ctx, det) {
+            const jaw = det.landmarks.getJawOutline();
+            const nose = det.landmarks.getNose();
+            const leftBrow = det.landmarks.getLeftEyeBrow();
+            const rightBrow = det.landmarks.getRightEyeBrow();
+
+            ctx.globalAlpha = 0.95;
+
+            // Máscara inferior (Cobre do nariz ao maxilar)
+            ctx.fillStyle = '#111111';
+            ctx.beginPath();
+            ctx.moveTo(nose[3].x, nose[3].y); // Ponte do nariz
+            ctx.lineTo(jaw[16].x, jaw[16].y - 20); // Lado direito do rosto
+            // Seguir o contorno do maxilar por baixo
+            for(let i=16; i>=0; i--) {
+                ctx.lineTo(jaw[i].x, jaw[i].y + 10);
+            }
+            ctx.lineTo(jaw[0].x, jaw[0].y - 20); // Lado esquerdo do rosto
+            ctx.closePath();
+            ctx.fill();
+
+            // Fita de guerreiro (Testa)
+            ctx.fillStyle = '#cc0000';
+            ctx.beginPath();
+            ctx.moveTo(jaw[0].x, leftBrow[0].y - 15);
+            ctx.lineTo(jaw[16].x, rightBrow[4].y - 15);
+            ctx.lineTo(jaw[16].x, rightBrow[4].y - 50);
+            ctx.lineTo(jaw[0].x, leftBrow[0].y - 50);
+            ctx.closePath();
+            ctx.fill();
+
+            // Nós/Fitas esvoaçantes da fita vermelha
+            ctx.strokeStyle = '#cc0000';
+            ctx.lineWidth = 15;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(jaw[16].x, rightBrow[4].y - 30);
+            ctx.lineTo(jaw[16].x + 40, rightBrow[4].y + 10);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(jaw[16].x, rightBrow[4].y - 30);
+            ctx.lineTo(jaw[16].x + 25, rightBrow[4].y + 35);
+            ctx.stroke();
+        }
+
+        function drawNerd(ctx, det) {
+            const leftEye = det.landmarks.getLeftEye();
+            const rightEye = det.landmarks.getRightEye();
+            const pos = det.landmarks.positions;
+
+            ctx.globalAlpha = 1.0;
+            ctx.strokeStyle = '#222222';
+            ctx.lineWidth = 8;
+
+            const getEyeCenterAndRadius = (eye) => {
+                const cx = (eye[0].x + eye[3].x)/2;
+                const cy = (eye[0].y + eye[3].y)/2;
+                const r = Math.abs(eye[3].x - eye[0].x) * 1.3;
+                return {cx, cy, r};
+            }
+
+            const left = getEyeCenterAndRadius(leftEye);
+            const right = getEyeCenterAndRadius(rightEye);
+
+            // Lente Esquerda
+            ctx.beginPath();
+            ctx.arc(left.cx, left.cy, left.r, 0, Math.PI*2);
+            ctx.stroke();
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+            ctx.fill();
+
+            // Lente Direita
+            ctx.beginPath();
+            ctx.arc(right.cx, right.cy, right.r, 0, Math.PI*2);
+            ctx.stroke();
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+            ctx.fill();
+
+            // Ponte dos Óculos
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.moveTo(left.cx + left.r, left.cy);
+            ctx.lineTo(right.cx - right.r, right.cy);
+            ctx.stroke();
+
+            // Fita-cola na ponte (clássico cliché de Nerd)
+            ctx.fillStyle = '#e5e7eb';
+            const midX = (left.cx + left.r + right.cx - right.r)/2;
+            ctx.fillRect(midX - 6, left.cy - 12, 12, 24);
+
+            // Sardas (bochechas)
+            ctx.fillStyle = 'rgba(139, 69, 19, 0.6)'; // Castanho
+            const drawFreckles = (cx, cy) => {
+                for(let i=0; i<8; i++) {
+                    ctx.beginPath();
+                    ctx.arc(cx + (Math.random()-0.5)*35, cy + (Math.random()-0.5)*25, 2, 0, Math.PI*2);
+                    ctx.fill();
+                }
+            }
+            // Posição aproximada nas bochechas
+            if (pos[2] && pos[14]) {
+                drawFreckles(pos[2].x + 30, pos[2].y);
+                drawFreckles(pos[14].x - 30, pos[14].y);
+            }
+        }
+
+        // --- INÍCIO DOS 10 NOVOS FILTROS ---
+
+        function drawAngel(ctx, det) {
+            const nose = det.landmarks.getNose();
+            const jaw = det.landmarks.getJawOutline();
+            const faceW = jaw[16].x - jaw[0].x;
+            const cx = nose[3].x;
+            const cy = det.landmarks.getLeftEyeBrow()[0].y - faceW * 0.4; // Acima da cabeça
+
+            ctx.globalAlpha = 0.9;
+            ctx.strokeStyle = '#fbbf24'; // Dourado
+            ctx.lineWidth = 8;
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, faceW * 0.4, faceW * 0.1, 0, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Brilho interior
+            ctx.strokeStyle = '#fef08a';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, faceW * 0.4, faceW * 0.1, 0, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        function drawDevil(ctx, det) {
+            const leftBrow = det.landmarks.getLeftEyeBrow();
+            const rightBrow = det.landmarks.getRightEyeBrow();
+
+            ctx.globalAlpha = 1.0;
+            ctx.fillStyle = '#b91c1c'; // Vermelho escuro
+
+            const drawHorn = (brow, isLeft) => {
+                const startX = brow[2].x;
+                const startY = brow[2].y - 10;
+                ctx.beginPath();
+                ctx.moveTo(startX - 15, startY);
+                ctx.lineTo(startX + 15, startY);
+                // Ponta do chifre curva para dentro
+                ctx.quadraticCurveTo(startX + (isLeft ? 20 : -20), startY - 50, startX + (isLeft ? 40 : -40), startY - 80);
+                ctx.quadraticCurveTo(startX + (isLeft ? -10 : 10), startY - 40, startX - 15, startY);
+                ctx.fill();
+            };
+
+            drawHorn(leftBrow, true);
+            drawHorn(rightBrow, false);
+        }
+
+        function drawRabbit(ctx, det) {
+            const leftBrow = det.landmarks.getLeftEyeBrow();
+            const rightBrow = det.landmarks.getRightEyeBrow();
+            const mouth = det.landmarks.getMouth();
+            const jaw = det.landmarks.getJawOutline();
+            const faceW = jaw[16].x - jaw[0].x;
+
+            ctx.globalAlpha = 1.0;
+
+            // Orelhas
+            const drawEar = (brow, angle) => {
+                const cx = brow[2].x;
+                const cy = brow[2].y - 20;
+               
+                ctx.save();
+                ctx.translate(cx, cy);
+                ctx.rotate(angle);
+               
+                // Orelha exterior (branca)
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.ellipse(0, -faceW * 0.6, faceW * 0.15, faceW * 0.6, 0, 0, Math.PI * 2);
+                ctx.fill();
+               
+                // Interior (rosa)
+                ctx.fillStyle = '#fbcfe8';
+                ctx.beginPath();
+                ctx.ellipse(0, -faceW * 0.6, faceW * 0.08, faceW * 0.5, 0, 0, Math.PI * 2);
+                ctx.fill();
+               
+                ctx.restore();
+            };
+            drawEar(leftBrow, -Math.PI / 12);
+            drawEar(rightBrow, Math.PI / 12);
+
+            // Dentes (se a boca estiver aberta)
+            const topLip = mouth[14];
+            const bottomLip = mouth[18];
+            if (Math.abs(bottomLip.y - topLip.y) > 10) {
+                ctx.fillStyle = '#ffffff';
+                ctx.strokeStyle = '#cccccc';
+                ctx.lineWidth = 1;
+                // Dente esquerdo
+                ctx.fillRect(topLip.x - 12, topLip.y, 12, 18);
+                ctx.strokeRect(topLip.x - 12, topLip.y, 12, 18);
+                // Dente direito
+                ctx.fillRect(topLip.x, topLip.y, 12, 18);
+                ctx.strokeRect(topLip.x, topLip.y, 12, 18);
+            }
+        }
+
+        function drawMagician(ctx, det) {
+            const nose = det.landmarks.getNose();
+            const jaw = det.landmarks.getJawOutline();
+            const brows = det.landmarks.getLeftEyeBrow();
+            const faceW = jaw[16].x - jaw[0].x;
+            const cx = nose[3].x;
+            const cy = brows[2].y - 30;
+
+            ctx.globalAlpha = 1.0;
+           
+            // Cartola
+            ctx.fillStyle = '#111111';
+            // Aba
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, faceW * 0.7, faceW * 0.1, 0, 0, Math.PI * 2);
+            ctx.fill();
+            // Topo da cartola
+            ctx.fillRect(cx - faceW * 0.4, cy - faceW * 0.8, faceW * 0.8, faceW * 0.8);
+            // Fita vermelha
+            ctx.fillStyle = '#dc2626';
+            ctx.fillRect(cx - faceW * 0.4, cy - 20, faceW * 0.8, 20);
+
+            // Bigode
+            const upperLip = det.landmarks.getMouth()[3];
+            ctx.strokeStyle = '#111111';
+            ctx.lineWidth = 6;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(upperLip.x - 30, upperLip.y - 10);
+            ctx.quadraticCurveTo(upperLip.x, upperLip.y + 10, upperLip.x + 30, upperLip.y - 10);
+            ctx.stroke();
+        }
+
+        function drawZombie(ctx, det) {
+            const leftEye = det.landmarks.getLeftEye();
+            const rightEye = det.landmarks.getRightEye();
+            const jaw = det.landmarks.getJawOutline();
+
+            // Pele esverdeada em todo o rosto
+            ctx.globalAlpha = 0.3;
+            ctx.fillStyle = '#4ade80';
+            ctx.beginPath();
+            jaw.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+            ctx.closePath();
+            ctx.fill();
+
+            // Olheiras profundas
+            ctx.globalAlpha = 0.6;
+            ctx.fillStyle = '#4a044e'; // Roxo escuro
+            const drawBags = (eye) => {
+                const cx = (eye[0].x + eye[3].x) / 2;
+                const cy = (eye[0].y + eye[3].y) / 2;
+                const w = Math.abs(eye[3].x - eye[0].x) * 1.5;
+                ctx.beginPath();
+                ctx.ellipse(cx, cy + 10, w, w * 0.8, 0, 0, Math.PI * 2);
+                ctx.fill();
+            };
+            drawBags(leftEye);
+            drawBags(rightEye);
+
+            // Cicatriz
+            ctx.globalAlpha = 0.8;
+            ctx.strokeStyle = '#7f1d1d';
+            ctx.lineWidth = 3;
+            const scarStartX = jaw[3].x;
+            const scarStartY = jaw[3].y;
+            ctx.beginPath();
+            ctx.moveTo(scarStartX, scarStartY);
+            ctx.lineTo(scarStartX + 40, scarStartY - 30);
+            ctx.stroke();
+            // Pontos da cicatriz
+            for(let i=1; i<=3; i++) {
+                ctx.beginPath();
+                ctx.moveTo(scarStartX + i*10 - 5, scarStartY - i*7 - 5);
+                ctx.lineTo(scarStartX + i*10 + 5, scarStartY - i*7 + 5);
+                ctx.stroke();
+            }
+        }
+
+        function drawCrown(ctx, det) {
+            const nose = det.landmarks.getNose();
+            const jaw = det.landmarks.getJawOutline();
+            const faceW = jaw[16].x - jaw[0].x;
+            const cx = nose[3].x;
+            const brows = det.landmarks.getLeftEyeBrow();
+            const cy = brows[2].y - 50;
+
+            ctx.globalAlpha = 1.0;
+            ctx.fillStyle = '#fbbf24'; // Ouro
+            ctx.strokeStyle = '#b45309'; // Sombra do ouro
+            ctx.lineWidth = 2;
+
+            const w = faceW * 0.8;
+            const h = faceW * 0.4;
+
+            ctx.beginPath();
+            ctx.moveTo(cx - w/2, cy); // Base esquerda
+            ctx.lineTo(cx + w/2, cy); // Base direita
+            ctx.lineTo(cx + w/2 + 10, cy - h * 0.8); // Ponta direita
+            ctx.lineTo(cx + w/4, cy - h * 0.4); // Vale direito
+            ctx.lineTo(cx, cy - h); // Ponta central
+            ctx.lineTo(cx - w/4, cy - h * 0.4); // Vale esquerdo
+            ctx.lineTo(cx - w/2 - 10, cy - h * 0.8); // Ponta esquerda
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // Joias (Rubis e Safiras)
+            ctx.fillStyle = '#dc2626'; // Rubi
+            ctx.beginPath(); ctx.arc(cx, cy - h * 0.2, 8, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#2563eb'; // Safira
+            ctx.beginPath(); ctx.arc(cx - w/3, cy - h * 0.2, 6, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(cx + w/3, cy - h * 0.2, 6, 0, Math.PI*2); ctx.fill();
+        }
+
+        function drawLion(ctx, det) {
+            const nose = det.landmarks.getNose();
+            const cx = nose[3].x;
+            const cy = nose[3].y;
+            const jaw = det.landmarks.getJawOutline();
+            const faceW = jaw[16].x - jaw[0].x;
+
+            // Nariz de leão
+            ctx.globalAlpha = 1.0;
+            ctx.fillStyle = '#451a03';
+            ctx.beginPath();
+            ctx.moveTo(nose[3].x - 15, nose[3].y - 5);
+            ctx.lineTo(nose[3].x + 15, nose[3].y - 5);
+            ctx.lineTo(nose[3].x, nose[3].y + 15);
+            ctx.fill();
+
+            // Juba radiante
+            ctx.globalAlpha = 0.8;
+            ctx.lineWidth = 15;
+            ctx.lineCap = 'round';
+            const colors = ['#ea580c', '#b45309', '#78350f'];
+
+            for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 12) {
+                const innerRadius = faceW * 0.55;
+                const outerRadius = faceW * (0.8 + Math.random() * 0.3);
+               
+                const startX = cx + Math.cos(angle) * innerRadius;
+                const startY = cy + Math.sin(angle) * innerRadius;
+                const endX = cx + Math.cos(angle) * outerRadius;
+                const endY = cy + Math.sin(angle) * outerRadius;
+
+                ctx.strokeStyle = colors[Math.floor(Math.random() * colors.length)];
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                ctx.lineTo(endX, endY);
+                ctx.stroke();
+            }
+        }
+
+        function drawPanda(ctx, det) {
+            const leftEye = det.landmarks.getLeftEye();
+            const rightEye = det.landmarks.getRightEye();
+            const leftBrow = det.landmarks.getLeftEyeBrow();
+            const rightBrow = det.landmarks.getRightEyeBrow();
+           
+            ctx.globalAlpha = 0.9;
+            ctx.fillStyle = '#000000';
+
+            // Orelhas de panda
+            ctx.beginPath();
+            ctx.arc(leftBrow[2].x - 20, leftBrow[2].y - 50, 40, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(rightBrow[2].x + 20, rightBrow[2].y - 50, 40, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Manchas nos olhos (inclinadas)
+            const drawPandaEye = (eye, angle) => {
+                const cx = (eye[0].x + eye[3].x) / 2;
+                const cy = (eye[0].y + eye[3].y) / 2;
+                const w = Math.abs(eye[3].x - eye[0].x) * 1.8;
+               
+                ctx.save();
+                ctx.translate(cx, cy);
+                ctx.rotate(angle);
+                ctx.beginPath();
+                ctx.ellipse(0, 0, w, w * 1.2, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            };
+
+            drawPandaEye(leftEye, -Math.PI / 6);
+            drawPandaEye(rightEye, Math.PI / 6);
+        }
+
+        function drawGhost(ctx, det) {
+            const nose = det.landmarks.getNose();
+            const jaw = det.landmarks.getJawOutline();
+            const faceW = jaw[16].x - jaw[0].x;
+            const cx = nose[3].x;
+            const cy = nose[3].y;
+
+            ctx.globalAlpha = 0.6;
+            ctx.fillStyle = '#f8fafc'; // Branco fantasmagórico
+
+            ctx.beginPath();
+            // Topo da cabeça (cúpula)
+            ctx.arc(cx, cy - faceW * 0.2, faceW * 0.8, Math.PI, 0);
+           
+            // Lado direito
+            ctx.lineTo(cx + faceW * 0.8, cy + faceW * 1.5);
+           
+            // Fundo ondulado
+            const bottomY = cy + faceW * 1.5;
+            for(let i = 0; i <= 5; i++) {
+                const x = (cx + faceW * 0.8) - (i * (faceW * 1.6 / 5));
+                const yOffset = i % 2 === 0 ? 20 : -20;
+                ctx.quadraticCurveTo(x + (faceW * 1.6 / 10), bottomY + yOffset, x, bottomY);
+            }
+
+            // Lado esquerdo
+            ctx.lineTo(cx - faceW * 0.8, cy - faceW * 0.2);
+            ctx.closePath();
+            ctx.fill();
+
+            // Buracos escuros para os olhos (opcional, realça o efeito)
+            ctx.globalAlpha = 0.8;
+            ctx.fillStyle = '#0f172a';
+            const leftEye = det.landmarks.getLeftEye();
+            const rightEye = det.landmarks.getRightEye();
+            ctx.beginPath(); ctx.ellipse((leftEye[0].x + leftEye[3].x)/2, leftEye[0].y, 15, 20, 0, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.ellipse((rightEye[0].x + rightEye[3].x)/2, rightEye[0].y, 15, 20, 0, 0, Math.PI*2); ctx.fill();
+        }
+
+        function drawDragon(ctx, det) {
+            const jaw = det.landmarks.getJawOutline();
+            const mouth = det.landmarks.getMouth();
+
+            ctx.globalAlpha = 0.8;
+
+            // Escamas nas bochechas (Ziguezagues verdes)
+            ctx.strokeStyle = '#15803d'; // Verde escuro
+            ctx.lineWidth = 4;
+            ctx.lineJoin = 'round';
+
+            const drawScales = (side) => {
+                ctx.beginPath();
+                for(let i=0; i<4; i++) {
+                    const idx = side === 'left' ? 2 + i : 14 - i;
+                    ctx.lineTo(jaw[idx].x + (side==='left'? 15 : -15), jaw[idx].y);
+                    ctx.lineTo(jaw[idx].x + (side==='left'? -5 : 5), jaw[idx].y + 15);
+                }
+                ctx.stroke();
+            };
+            drawScales('left');
+            drawScales('right');
+
+            // Cuspir fogo (se a boca estiver aberta)
+            const topLip = mouth[14];
+            const bottomLip = mouth[18];
+            const mouthOpenness = Math.abs(bottomLip.y - topLip.y);
+
+            if (mouthOpenness > 15) {
+                const originX = (topLip.x + bottomLip.x) / 2;
+                const originY = bottomLip.y;
+
+                // Fogo longo gerado dinamicamente
+                const grad = ctx.createLinearGradient(0, originY, 0, originY + 200);
+                grad.addColorStop(0, 'rgba(255, 255, 0, 0.9)');   // Amarelo
+                grad.addColorStop(0.4, 'rgba(255, 85, 0, 0.8)');  // Laranja
+                grad.addColorStop(1, 'rgba(255, 0, 0, 0)');       // Vermelho transparente
+
+                ctx.fillStyle = grad;
+                ctx.beginPath();
+                ctx.moveTo(originX, originY);
+                // Chama da esquerda
+                ctx.quadraticCurveTo(originX - 50 - Math.random()*20, originY + 100, originX - 20, originY + 200 + Math.random()*50);
+                // Chama central/ponta
+                ctx.quadraticCurveTo(originX, originY + 180, originX + 20, originY + 200 + Math.random()*50);
+                // Chama da direita
+                ctx.quadraticCurveTo(originX + 50 + Math.random()*20, originY + 100, originX, originY);
+                ctx.fill();
+            }
         }
 
         window.onload = setup;
