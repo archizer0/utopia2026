@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jogo da Glória 3D: Revestimento Animal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        #ui-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+            z-index: 10;
+        }
+        .interactive { pointer-events: auto; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+       
+        #dice-3d-container {
+            width: 150px;
+            height: 150px;
+            cursor: pointer;
+            position: relative;
+            pointer-events: auto;
+        }
+
+        .instruction-pulse {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body class="bg-gray-900">
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-container">
+        <div class="flex justify-between items-start">
+            <div class="bg-white/90 p-4 rounded-xl shadow-lg border-l-8 border-blue-600 max-w-sm">
+                <h1 class="text-2xl font-bold text-blue-900">Ciências 3D</h1>
+                <p class="text-sm text-blue-700">Quiz de Revestimentos (50 Casas)</p>
+                <div id="current-status" class="mt-2 font-semibold text-gray-700 italic">Clica no dado para começar!</div>
+            </div>
+           
+            <button id="reset-btn" onclick="location.reload()" class="interactive bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-bold shadow-lg transition">Reiniciar</button>
+        </div>
+
+        <div class="flex justify-center items-center pb-8">
+            <div class="flex flex-col items-center gap-2">
+                <div id="dice-3d-container" class="interactive"></div>
+                <div id="dice-label" class="bg-blue-600 text-white px-6 py-2 rounded-full font-bold shadow-lg instruction-pulse uppercase text-sm">Clica para Lançar</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Perguntas -->
+    <div id="modal" class="fixed inset-0 bg-black/70 hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-2xl max-w-md w-full p-8 shadow-2xl transform transition-all scale-100 border-t-8 border-blue-500">
+            <h2 id="modal-title" class="text-2xl font-bold mb-4 text-blue-900">Desafio</h2>
+            <div id="modal-content" class="text-lg text-gray-700 mb-8 leading-relaxed"></div>
+            <div id="modal-options" class="grid grid-cols-1 gap-3"></div>
+            <div id="modal-footer" class="hidden mt-6 text-center">
+                <p id="modal-feedback-text" class="mb-4 font-bold text-lg"></p>
+                <button id="modal-close" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-bold transition w-full">Continuar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Gerador de Áudio ---
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        let audioCtx;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new AudioCtx();
+            }
+        }
+
+        function playDiceSound(type) {
+            initAudio();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            const now = audioCtx.currentTime;
+
+            if (type === 'victory') {
+                oscillator.type = 'triangle';
+                oscillator.frequency.setValueAtTime(523.25, now);
+                oscillator.frequency.exponentialRampToValueAtTime(659.25, now + 0.1);
+                oscillator.frequency.exponentialRampToValueAtTime(783.99, now + 0.2);
+                oscillator.frequency.exponentialRampToValueAtTime(1046.50, now + 0.4);
+                gainNode.gain.setValueAtTime(0.2, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+                oscillator.start(now);
+                oscillator.stop(now + 0.5);
+            } else if (type === 'fail') {
+                oscillator.type = 'sawtooth';
+                oscillator.frequency.setValueAtTime(220, now);
+                oscillator.frequency.linearRampToValueAtTime(55, now + 0.6);
+                gainNode.gain.setValueAtTime(0.15, now);
+                gainNode.gain.linearRampToValueAtTime(0.01, now + 0.6);
+                oscillator.start(now);
+                oscillator.stop(now + 0.6);
+            } else if (type === 'tick') {
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(150, now);
+                gainNode.gain.setValueAtTime(0.05, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+                oscillator.start(now);
+                oscillator.stop(now + 0.05);
+            }
+        }
+
+        // --- Configuração das Casas ---
+        const boardData = Array.from({length: 51}, (_, i) => {
+            if (i === 0) return { label: "Início", type: "start", color: 0x4ade80 };
+            if (i === 50) return { label: "Chegada", type: "end", color: 0xfacc15 };
+           
+            const questions = [
+                { q: "Qual destes tem o corpo coberto por pelos?", o: ["Pardal", "Cão", "Sardinha"], c: 1 },
+                { q: "A pele do sapo é...", o: ["Seca", "Nua e húmida", "Escamosa"], c: 1 },
+                { q: "As penas ajudam as aves a voar e a...", o: ["Nadar", "Manter o calor", "Crescer"], c: 1 },
+                { q: "O peixe-palhaço tem pele com...", o: ["Muco e escamas", "Penas", "Pelos"], c: 0 },
+                { q: "A tartaruga tem uma...", o: ["Pena", "Carapaça", "Pele nua"], c: 1 }
+            ];
+            const q = questions[i % questions.length];
+            return {
+                label: `Casa ${i}`,
+                type: "quiz",
+                q: q.q,
+                options: q.o,
+                correct: q.c,
+                color: 0x818cf8
+            };
+        });
+
+        // --- Variáveis de Jogo ---
+        let scene, camera, renderer, pawn, diceScene, diceCamera, diceRenderer, diceMesh;
+        let tiles = [];
+        let playerPos = 0;
+        let isMoving = false;
+        let isDiceRolling = false;
+        let currentDiceRoll = 1;
+        let cameraTargetPos = { x: 0, y: 15, z: 20 };
+
+        const diceTargetRotations = {
+            1: { x: 0, y: 0, z: 0 },
+            2: { x: 0, y: Math.PI / 2, z: 0 },
+            3: { x: -Math.PI / 2, y: 0, z: 0 },
+            4: { x: Math.PI / 2, y: 0, z: 0 },
+            5: { x: 0, y: -Math.PI / 2, z: 0 },
+            6: { x: Math.PI, y: 0, z: 0 }
+        };
+
+        // --- Inicialização ---
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0f172a);
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+            const light = new THREE.DirectionalLight(0xffffff, 0.8);
+            light.position.set(10, 20, 10);
+            light.castShadow = true;
+            scene.add(light);
+
+            createBoard();
+            createPawn();
+            initDice();
+            animate();
+        }
+
+        function createBoard() {
+            boardData.forEach((data, i) => {
+                const angle = i * 0.35;
+                const radius = 3 + (i * 0.25);
+                const x = Math.cos(angle) * radius;
+                const z = Math.sin(angle) * radius;
+                const y = i * 0.1;
+               
+                const mesh = new THREE.Mesh(
+                    new THREE.BoxGeometry(1.8, 0.5, 1.8),
+                    new THREE.MeshPhongMaterial({ color: data.color })
+                );
+                mesh.position.set(x, y, z);
+                mesh.receiveShadow = true;
+                scene.add(mesh);
+                tiles.push({ x, y, z });
+            });
+        }
+
+        function createPawn() {
+            pawn = new THREE.Group();
+            const body = new THREE.Mesh(new THREE.ConeGeometry(0.4, 1.2, 16), new THREE.MeshPhongMaterial({color: 0xff4444}));
+            body.position.y = 0.6;
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 16), new THREE.MeshPhongMaterial({color: 0xff4444}));
+            head.position.y = 1.2;
+            pawn.add(body, head);
+            scene.add(pawn);
+            updatePawnPosition(true);
+        }
+
+        function initDice() {
+            const container = document.getElementById('dice-3d-container');
+            diceScene = new THREE.Scene();
+            diceCamera = new THREE.PerspectiveCamera(45, 1, 0.1, 10);
+            diceCamera.position.z = 4;
+
+            diceRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            diceRenderer.setSize(150, 150);
+            container.appendChild(diceRenderer.domElement);
+
+            const materials = [];
+            for(let i=1; i<=6; i++) {
+                const canvas = document.createElement('canvas');
+                canvas.width = 128; canvas.height = 128;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = 'white'; ctx.fillRect(0,0,128,128);
+                ctx.strokeStyle = '#1e40af'; ctx.lineWidth = 10; ctx.strokeRect(5,5,118,118);
+                ctx.fillStyle = '#1e40af';
+                const dots = {
+                    1: [[64,64]], 2: [[30,30],[98,98]], 3: [[30,30],[64,64],[98,98]],
+                    4: [[30,30],[30,98],[98,30],[98,98]], 5: [[30,30],[30,98],[98,30],[98,98],[64,64]],
+                    6: [[30,30],[30,64],[30,98],[98,30],[98,64],[98,98]]
+                }[i];
+                dots.forEach(d => { ctx.beginPath(); ctx.arc(d[0], d[1], 12, 0, Math.PI*2); ctx.fill(); });
+                materials.push(new THREE.MeshPhongMaterial({ map: new THREE.CanvasTexture(canvas) }));
+            }
+
+            diceMesh = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.8, 1.8), materials);
+            diceScene.add(diceMesh);
+           
+            const pLight = new THREE.PointLight(0xffffff, 1);
+            pLight.position.set(5, 5, 5);
+            diceScene.add(pLight);
+            diceScene.add(new THREE.AmbientLight(0xffffff, 0.5));
+
+            container.onclick = handleDiceRoll;
+        }
+
+        // --- Lógica de Jogo ---
+        function handleDiceRoll() {
+            // Impedir lançamento se estiver a mover, a rodar ou se o modal estiver aberto
+            if (isMoving || isDiceRolling || !document.getElementById('modal').classList.contains('hidden')) return;
+
+            initAudio();
+            isDiceRolling = true;
+            document.getElementById('dice-label').innerText = "A LANÇAR...";
+           
+            setTimeout(() => {
+                isDiceRolling = false;
+                const result = Math.floor(Math.random() * 6) + 1;
+                currentDiceRoll = result;
+                document.getElementById('dice-label').innerText = "LANÇAR";
+               
+                if (result === 6) {
+                    playDiceSound('victory');
+                } else if (result === 1) {
+                    playDiceSound('fail');
+                } else {
+                    playDiceSound('tick');
+                }
+
+                movePlayer(result);
+            }, 1200);
+        }
+
+        function movePlayer(steps) {
+            playerPos = Math.min(playerPos + steps, boardData.length - 1);
+            updatePawnPosition();
+            document.getElementById('current-status').innerText = `Lançaste um ${steps}!`;
+        }
+
+        function updatePawnPosition(instant = false) {
+            const target = tiles[playerPos];
+            if (instant) {
+                pawn.position.set(target.x, target.y + 0.25, target.z);
+                isMoving = false;
+            } else {
+                isMoving = true;
+                const startPos = pawn.position.clone();
+                const endPos = new THREE.Vector3(target.x, target.y + 0.25, target.z);
+                let alpha = 0;
+                const interval = setInterval(() => {
+                    alpha += 0.05;
+                    if (alpha >= 1) {
+                        pawn.position.copy(endPos);
+                        clearInterval(interval);
+                        isMoving = false;
+                        checkTile(); // Só verifica a casa após o movimento terminar
+                    } else {
+                        pawn.position.lerpVectors(startPos, endPos, alpha);
+                        pawn.position.y += Math.sin(alpha * Math.PI) * 1.5;
+                    }
+                }, 20);
+            }
+            cameraTargetPos = { x: target.x, y: target.y + 12, z: target.z + 12 };
+        }
+
+        function checkTile() {
+            const tile = boardData[playerPos];
+            if (tile.type === 'quiz') {
+                showModal(tile);
+            } else if (tile.type === 'end') {
+                showModal({ label: "VITÓRIA", q: "Parabéns! Chegaste ao fim!", type: "end" });
+            }
+        }
+
+        function showModal(tile) {
+            const m = document.getElementById('modal');
+            const opts = document.getElementById('modal-options');
+            const footer = document.getElementById('modal-footer');
+           
+            document.getElementById('modal-title').innerText = tile.label;
+            document.getElementById('modal-content').innerText = tile.q;
+            opts.innerHTML = '';
+            footer.classList.add('hidden');
+            m.classList.remove('hidden');
+
+            if (tile.type === 'quiz') {
+                tile.options.forEach((o, i) => {
+                    const btn = document.createElement('button');
+                    btn.className = "p-3 border rounded hover:bg-blue-100 transition interactive text-left";
+                    btn.innerText = o;
+                    btn.onclick = () => {
+                        // Impedir cliques múltiplos após responder
+                        if (!footer.classList.contains('hidden')) return;
+                       
+                        const correct = i === tile.correct;
+                        document.getElementById('modal-feedback-text').innerText = correct ? "Correto! Avanças no próximo turno." : "Errado! Recuas uma casa.";
+                        footer.classList.remove('hidden');
+                       
+                        if (!correct) {
+                            // Penalização: recua uma casa
+                            playerPos = Math.max(0, playerPos - 1);
+                        }
+                    };
+                    opts.appendChild(btn);
+                });
+            } else if (tile.type === 'end') {
+                 footer.classList.remove('hidden');
+                 document.getElementById('modal-feedback-text').innerText = "Fim do Jogo!";
+            }
+
+            document.getElementById('modal-close').onclick = () => {
+                m.classList.add('hidden');
+                // Se recuou por erro, atualiza a posição visualmente SEM disparar novo checkTile
+                updatePawnPosition(true);
+            };
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+           
+            camera.position.x += (cameraTargetPos.x - camera.position.x) * 0.05;
+            camera.position.y += (cameraTargetPos.y - camera.position.y) * 0.05;
+            camera.position.z += (cameraTargetPos.z - camera.position.z) * 0.05;
+            camera.lookAt(pawn.position);
+            renderer.render(scene, camera);
+
+            if (isDiceRolling) {
+                diceMesh.rotation.x += 0.3;
+                diceMesh.rotation.y += 0.2;
+                if (Math.random() > 0.9) playDiceSound('tick');
+            } else {
+                const target = diceTargetRotations[currentDiceRoll];
+                diceMesh.rotation.x += (target.x - diceMesh.rotation.x) * 0.1;
+                diceMesh.rotation.y += (target.y - diceMesh.rotation.y) * 0.1;
+                diceMesh.rotation.z += (target.z - diceMesh.rotation.z) * 0.1;
+            }
+            diceRenderer.render(diceScene, diceCamera);
+        }
+
+        window.onload = init;
+        window.onresize = () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        };
+    </script>
+</body>
+</html>
