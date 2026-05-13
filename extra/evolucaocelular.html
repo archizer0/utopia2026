@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evolução Celular</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0f172a; /* Fundo escuro primordial */
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Permite que os cliques passem para o canvas se necessário, excepto em botões */
+        }
+        .pointer-events-auto {
+            pointer-events: auto;
+        }
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.8);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+       
+        /* Animação suave para o menu */
+        #evo-menu {
+            transition: transform 0.3s ease-in-out;
+        }
+        .menu-hidden {
+            transform: translateX(120%);
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="ui-layer" class="p-4 flex flex-col justify-between">
+        <!-- Top UI -->
+        <div class="flex justify-between items-start pointer-events-auto">
+            <div class="glass-panel p-4 rounded-xl shadow-lg">
+                <h1 class="text-2xl font-bold text-emerald-400 mb-1">Evolução Celular</h1>
+                <p class="text-lg">Biomassa: <span id="biomass-display" class="font-mono text-yellow-300 font-bold">0</span></p>
+                <p class="text-sm text-slate-300 mt-2">Use o rato para mover.<br>Pressione <kbd class="bg-slate-700 px-1 rounded border border-slate-500">K</kbd> para escala.</p>
+                <div id="ai-status" class="mt-2 text-sm font-bold text-slate-400 hidden cursor-pointer pointer-events-auto transition-colors hover:text-white">IA: Inativa (Pressione A)</div>
+            </div>
+
+            <button id="toggle-menu-btn" class="glass-panel px-4 py-2 rounded-xl shadow-lg font-bold hover:bg-slate-700 transition-colors text-emerald-300 pointer-events-auto">
+                Menu de Evolução (E)
+            </button>
+        </div>
+
+        <!-- Escala (Botão K) -->
+        <div id="scale-container" class="glass-panel p-2 rounded-lg self-start mt-auto mb-4 hidden items-center space-x-2">
+            <span class="text-sm font-mono text-slate-300">Escala:</span>
+            <div class="flex flex-col items-center w-32">
+                <div class="w-full h-px bg-white relative">
+                    <div class="absolute left-0 top-[-4px] w-px h-2 bg-white"></div>
+                    <div class="absolute right-0 top-[-4px] w-px h-2 bg-white"></div>
+                </div>
+                <span id="scale-text" class="text-xs font-mono mt-1 text-cyan-300">10 µm</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Menu de Evolução Lateral -->
+    <div id="evo-menu" class="absolute right-4 top-20 bottom-4 w-80 glass-panel rounded-xl shadow-2xl p-6 flex flex-col pointer-events-auto menu-hidden overflow-y-auto">
+        <h2 class="text-xl font-bold text-center text-white border-b border-slate-600 pb-3 mb-4">Mutações</h2>
+       
+        <div id="upgrades-list" class="space-y-4 flex-1">
+            <!-- Os itens serão gerados por JS -->
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const biomassDisplay = document.getElementById('biomass-display');
+        const scaleContainer = document.getElementById('scale-container');
+        const scaleText = document.getElementById('scale-text');
+        const evoMenu = document.getElementById('evo-menu');
+        const toggleMenuBtn = document.getElementById('toggle-menu-btn');
+        const upgradesList = document.getElementById('upgrades-list');
+        const aiStatusEl = document.getElementById('ai-status');
+
+        // Redimensionar Canvas
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Estado do Jogo
+        const gameState = {
+            biomass: 0,
+            showScale: false,
+            mouseX: canvas.width / 2,
+            mouseY: canvas.height / 2,
+            worldSize: 4000,
+            zoom: 1.0,
+            menuOpen: false,
+            autoPilot: false
+        };
+
+        // Rastreamento do rato
+        window.addEventListener('mousemove', (e) => {
+            gameState.mouseX = e.clientX;
+            gameState.mouseY = e.clientY;
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key.toLowerCase() === 'k') {
+                gameState.showScale = !gameState.showScale;
+                scaleContainer.style.display = gameState.showScale ? 'flex' : 'none';
+            }
+            if (e.key.toLowerCase() === 'e') {
+                toggleMenu();
+            }
+            if (e.key.toLowerCase() === 'a' && player.parts.nucleus) {
+                toggleAutoPilot();
+            }
+        });
+
+        toggleMenuBtn.addEventListener('click', toggleMenu);
+
+        aiStatusEl.addEventListener('click', () => {
+            if (player.parts.nucleus) {
+                toggleAutoPilot();
+            }
+        });
+
+        function toggleAutoPilot() {
+            gameState.autoPilot = !gameState.autoPilot;
+            updateAIText();
+        }
+
+        function updateAIText() {
+            if (gameState.autoPilot) {
+                aiStatusEl.innerText = "IA: Ativa (Pressione A)";
+                aiStatusEl.classList.remove('text-slate-400');
+                aiStatusEl.classList.add('text-emerald-400');
+            } else {
+                aiStatusEl.innerText = "IA: Inativa (Pressione A)";
+                aiStatusEl.classList.remove('text-emerald-400');
+                aiStatusEl.classList.add('text-slate-400');
+            }
+        }
+
+        function toggleMenu() {
+            gameState.menuOpen = !gameState.menuOpen;
+            if (gameState.menuOpen) {
+                evoMenu.classList.remove('menu-hidden');
+            } else {
+                evoMenu.classList.add('menu-hidden');
+            }
+        }
+
+        // Definição das Evoluções
+        const evolutions = [
+            { id: 'nucleus', name: 'Núcleo', cost: 15, desc: 'Protege o ADN e ativa a IA (Piloto Automático).', requires: null },
+            { id: 'flagellum', name: 'Flagelo', cost: 30, desc: 'Aumenta significativamente a velocidade de movimento.', requires: 'nucleus' },
+            { id: 'mitochondria', name: 'Mitocôndria', cost: 50, desc: 'A central de energia da célula. Permite movimentos mais ágeis.', requires: 'nucleus', max: 3 },
+            { id: 'membrane', name: 'Membrana Reforçada', cost: 75, desc: 'Aumenta o tamanho base e a capacidade de absorção.', requires: 'mitochondria' },
+            { id: 'multicellular', name: 'Pluricelular', cost: 200, desc: 'O derradeiro passo evolutivo. Torna-se num aglomerado de células.', requires: 'membrane' }
+        ];
+
+        // Objeto Jogador (A Célula)
+        const player = {
+            x: gameState.worldSize / 2,
+            y: gameState.worldSize / 2,
+            vx: 0,
+            vy: 0,
+            baseRadius: 20,
+            targetRadius: 20,
+            currentRadius: 20,
+            speed: 2.5,
+            turnSpeed: 0.05,
+            angle: 0,
+            tailAngle: 0, // Para animação do flagelo
+            parts: {
+                nucleus: false,
+                flagellum: false,
+                mitochondria: 0, // Pode ter até 3
+                membrane: false,
+                multicellular: false
+            },
+           
+            update() {
+                let targetAngle = this.angle;
+                let shouldMove = false;
+
+                if (gameState.autoPilot && this.parts.nucleus) {
+                    // IA: Encontrar comida mais próxima
+                    let nearestFood = null;
+                    let minDist = Infinity;
+                    for (let i = 0; i < foods.length; i++) {
+                        const f = foods[i];
+                        const distSq = Math.pow(f.x - this.x, 2) + Math.pow(f.y - this.y, 2);
+                        if (distSq < minDist) {
+                            minDist = distSq;
+                            nearestFood = f;
+                        }
+                    }
+                    if (nearestFood) {
+                        const dx = nearestFood.x - this.x;
+                        const dy = nearestFood.y - this.y;
+                        targetAngle = Math.atan2(dy, dx);
+                        shouldMove = true;
+                    }
+                } else {
+                    // Controlo manual pelo rato
+                    const screenCenterX = canvas.width / 2;
+                    const screenCenterY = canvas.height / 2;
+                   
+                    const dx = gameState.mouseX - screenCenterX;
+                    const dy = gameState.mouseY - screenCenterY;
+                   
+                    // Distância do centro do ecrã
+                    const distToMouse = Math.sqrt(dx*dx + dy*dy);
+                   
+                    if (distToMouse > 20 && !gameState.menuOpen) {
+                        targetAngle = Math.atan2(dy, dx);
+                        shouldMove = true;
+                    }
+                }
+
+                if (shouldMove) {
+                    // Rotação suave
+                    let angleDiff = targetAngle - this.angle;
+                    // Normalizar ângulo
+                    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                   
+                    this.angle += angleDiff * this.turnSpeed;
+                   
+                    // Velocidade baseada na evolução
+                    let currentMaxSpeed = this.speed;
+                    if (this.parts.flagellum) currentMaxSpeed *= 1.8;
+                    currentMaxSpeed += this.parts.mitochondria * 0.5;
+                    if (this.parts.multicellular) currentMaxSpeed *= 1.2;
+
+                    // Mover na direção do ângulo
+                    this.vx = Math.cos(this.angle) * currentMaxSpeed;
+                    this.vy = Math.sin(this.angle) * currentMaxSpeed;
+                } else {
+                    // Fricção
+                    this.vx *= 0.95;
+                    this.vy *= 0.95;
+                }
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Limites do mundo
+                this.x = Math.max(this.currentRadius, Math.min(gameState.worldSize - this.currentRadius, this.x));
+                this.y = Math.max(this.currentRadius, Math.min(gameState.worldSize - this.currentRadius, this.y));
+
+                // Animação do tamanho
+                this.currentRadius += (this.targetRadius - this.currentRadius) * 0.05;
+               
+                // Animação do flagelo
+                this.tailAngle += (Math.abs(this.vx) + Math.abs(this.vy)) * 0.1;
+
+                // Atualizar câmara zoom baseado no tamanho
+                let targetZoom = 25 / this.currentRadius;
+                if (targetZoom > 1.2) targetZoom = 1.2;
+                if (targetZoom < 0.3) targetZoom = 0.3;
+                gameState.zoom += (targetZoom - gameState.zoom) * 0.02;
+            },
+
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+
+                if (this.parts.multicellular) {
+                    // Renderização de ser pluricelular (aglomerado de células)
+                    const cellCount = 6;
+                    const offset = this.currentRadius * 0.6;
+                   
+                    for (let i = 0; i < cellCount; i++) {
+                        const a = (Math.PI * 2 / cellCount) * i;
+                        ctx.save();
+                        ctx.translate(Math.cos(a) * offset, Math.sin(a) * offset);
+                        this.drawSingleCell(ctx, this.currentRadius * 0.65, true);
+                        ctx.restore();
+                    }
+                    // Célula central
+                    this.drawSingleCell(ctx, this.currentRadius * 0.8, true);
+
+                } else {
+                    // Renderização de célula única
+                    this.drawSingleCell(ctx, this.currentRadius, false);
+                }
+
+                ctx.restore();
+            },
+
+            drawSingleCell(ctx, radius, isSubCell) {
+                // Membrana e Citoplasma
+                ctx.beginPath();
+                ctx.arc(0, 0, radius, 0, Math.PI * 2);
+               
+                if (this.parts.membrane) {
+                    ctx.fillStyle = 'rgba(16, 185, 129, 0.4)'; // Citoplasma mais escuro
+                    ctx.fill();
+                    ctx.lineWidth = 4;
+                    ctx.strokeStyle = '#10b981'; // Membrana espessa verde
+                } else {
+                    ctx.fillStyle = 'rgba(52, 211, 153, 0.3)'; // Citoplasma base
+                    ctx.fill();
+                    ctx.lineWidth = 2;
+                    ctx.strokeStyle = '#34d399'; // Membrana fina
+                }
+                ctx.stroke();
+
+                // Flagelo (Apenas na célula principal ou base)
+                if (this.parts.flagellum && !isSubCell) {
+                    ctx.beginPath();
+                    ctx.moveTo(-radius, 0);
+                   
+                    const tailLen = radius * 2.5;
+                    const wave = Math.sin(this.tailAngle) * (radius * 0.8);
+                   
+                    ctx.quadraticCurveTo(-radius - tailLen/2, wave, -radius - tailLen, 0);
+                    ctx.lineWidth = 3;
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+                    ctx.stroke();
+                }
+
+                // Mitocôndrias
+                for (let i = 0; i < this.parts.mitochondria; i++) {
+                    ctx.save();
+                    const angleOffset = (Math.PI * 2 / 3) * i + this.tailAngle * 0.1;
+                    const dist = radius * 0.5;
+                    ctx.translate(Math.cos(angleOffset) * dist, Math.sin(angleOffset) * dist);
+                    ctx.rotate(angleOffset + Math.PI/4); // Rotação da mitocôndria
+                   
+                    // Desenhar forma de pílula
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, radius*0.25, radius*0.12, 0, 0, Math.PI * 2);
+                    ctx.fillStyle = '#f59e0b'; // Laranja
+                    ctx.fill();
+                    ctx.lineWidth = 1;
+                    ctx.strokeStyle = '#d97706';
+                    ctx.stroke();
+                   
+                    // Dobras internas (cristas)
+                    ctx.beginPath();
+                    ctx.moveTo(-radius*0.15, 0);
+                    ctx.lineTo(radius*0.15, 0);
+                    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+                    ctx.stroke();
+                   
+                    ctx.restore();
+                }
+
+                // Núcleo
+                if (this.parts.nucleus) {
+                    ctx.beginPath();
+                    // Colocar o núcleo ligeiramente à frente
+                    ctx.arc(radius * 0.2, 0, radius * 0.35, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(59, 130, 246, 0.8)'; // Azul escuro
+                    ctx.fill();
+                    ctx.lineWidth = 2;
+                    ctx.strokeStyle = '#2563eb';
+                    ctx.stroke();
+                   
+                    // Nucléolo
+                    ctx.beginPath();
+                    ctx.arc(radius * 0.2, 0, radius * 0.15, 0, Math.PI * 2);
+                    ctx.fillStyle = '#1e3a8a';
+                    ctx.fill();
+                }
+            }
+        };
+
+        // Comida (Nutrientes)
+        const foods = [];
+        const maxFoods = 300;
+
+        function spawnFood() {
+            return {
+                x: Math.random() * gameState.worldSize,
+                y: Math.random() * gameState.worldSize,
+                radius: Math.random() * 3 + 2,
+                color: Math.random() > 0.5 ? '#a7f3d0' : '#6ee7b7' // Tons de verde claro
+            };
+        }
+
+        for (let i = 0; i < maxFoods; i++) {
+            foods.push(spawnFood());
+        }
+
+        // Sistema de Evolução UI
+        function updateEvoUI() {
+            upgradesList.innerHTML = '';
+           
+            evolutions.forEach(evo => {
+                // Verificar requisitos
+                let reqMet = true;
+                if (evo.requires) {
+                    reqMet = player.parts[evo.requires] > 0 || player.parts[evo.requires] === true;
+                }
+
+                // Verificar estado atual
+                let currentLevel = 0;
+                let isMaxed = false;
+               
+                if (typeof player.parts[evo.id] === 'boolean') {
+                    currentLevel = player.parts[evo.id] ? 1 : 0;
+                    isMaxed = player.parts[evo.id];
+                } else {
+                    currentLevel = player.parts[evo.id];
+                    isMaxed = currentLevel >= (evo.max || 1);
+                }
+
+                const canAfford = gameState.biomass >= evo.cost;
+                const isLocked = !reqMet;
+
+                const btn = document.createElement('button');
+                btn.className = `w-full text-left p-3 rounded-lg border transition-all ${
+                    isMaxed ? 'bg-emerald-900/50 border-emerald-500 text-emerald-200 opacity-70 cursor-default' :
+                    isLocked ? 'bg-slate-800/50 border-slate-700 text-slate-500 cursor-not-allowed' :
+                    canAfford ? 'bg-slate-700 hover:bg-slate-600 border-slate-500 text-white cursor-pointer shadow-[0_0_10px_rgba(52,211,153,0.2)]' :
+                    'bg-slate-800 border-slate-600 text-slate-400 cursor-not-allowed'
+                }`;
+               
+                let statusText = '';
+                if (isMaxed) statusText = 'Adquirido';
+                else if (isLocked) statusText = `Requer: ${evolutions.find(e => e.id === evo.requires).name}`;
+                else statusText = `Custo: ${evo.cost} Biomassa`;
+
+                let levelText = evo.max ? ` (Nível ${currentLevel}/${evo.max})` : '';
+
+                btn.innerHTML = `
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="font-bold">${evo.name}${levelText}</span>
+                        ${!isMaxed && !isLocked ? `<span class="${canAfford ? 'text-yellow-300' : 'text-slate-500'} font-mono text-sm">${evo.cost}</span>` : ''}
+                    </div>
+                    <p class="text-xs mb-2 opacity-80">${evo.desc}</p>
+                    <div class="text-xs font-mono uppercase tracking-wider ${isMaxed ? 'text-emerald-400' : (isLocked ? 'text-red-400' : 'text-slate-300')}">
+                        ${statusText}
+                    </div>
+                `;
+
+                if (!isMaxed && !isLocked && canAfford) {
+                    btn.onclick = () => buyUpgrade(evo);
+                }
+
+                upgradesList.appendChild(btn);
+            });
+        }
+
+        function buyUpgrade(evo) {
+            if (gameState.biomass >= evo.cost) {
+                gameState.biomass -= evo.cost;
+               
+                if (typeof player.parts[evo.id] === 'boolean') {
+                    player.parts[evo.id] = true;
+                } else {
+                    player.parts[evo.id]++;
+                }
+
+                // Efeitos imediatos
+                if (evo.id === 'nucleus') {
+                    aiStatusEl.style.display = 'block';
+                    gameState.autoPilot = true; // Ativa por defeito após comprar
+                    updateAIText();
+                }
+                if (evo.id === 'membrane') {
+                    player.targetRadius += 10;
+                }
+                if (evo.id === 'multicellular') {
+                    player.targetRadius += 30;
+                }
+
+                updateEvoUI();
+            }
+        }
+
+        // Loop Principal
+        let lastTime = 0;
+        function gameLoop(timestamp) {
+            const deltaTime = timestamp - lastTime;
+            lastTime = timestamp;
+
+            // Lógica
+            player.update();
+
+            // Colisão com comida
+            for (let i = foods.length - 1; i >= 0; i--) {
+                const f = foods[i];
+                const dx = player.x - f.x;
+                const dy = player.y - f.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+
+                // Raio de recolha base do organismo
+                const collectRadius = player.currentRadius + (player.parts.multicellular ? 30 : 5);
+
+                if (dist < collectRadius) {
+                    gameState.biomass += 1;
+                    player.targetRadius += 0.1; // Crescimento gradual mínimo
+                    foods.splice(i, 1);
+                    foods.push(spawnFood()); // Repor comida
+                    updateEvoUI(); // Atualiza botões
+                }
+            }
+
+            // Atualizar UI visual
+            biomassDisplay.innerText = gameState.biomass;
+           
+            // Atualizar lógica da escala de tamanho (K)
+            if (gameState.showScale) {
+                // Se 20 pixels iniciais = 2 µm, e a escala da linha visual é 128px (w-32)
+                // Escala visualizada real = (Tamanho da linha UI / zoom) * fator_de_conversão
+                // Fator: 1 pixel sem zoom = 0.1 µm
+                const uiScaleWidthPx = 128;
+                const actualMicrons = (uiScaleWidthPx / gameState.zoom) * 0.1;
+                scaleText.innerText = actualMicrons.toFixed(1) + ' µm';
+            }
+
+            // Renderização
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+           
+            // Centralizar a câmara no jogador e aplicar zoom
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            ctx.scale(gameState.zoom, gameState.zoom);
+            ctx.translate(-player.x, -player.y);
+
+            // Desenhar limites do mundo
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.lineWidth = 10;
+            ctx.strokeRect(0, 0, gameState.worldSize, gameState.worldSize);
+
+            // Grelha de fundo para noção de movimento
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+            ctx.lineWidth = 1;
+            const gridSize = 100;
+            const startX = Math.floor((player.x - canvas.width/(2*gameState.zoom)) / gridSize) * gridSize;
+            const endX = startX + (canvas.width/gameState.zoom) + gridSize;
+            const startY = Math.floor((player.y - canvas.height/(2*gameState.zoom)) / gridSize) * gridSize;
+            const endY = startY + (canvas.height/gameState.zoom) + gridSize;
+
+            ctx.beginPath();
+            for (let x = startX; x < endX; x += gridSize) {
+                ctx.moveTo(x, startY);
+                ctx.lineTo(x, endY);
+            }
+            for (let y = startY; y < endY; y += gridSize) {
+                ctx.moveTo(startX, y);
+                ctx.lineTo(endX, y);
+            }
+            ctx.stroke();
+
+            // Desenhar comida
+            foods.forEach(f => {
+                // Apenas desenhar se estiver perto do ecrã (Otimização)
+                if (Math.abs(f.x - player.x) < canvas.width/gameState.zoom &&
+                    Math.abs(f.y - player.y) < canvas.height/gameState.zoom) {
+                    ctx.beginPath();
+                    ctx.arc(f.x, f.y, f.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = f.color;
+                    ctx.fill();
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = f.color;
+                    ctx.fill(); // Duplo fill para o glow bater certo
+                    ctx.shadowBlur = 0; // Reset
+                }
+            });
+
+            // Desenhar jogador
+            player.draw(ctx);
+
+            ctx.restore();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Inicializar UI e iniciar loop
+        updateEvoUI();
+        requestAnimationFrame(gameLoop);
+
+    </script>
+</body>
+</html>
