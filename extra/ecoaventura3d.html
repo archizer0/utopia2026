@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eco-Aventura 3D: Bio-FPS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Carregamento da biblioteca Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; cursor: crosshair; }
+        #ui-overlay { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); pointer-events: none; width: 95%; max-width: 1000px; display: flex; justify-content: space-between; color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); z-index: 10; }
+        .stat-card { background: rgba(0,0,0,0.6); padding: 15px; border-radius: 15px; border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(10px); min-width: 200px; }
+        #msg-box { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 40px; border-radius: 30px; text-align: center; display: none; border: 10px solid #2E7D32; width: 90%; max-width: 600px; pointer-events: auto; z-index: 100; box-shadow: 0 0 100px rgba(0,0,0,0.5); }
+        .energy-bar { width: 100%; height: 12px; background: #222; border-radius: 6px; margin-top: 8px; border: 1px solid #444; overflow: hidden; }
+        #energy-fill { width: 100%; height: 100%; background: #4CAF50; transition: width 0.3s; }
+        .btn { background: #2E7D32; color: white; padding: 15px 40px; border: none; border-radius: 50px; cursor: pointer; font-size: 20px; font-weight: bold; margin-top: 20px; transition: 0.3s; }
+        .btn:hover { background: #1B5E20; transform: scale(1.05); }
+        #crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 20px; height: 20px; border: 2px solid rgba(255,255,255,0.5); border-radius: 50%; pointer-events: none; }
+    </style>
+</head>
+<body>
+
+<div id="crosshair"></div>
+
+<div id="ui-overlay">
+    <div class="stat-card">
+        <div id="score-text" class="font-bold">Nutrição: 0%</div>
+        <div class="energy-bar"><div id="energy-fill"></div></div>
+        <div id="level-tag" class="text-xs mt-2 text-green-300 uppercase tracking-widest">Nível 1</div>
+    </div>
+    <div class="stat-card text-center">
+        <div id="bioma-name" class="text-xl font-black">FLORESTA</div>
+        <div id="dentition" class="text-yellow-400 text-sm">🦷 Dentes Cortantes</div>
+    </div>
+    <div class="stat-card text-right">
+        <div id="lives-display" class="text-xl">❤️❤️❤️</div>
+        <div id="click-info" class="text-xs text-white opacity-70">Clica para olhar em volta</div>
+    </div>
+</div>
+
+<div id="msg-box">
+    <h2 id="msg-title" class="text-3xl font-black text-green-800 mb-4"></h2>
+    <div id="msg-emoji" class="text-7xl mb-4"></div>
+    <p id="msg-text" class="text-lg text-gray-700 mb-6"></p>
+    <div id="msg-fact" class="bg-green-100 p-4 rounded-xl text-green-800 italic mb-6"></div>
+    <button class="btn" onclick="startGame()">Iniciar Adaptação</button>
+</div>
+
+<script>
+    // Variáveis Globais
+    let scene, camera, renderer;
+    let items = [], enemies = [], vegetation = [];
+    let gameState = 'LOADING';
+    let currentLevel = 1;
+    let score = 0, energy = 100, lives = 3;
+   
+    let msgBox, msgTitle, msgEmoji, msgText, msgFact, energyFill;
+    const keys = {};
+    const worldSize = 200;
+
+    // Lógica de câmara
+    let pitch = 0, yaw = 0;
+
+    const LEVEL_DATA = {
+        1: { name: "Floresta Temperada", animal: "🐰", type: "herbivoro", food: "vegetal", target: 100, fact: "O coelho tem visão de 360 graus para detetar predadores.", dent: "🦷 Incisivos Cortantes", sky: 0x87CEEB, fog: 0xa0d2eb, treeColor: 0x2d5a27 },
+        2: { name: "Taiga Ártica", animal: "🐺", type: "carnivoro", food: "animal", target: 120, fact: "Lobos usam o olfato para caçar presas a grandes distâncias.", dent: "🦷 Caninos para Rasgar", sky: 0x1a2a6c, fog: 0x1a2a6c, treeColor: 0x0a2a0a },
+        3: { name: "Savana Mista", animal: "🐷", type: "omnivoro", food: "misto", target: 130, fact: "Omnívoros exploram vários nichos para evitar a fome.", dent: "🦷 Dentição Versátil", sky: 0xffd194, fog: 0xd39d38, treeColor: 0x5d4037 },
+        4: { name: "Céus Tropicais", animal: "🐦", type: "insetivoro", food: "inseto", target: 140, fact: "Pássaros em voo gastam 10x mais energia que em repouso.", dent: "👄 Bico Especializado", sky: 0x004e92, fog: 0x004e92, treeColor: 0x1b5e20 },
+        5: { name: "Abismo Oceânico", animal: "🦦", type: "piscivoro", food: "peixe", target: 150, fact: "Na água, a agilidade é a chave para a sobrevivência.", dent: "🦷 Dentes Cónicos", sky: 0x021B79, fog: 0x021B79, treeColor: 0x006064 }
+    };
+
+    const FOOD_TYPES = {
+        vegetal: ['🍎', '🥕', '🌿', '🌽'],
+        animal: ['🥩', '🍗', '🐁', '🍖'],
+        inseto: ['🪰', '🦋', '🦗', '🐝'],
+        peixe: ['🐟', '🐠', '🦐', '🦀']
+    };
+
+    function init3D() {
+        if (typeof THREE === 'undefined') {
+            console.error("Erro: Three.js não foi carregado corretamente.");
+            return;
+        }
+
+        msgBox = document.getElementById('msg-box');
+        msgTitle = document.getElementById('msg-title');
+        msgEmoji = document.getElementById('msg-emoji');
+        msgText = document.getElementById('msg-text');
+        msgFact = document.getElementById('msg-fact');
+        energyFill = document.getElementById('energy-fill');
+
+        scene = new THREE.Scene();
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+       
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+        const sun = new THREE.DirectionalLight(0xffffff, 0.5);
+        sun.position.set(50, 100, 50);
+        scene.add(sun);
+
+        window.addEventListener('keydown', e => keys[e.code] = true);
+        window.addEventListener('keyup', e => keys[e.code] = false);
+        window.addEventListener('resize', onWindowResize);
+       
+        document.body.addEventListener('click', () => {
+            if (gameState === 'PLAYING') document.body.requestPointerLock();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (document.pointerLockElement === document.body && gameState === 'PLAYING') {
+                yaw -= e.movementX * 0.002;
+                pitch -= e.movementY * 0.002;
+                pitch = Math.max(-Math.PI/2.5, Math.min(Math.PI/2.5, pitch));
+            }
+        });
+
+        loadLevel(1);
+        animate();
+    }
+
+    function createEmojiSprite(emoji, size) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 128; canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+        ctx.font = '90px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(emoji, 64, 64);
+        const texture = new THREE.CanvasTexture(canvas);
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture }));
+        sprite.scale.set(size, size, 1);
+        return sprite;
+    }
+
+    // Função para criar árvores terrestres
+    function createTree(x, z, color) {
+        const group = new THREE.Group();
+        const trunkGeo = new THREE.CylinderGeometry(0.5, 0.7, 4);
+        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x3d2b1f });
+        const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+        trunk.position.y = 2;
+        group.add(trunk);
+
+        const leafGeo = new THREE.ConeGeometry(3, 8, 8);
+        const leafMat = new THREE.MeshStandardMaterial({ color: color });
+        const leaves = new THREE.Mesh(leafGeo, leafMat);
+        leaves.position.y = 7;
+        group.add(leaves);
+
+        group.position.set(x, -1, z);
+        return group;
+    }
+
+    // Função para criar algas (vegetação marinha)
+    function createSeaweed(x, z, color) {
+        const group = new THREE.Group();
+        const segments = 5;
+        const height = 1.5;
+       
+        for(let i=0; i<segments; i++) {
+            const geo = new THREE.CylinderGeometry(0.3 - (i*0.05), 0.3 - (i*0.05), height);
+            const mat = new THREE.MeshStandardMaterial({ color: color, transparent: true, opacity: 0.8 });
+            const segment = new THREE.Mesh(geo, mat);
+            segment.position.y = (i * height);
+            segment.rotation.z = Math.sin(i) * 0.2;
+            group.add(segment);
+        }
+       
+        group.position.set(x, 0, z);
+        return group;
+    }
+
+    function loadLevel(lvl) {
+        const data = LEVEL_DATA[lvl];
+        currentLevel = lvl;
+        score = 0; energy = 100;
+       
+        [...items, ...enemies, ...vegetation].forEach(o => scene.remove(o));
+        items = []; enemies = []; vegetation = [];
+
+        scene.background = new THREE.Color(data.sky);
+        scene.fog = new THREE.FogExp2(data.fog, 0.015);
+
+        const ground = new THREE.Mesh(
+            new THREE.PlaneGeometry(worldSize, worldSize),
+            new THREE.MeshStandardMaterial({ color: data.sky, roughness: 0.9 })
+        );
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.y = 0;
+        scene.add(ground);
+
+        // Lógica de Vegetação: Árvores se terrestre, Algas se oceano
+        for(let i=0; i<70; i++) {
+            const tx = (Math.random()-0.5) * worldSize;
+            const tz = (Math.random()-0.5) * worldSize;
+            if (Math.abs(tx) > 8 || Math.abs(tz) > 8) {
+                let veg;
+                if (lvl === 5) {
+                    veg = createSeaweed(tx, tz, 0x008080);
+                } else {
+                    veg = createTree(tx, tz, data.treeColor);
+                }
+                scene.add(veg);
+                vegetation.push(veg);
+            }
+        }
+
+        camera.position.set(0, 1.5, 0);
+        yaw = 0; pitch = 0;
+
+        let foodList = data.food === 'misto' ? [...FOOD_TYPES.vegetal, ...FOOD_TYPES.animal] : FOOD_TYPES[data.food];
+        for(let i=0; i<25; i++) {
+            const s = createEmojiSprite(foodList[Math.floor(Math.random()*foodList.length)], 2);
+            s.position.set((Math.random()-0.5)*(worldSize-20), 1.5, (Math.random()-0.5)*(worldSize-20));
+            scene.add(s);
+            items.push(s);
+        }
+
+        const predatorEmoji = lvl === 1 ? '🦅' : lvl === 2 ? '🐻' : lvl === 3 ? '🐊' : lvl === 4 ? '🦅' : '🦈';
+        for(let i=0; i<6 + lvl; i++) {
+            const e = createEmojiSprite(predatorEmoji, 5);
+            e.position.set((Math.random()-0.5)*worldSize, 2, (Math.random()-0.5)*worldSize);
+            e.userData = {
+                vx: (Math.random()-0.5)*0.2 * (1 + lvl*0.1),
+                vz: (Math.random()-0.5)*0.2 * (1 + lvl*0.1)
+            };
+            scene.add(e);
+            enemies.push(e);
+        }
+
+        msgTitle.innerText = data.name;
+        msgEmoji.innerText = data.animal;
+        msgText.innerHTML = `Entraste no corpo de um <b>${data.type}</b>. Usa WASD para te moveres e o Rato para olhar em volta.`;
+        msgFact.innerText = data.fact;
+        msgBox.style.display = 'block';
+       
+        document.getElementById('bioma-name').innerText = data.name.toUpperCase();
+        document.getElementById('dentition').innerText = data.dent;
+        document.getElementById('level-tag').innerText = `Nível ${lvl}`;
+       
+        gameState = 'MENU';
+        updateUI();
+    }
+
+    function startGame() {
+        msgBox.style.display = 'none';
+        gameState = 'PLAYING';
+        document.body.requestPointerLock();
+    }
+
+    function takeDamage() {
+        lives--;
+        energy = 100;
+        camera.position.set(0, 1.5, 0);
+        updateUI();
+        if(lives <= 0) {
+            gameState = 'GAMEOVER';
+            document.exitPointerLock();
+            msgTitle.innerText = "EXTINÇÃO!";
+            msgText.innerText = "Não conseguiste sobreviver ao bioma.";
+            msgBox.style.display = 'block';
+            setTimeout(() => location.reload(), 4000);
+        }
+    }
+
+    function updateUI() {
+        const data = LEVEL_DATA[currentLevel];
+        const perc = Math.min(100, (score / data.target) * 100);
+        document.getElementById('score-text').innerText = `Nutrição: ${Math.floor(perc)}%`;
+        if (energyFill) energyFill.style.width = `${energy}%`;
+        document.getElementById('lives-display').innerText = "❤️".repeat(Math.max(0, lives));
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+
+        if(gameState === 'PLAYING') {
+            energy -= 0.06 * (1 + currentLevel * 0.1);
+            if(energy <= 0) takeDamage();
+
+            camera.rotation.set(pitch, yaw, 0, 'YXZ');
+
+            const moveSpeed = 0.35;
+            const dirX = Math.sin(yaw);
+            const dirZ = Math.cos(yaw);
+
+            if(keys['KeyW'] || keys['ArrowUp']) {
+                camera.position.x -= dirX * moveSpeed;
+                camera.position.z -= dirZ * moveSpeed;
+            }
+            if(keys['KeyS'] || keys['ArrowDown']) {
+                camera.position.x += dirX * moveSpeed;
+                camera.position.z += dirZ * moveSpeed;
+            }
+            if(keys['KeyA'] || keys['ArrowLeft']) {
+                camera.position.x -= dirZ * moveSpeed;
+                camera.position.z += dirX * moveSpeed;
+            }
+            if(keys['KeyD'] || keys['ArrowRight']) {
+                camera.position.x += dirZ * moveSpeed;
+                camera.position.z -= dirX * moveSpeed;
+            }
+
+            camera.position.x = Math.max(-worldSize/2 + 2, Math.min(worldSize/2 - 2, camera.position.x));
+            camera.position.z = Math.max(-worldSize/2 + 2, Math.min(worldSize/2 - 2, camera.position.z));
+
+            // Balanço das algas no oceano
+            if(currentLevel === 5) {
+                vegetation.forEach((v, i) => {
+                    v.rotation.z = Math.sin(Date.now() * 0.001 + i) * 0.1;
+                });
+            }
+
+            items.forEach((item, index) => {
+                item.position.y = 1.5 + Math.sin(Date.now()*0.005 + index)*0.2;
+                if(camera.position.distanceTo(item.position) < 2.5) {
+                    score += 20;
+                    energy = Math.min(100, energy + 20);
+                    scene.remove(item);
+                    items.splice(index, 1);
+                    updateUI();
+                    if(score >= LEVEL_DATA[currentLevel].target) {
+                        document.exitPointerLock();
+                        if(currentLevel < 5) loadLevel(currentLevel + 1);
+                        else {
+                            gameState = 'WON';
+                            msgTitle.innerText = "SOBREVIVENTE SUPREMO!";
+                            msgBox.style.display = 'block';
+                        }
+                    }
+                }
+            });
+
+            enemies.forEach(e => {
+                e.position.x += e.userData.vx;
+                e.position.z += e.userData.vz;
+               
+                if(currentLevel >= 2) {
+                    const chase = 0.006 * currentLevel;
+                    e.position.x += (camera.position.x - e.position.x) * chase;
+                    e.position.z += (camera.position.z - e.position.z) * chase;
+                }
+
+                if(Math.abs(e.position.x) > worldSize/2) e.userData.vx *= -1;
+                if(Math.abs(e.position.z) > worldSize/2) e.userData.vz *= -1;
+
+                if(camera.position.distanceTo(e.position) < 3.5) takeDamage();
+            });
+        }
+
+        renderer.render(scene, camera);
+    }
+
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    window.addEventListener('load', init3D);
+</script>
+</body>
+</html>
