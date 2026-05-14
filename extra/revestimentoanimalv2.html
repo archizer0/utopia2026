@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jogo da Glória 3D: Revestimento Animal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        #ui-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+            z-index: 10;
+        }
+        .interactive { pointer-events: auto; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+       
+        #dice-3d-container {
+            width: 150px;
+            height: 150px;
+            cursor: pointer;
+            position: relative;
+            pointer-events: auto;
+        }
+
+        .instruction-pulse {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .correct-glow {
+            box-shadow: 0 0 20px rgba(74, 222, 128, 0.5);
+            border-color: #4ade80 !important;
+        }
+
+        .wrong-glow {
+            box-shadow: 0 0 20px rgba(248, 113, 113, 0.5);
+            border-color: #f87171 !important;
+        }
+
+        /* Bloqueio visual para evitar cliques durante as esperas */
+        .waiting { opacity: 0.6; cursor: not-allowed !important; pointer-events: none !important; }
+    </style>
+</head>
+<body class="bg-gray-900">
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-container">
+        <div class="flex justify-between items-start">
+            <div class="bg-white/90 p-4 rounded-xl shadow-lg border-l-8 border-blue-600 max-w-sm">
+                <h1 class="text-2xl font-bold text-blue-900">Ciências 3D</h1>
+                <p class="text-sm text-blue-700">Exploração de Revestimentos Animais</p>
+                <div id="current-status" class="mt-2 font-semibold text-gray-700 italic">Clica no dado para começar!</div>
+            </div>
+           
+            <button id="reset-btn" onclick="location.reload()" class="interactive bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-bold shadow-lg transition">Reiniciar</button>
+        </div>
+
+        <!-- Dado descentrado para a esquerda para não obstruir o centro/jogador -->
+        <div class="flex justify-start items-center pb-8 pl-4">
+            <div class="flex flex-col items-center gap-2">
+                <div id="dice-3d-container" class="interactive"></div>
+                <div id="dice-label" class="bg-blue-600 text-white px-6 py-2 rounded-full font-bold shadow-lg instruction-pulse uppercase text-sm">Lançar Dado</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Perguntas -->
+    <div id="modal" class="fixed inset-0 bg-black/80 hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-2xl max-w-md w-full p-8 shadow-2xl border-t-8 border-blue-500">
+            <h2 id="modal-title" class="text-xl font-bold mb-4 text-blue-900 text-center uppercase tracking-wider"></h2>
+           
+            <div id="modal-content" class="text-xl font-medium text-gray-800 mb-8 text-center leading-relaxed"></div>
+           
+            <div id="modal-options" class="grid grid-cols-1 gap-3"></div>
+           
+            <div id="modal-footer" class="hidden mt-8 text-center animate-bounce">
+                <p id="modal-feedback-text" class="mb-6 font-bold text-lg"></p>
+                <button id="modal-close" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-bold shadow-lg transition w-full">Continuar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Gerador de Áudio ---
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        let audioCtx;
+
+        function initAudio() {
+            if (!audioCtx) audioCtx = new AudioCtx();
+        }
+
+        function playSound(type) {
+            initAudio();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            const now = audioCtx.currentTime;
+
+            switch(type) {
+                case 'victory':
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(523, now);
+                    osc.frequency.exponentialRampToValueAtTime(880, now + 0.4);
+                    gain.gain.setValueAtTime(0.1, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+                    osc.start(); osc.stop(now + 0.5);
+                    break;
+                case 'fail':
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(150, now);
+                    osc.frequency.linearRampToValueAtTime(40, now + 0.4);
+                    gain.gain.setValueAtTime(0.1, now);
+                    gain.gain.linearRampToValueAtTime(0.01, now + 0.4);
+                    osc.start(); osc.stop(now + 0.4);
+                    break;
+                case 'tick':
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(400, now);
+                    gain.gain.setValueAtTime(0.05, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                    osc.start(); osc.stop(now + 0.1);
+                    break;
+                case 'jump':
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(200, now);
+                    osc.frequency.exponentialRampToValueAtTime(600, now + 0.2);
+                    gain.gain.setValueAtTime(0.05, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                    osc.start(); osc.stop(now + 0.2);
+                    break;
+                case 'modal':
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(800, now);
+                    osc.frequency.exponentialRampToValueAtTime(400, now + 0.1);
+                    gain.gain.setValueAtTime(0.02, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                    osc.start(); osc.stop(now + 0.1);
+                    break;
+            }
+        }
+
+        // --- Dados das Perguntas ---
+        const rawQuestions = [
+            { q: "O cão tem o corpo coberto por...", o: ["Penas", "Pelos", "Escamas"], c: 1 },
+            { q: "Qual destes animais tem a pele nua e húmida?", o: ["Sapo", "Jacaré", "Pombo"], c: 0 },
+            { q: "As aves usam as penas para voar e para...", o: ["Respirar", "Manter a temperatura", "Escavar"], c: 1 },
+            { q: "Os peixes têm o corpo revestido por...", o: ["Carapaças", "Pele nua", "Escamas"], c: 2 },
+            { q: "A tartaruga protege-se com uma...", o: ["Pele fina", "Carapaça dura", "Camada de pelos"], c: 1 },
+            { q: "O gato é um mamífero coberto de...", o: ["Pelos", "Penas", "Muco"], c: 0 },
+            { q: "A salamandra tem que tipo de revestimento?", o: ["Escamas", "Pele nua", "Penas"], c: 1 },
+            { q: "Qual é a função das escamas nos répteis?", o: ["Voar", "Proteção e evitar sede", "Nadar rápido"], c: 1 },
+            { q: "O pardal tem o corpo coberto por...", o: ["Pelos", "Pele nua", "Penas"], c: 2 },
+            { q: "O tubarão tem a pele coberta por pequenas...", o: ["Penas", "Escamas", "Pelos"], c: 1 },
+            { q: "O caracol tem o corpo mole protegido por uma...", o: ["Concha", "Pele de pelos", "Pena"], c: 0 },
+            { q: "O urso polar tem pelos brancos para...", o: ["Atrair peixes", "Se camuflar na neve", "Voar"], c: 1 },
+            { q: "A cobra muda de quê para crescer?", o: ["De penas", "De patas", "De pele (escamas)"], c: 2 },
+            { q: "O pinguim é uma ave, por isso tem...", o: ["Pelos", "Penas", "Escamas"], c: 1 },
+            { q: "O elefante tem uma pele muito...", o: ["Fina e lisa", "Grossa e com poucos pelos", "Coberta de penas"], c: 1 },
+            { q: "O porco-espinho tem pelos transformados em...", o: ["Escamas", "Espinhos", "Penas"], c: 1 },
+            { q: "A rã precisa de viver perto de água porque a sua pele é...", o: ["Seca", "Húmida e nua", "Com penas"], c: 1 },
+            { q: "O leão usa o seu revestimento de pelos para...", o: ["Proteção e camuflagem", "Respirar debaixo de água", "Pôr ovos"], c: 0 },
+            { q: "Crocodilos têm a pele coberta por...", o: ["Placas duras e escamas", "Pelos macios", "Penas coloridas"], c: 0 },
+            { q: "O morcego é um animal com...", o: ["Penas nas asas", "Pelos no corpo", "Escamas nas orelhas"], c: 1 },
+            { q: "As escamas dos peixes ajudam a...", o: ["Caminhar", "Deslizar na água", "Cantar"], c: 1 },
+            { q: "O pato tem penas impermeáveis para...", o: ["Não se molhar", "Correr mais", "Comer melhor"], c: 0 },
+            { q: "O cavalo-marinho tem o corpo revestido por...", o: ["Placas ósseas", "Pelos compridos", "Pele nua"], c: 0 },
+            { q: "A ovelha dá-nos a lã, que é um tipo de...", o: ["Pena", "Pelo", "Escama"], c: 1 },
+            { q: "O polvo tem o corpo...", o: ["Coberto de espinhos", "Totalmente nu", "Com carapaça"], c: 1 },
+            { q: "A galinha é um animal...", o: ["Penífero", "Mamífero", "Escamoso"], c: 0 },
+            { q: "O camelo tem pelos que o protegem de quê?", o: ["Da chuva", "Do calor do deserto", "Da neve"], c: 1 },
+            { q: "O caranguejo tem um esqueleto externo chamado...", o: ["Pele", "Exoesqueleto ou carapaça", "Pelo"], c: 1 },
+            { q: "A baleia é um mamífero marinho com a pele...", o: ["Cheia de escamas", "Lisa e sem pelos", "Coberta de penas"], c: 1 },
+            { q: "O pavão usa as suas penas coloridas para...", o: ["Nadarem", "Cortejar a fêmea", "Escavar buracos"], c: 1 },
+            { q: "A lagartixa tem a pele...", o: ["Húmida", "Seca e com escamas", "Com pelos"], c: 1 },
+            { q: "O coelho tem o corpo coberto de...", o: ["Pele nua", "Pelos", "Escamas"], c: 1 },
+            { q: "O besouro tem as asas protegidas por uma...", o: ["Pena", "Carapaça dura", "Pele fina"], c: 1 },
+            { q: "O golfinho tem a pele muito suave para...", o: ["Andar na areia", "Nadar melhor", "Subir a árvores"], c: 1 },
+            { q: "O ouriço-do-mar tem o corpo coberto de...", o: ["Pelos", "Espinhos", "Penas"], c: 1 },
+            { q: "A girafa tem manchas no seu revestimento para...", o: ["Se esconder", "Brilhar no escuro", "Atrair chuva"], c: 0 },
+            { q: "O avestruz tem penas, mas não consegue...", o: ["Correr", "Voar", "Comer"], c: 1 },
+            { q: "As escamas da truta crescem...", o: ["Para fora", "Ao longo da vida", "No inverno"], c: 1 },
+            { q: "O macaco tem o corpo revestido por...", o: ["Pelos", "Escamas", "Pele nua"], c: 0 },
+            { q: "A borboleta tem as asas cobertas por...", o: ["Penas", "Escamas minúsculas", "Carapaça"], c: 1 },
+            { q: "O rinoceronte tem uma pele que parece uma...", o: ["Pena", "Armadura", "Lã"], c: 1 },
+            { q: "A foca tem uma camada de gordura debaixo da...", o: ["Pele com pelos", "Carapaça", "Pena"], c: 0 },
+            { q: "O pirilampo tem uma parte do corpo que...", o: ["Tem pelos", "Produz luz", "Tem penas"], c: 1 },
+            { q: "O tigre tem riscas no pelo para...", o: ["Se esconder", "Voar", "Nadar"], c: 0 },
+            { q: "O cisne tem penas que repelem a...", o: ["Comida", "Água", "Luz"], c: 1 },
+            { q: "O lagarto muda de pele através da...", o: ["Respiração", "Muda", "Transpiração"], c: 1 },
+            { q: "A zebra tem um padrão de pelo único, como uma...", o: ["Pena", "Impressão digital", "Escama"], c: 1 },
+            { q: "O bicho-da-seda produz um fio que vem do seu...", o: ["Pelo", "Corpo", "Pena"], c: 1 },
+            { q: "O esquilo usa a sua cauda com pelos para...", o: ["Equilíbrio", "Respirar", "Ver melhor"], c: 0 },
+            { q: "O polvo consegue mudar a cor da sua...", o: ["Pele", "Carapaça", "Pena"], c: 0 }
+        ];
+
+        const boardData = rawQuestions.map((q, i) => ({
+            label: `Desafio ${i+1}`,
+            type: "quiz",
+            q: q.q,
+            options: q.o,
+            correct: q.c,
+            color: i % 2 === 0 ? 0x818cf8 : 0x6366f1
+        }));
+        boardData.unshift({ label: "Início", type: "start", color: 0x4ade80 });
+        boardData.push({ label: "Vitória", type: "end", color: 0xfacc15 });
+
+        // --- Three.js Logic ---
+        let scene, camera, renderer, pawn, diceScene, diceCamera, diceRenderer, diceMesh;
+        let tiles = [];
+        let playerPos = 0;
+        let isMoving = false;
+        let isDiceRolling = false;
+        let isWaiting = false;
+        let currentDiceRoll = 1;
+        let cameraTargetPos = { x: 0, y: 15, z: 20 };
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0f172a);
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+            const light = new THREE.DirectionalLight(0xffffff, 1);
+            light.position.set(10, 20, 10);
+            light.castShadow = true;
+            scene.add(light);
+
+            createBoard();
+            createPawn();
+            initDice();
+            animate();
+        }
+
+        function createBoard() {
+            boardData.forEach((data, i) => {
+                const angle = i * 0.35;
+                const radius = 3 + (i * 0.25);
+                const x = Math.cos(angle) * radius;
+                const z = Math.sin(angle) * radius;
+                const y = i * 0.1;
+                const mesh = new THREE.Mesh(
+                    new THREE.BoxGeometry(2, 0.6, 2),
+                    new THREE.MeshPhongMaterial({ color: data.color })
+                );
+                mesh.position.set(x, y, z);
+                mesh.receiveShadow = true;
+                scene.add(mesh);
+                tiles.push({ x, y, z });
+            });
+        }
+
+        function createPawn() {
+            pawn = new THREE.Group();
+            const body = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.4, 16), new THREE.MeshPhongMaterial({color: 0xff4444}));
+            body.position.y = 0.7;
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.35, 16, 16), new THREE.MeshPhongMaterial({color: 0xff4444}));
+            head.position.y = 1.4;
+            pawn.add(body, head);
+            scene.add(pawn);
+            updatePawnPosition(true);
+        }
+
+        function initDice() {
+            const container = document.getElementById('dice-3d-container');
+            diceScene = new THREE.Scene();
+            diceCamera = new THREE.PerspectiveCamera(45, 1, 0.1, 10);
+            diceCamera.position.z = 4;
+            diceRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            diceRenderer.setSize(150, 150);
+            container.appendChild(diceRenderer.domElement);
+
+            const materials = [];
+            for(let i=1; i<=6; i++) {
+                const canvas = document.createElement('canvas');
+                canvas.width = 128; canvas.height = 128;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = 'white'; ctx.fillRect(0,0,128,128);
+                ctx.strokeStyle = '#1e40af'; ctx.lineWidth = 12; ctx.strokeRect(6,6,116,116);
+                ctx.fillStyle = '#1e40af';
+                const dots = {
+                    1: [[64,64]], 2: [[32,32],[96,96]], 3: [[32,32],[64,64],[96,96]],
+                    4: [[32,32],[32,96],[96,32],[96,96]], 5: [[32,32],[32,96],[96,32],[96,96],[64,64]],
+                    6: [[32,32],[32,64],[32,96],[96,32],[96,64],[96,96]]
+                }[i];
+                dots.forEach(d => { ctx.beginPath(); ctx.arc(d[0], d[1], 14, 0, Math.PI*2); ctx.fill(); });
+                materials.push(new THREE.MeshPhongMaterial({ map: new THREE.CanvasTexture(canvas) }));
+            }
+            diceMesh = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), materials);
+            diceScene.add(diceMesh);
+            diceScene.add(new THREE.PointLight(0xffffff, 1.2, 10));
+            diceScene.add(new THREE.AmbientLight(0xffffff, 0.6));
+            container.onclick = handleDiceRoll;
+        }
+
+        function toggleDiceState(waiting) {
+            isWaiting = waiting;
+            const container = document.getElementById('dice-3d-container');
+            const label = document.getElementById('dice-label');
+            if (waiting) {
+                container.classList.add('waiting');
+                label.classList.add('waiting');
+            } else {
+                container.classList.remove('waiting');
+                label.classList.remove('waiting');
+                label.innerText = "Lançar Dado";
+            }
+        }
+
+        function handleDiceRoll() {
+            if (isMoving || isDiceRolling || isWaiting || !document.getElementById('modal').classList.contains('hidden')) return;
+            initAudio();
+            isDiceRolling = true;
+            document.getElementById('dice-label').innerText = "Rolar...";
+           
+            setTimeout(() => {
+                isDiceRolling = false;
+                const result = Math.floor(Math.random() * 6) + 1;
+                currentDiceRoll = result;
+                playSound('tick');
+                document.getElementById('dice-label').innerText = `Tiraste ${result}!`;
+               
+                setTimeout(() => {
+                    movePlayer(result);
+                }, 800);
+            }, 1000);
+        }
+
+        function movePlayer(steps) {
+            toggleDiceState(true);
+            playerPos = Math.min(playerPos + steps, boardData.length - 1);
+            updatePawnPosition();
+            document.getElementById('current-status').innerText = `A avançar ${steps} casas...`;
+        }
+
+        function updatePawnPosition(instant = false) {
+            const target = tiles[playerPos];
+            if (instant) {
+                pawn.position.set(target.x, target.y + 0.3, target.z);
+                isMoving = false;
+            } else {
+                isMoving = true;
+                const startPos = pawn.position.clone();
+                const endPos = new THREE.Vector3(target.x, target.y + 0.3, target.z);
+                let alpha = 0;
+                const interval = setInterval(() => {
+                    alpha += 0.04;
+                    if (alpha >= 1) {
+                        pawn.position.copy(endPos);
+                        clearInterval(interval);
+                        isMoving = false;
+                       
+                        setTimeout(() => {
+                            checkTile();
+                        }, 1000);
+                    } else {
+                        pawn.position.lerpVectors(startPos, endPos, alpha);
+                        pawn.position.y += Math.sin(alpha * Math.PI) * 2;
+                        if (alpha > 0.45 && alpha < 0.55) playSound('jump');
+                    }
+                }, 20);
+            }
+            cameraTargetPos = { x: target.x, y: target.y + 14, z: target.z + 14 };
+        }
+
+        function checkTile() {
+            const tile = boardData[playerPos];
+            if (tile.type === 'quiz') showModal(tile);
+            else if (tile.type === 'end') {
+                playSound('victory');
+                showModal({ label: "VITÓRIA!", q: "Incrível! Completaste o desafio dos animais!", type: "end" });
+            } else {
+                toggleDiceState(false);
+                document.getElementById('current-status').innerText = "Tua vez!";
+            }
+        }
+
+        function showModal(tile) {
+            const m = document.getElementById('modal');
+            const opts = document.getElementById('modal-options');
+            const footer = document.getElementById('modal-footer');
+           
+            playSound('modal');
+            document.getElementById('modal-title').innerText = tile.label;
+            document.getElementById('modal-content').innerText = tile.q;
+            opts.innerHTML = '';
+            footer.classList.add('hidden');
+            m.classList.remove('hidden');
+
+            if (tile.type === 'quiz') {
+                tile.options.forEach((o, i) => {
+                    const btn = document.createElement('button');
+                    btn.className = "p-4 border-2 border-gray-200 rounded-xl hover:bg-blue-50 transition interactive text-center font-bold text-lg";
+                    btn.innerText = o;
+                    btn.onclick = () => {
+                        if (!footer.classList.contains('hidden')) return;
+                        const correct = i === tile.correct;
+                        if (correct) {
+                            playSound('victory');
+                            btn.classList.add('correct-glow', 'bg-green-100');
+                        } else {
+                            playSound('fail');
+                            btn.classList.add('wrong-glow', 'bg-red-100');
+                        }
+                       
+                        document.getElementById('modal-feedback-text').innerText = correct ? "Excelente! Resposta Certa. ✨" : "Ups! Resposta Errada. Recuas 1 casa. 🐢";
+                        document.getElementById('modal-feedback-text').className = correct ? "mb-4 font-bold text-lg text-green-600" : "mb-4 font-bold text-lg text-red-600";
+                        footer.classList.remove('hidden');
+                        if (!correct) playerPos = Math.max(0, playerPos - 1);
+                    };
+                    opts.appendChild(btn);
+                });
+            } else if (tile.type === 'end') {
+                 footer.classList.remove('hidden');
+                 document.getElementById('modal-feedback-text').innerText = "És um mestre dos revestimentos!";
+            }
+           
+            document.getElementById('modal-close').onclick = () => {
+                m.classList.add('hidden');
+                updatePawnPosition(true);
+               
+                setTimeout(() => {
+                    toggleDiceState(false);
+                    document.getElementById('current-status').innerText = "Clica no dado para continuar!";
+                }, 800);
+            };
+        }
+
+        const diceRotations = {
+            1: [0,0,0], 2: [0, Math.PI/2, 0], 3: [-Math.PI/2, 0, 0],
+            4: [Math.PI/2, 0, 0], 5: [0, -Math.PI/2, 0], 6: [Math.PI, 0, 0]
+        };
+
+        function animate() {
+            requestAnimationFrame(animate);
+            camera.position.x += (cameraTargetPos.x - camera.position.x) * 0.05;
+            camera.position.y += (cameraTargetPos.y - camera.position.y) * 0.05;
+            camera.position.z += (cameraTargetPos.z - camera.position.z) * 0.05;
+            camera.lookAt(pawn.position);
+            renderer.render(scene, camera);
+           
+            if (isDiceRolling) {
+                diceMesh.rotation.x += 0.4; diceMesh.rotation.y += 0.3;
+            } else {
+                const [tx, ty, tz] = diceRotations[currentDiceRoll];
+                diceMesh.rotation.x += (tx - diceMesh.rotation.x) * 0.1;
+                diceMesh.rotation.y += (ty - diceMesh.rotation.y) * 0.1;
+                diceMesh.rotation.z += (tz - diceMesh.rotation.z) * 0.1;
+            }
+            diceRenderer.render(diceScene, diceCamera);
+        }
+
+        window.onload = init;
+        window.onresize = () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        };
+    </script>
+</body>
+</html>
