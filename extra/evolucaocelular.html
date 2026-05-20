@@ -12,9 +12,10 @@
             width: 100%;
             height: 100%;
             overflow: hidden;
-            background-color: #0f172a; /* Fundo escuro primordial */
+            background-color: #0f172a;
             color: white;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            transition: background-color 2s ease;
         }
         canvas {
             display: block;
@@ -25,7 +26,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            pointer-events: none; /* Permite que os cliques passem para o canvas se necessário, excepto em botões */
+            pointer-events: none;
         }
         .pointer-events-auto {
             pointer-events: auto;
@@ -35,13 +36,26 @@
             backdrop-filter: blur(8px);
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
-       
-        /* Animação suave para o menu */
         #evo-menu {
             transition: transform 0.3s ease-in-out;
         }
         .menu-hidden {
             transform: translateX(120%);
+        }
+        #macro-modal {
+            backdrop-filter: blur(12px);
+            background: rgba(15, 23, 42, 0.95);
+            border: 2px solid #34d399;
+        }
+        input[type="text"], select {
+            background: rgba(30, 41, 59, 0.8);
+            border: 1px solid #475569;
+            color: white;
+        }
+        input[type="color"] {
+            border: none;
+            background: none;
+            cursor: pointer;
         }
     </style>
 </head>
@@ -49,13 +63,47 @@
 
     <canvas id="gameCanvas"></canvas>
 
+    <!-- Modal de Evolução Macroscópica -->
+    <div id="macro-modal" class="fixed inset-0 z-50 flex flex-col items-center justify-center hidden pointer-events-auto text-center p-8">
+        <h1 class="text-5xl font-bold text-emerald-400 mb-2 animate-pulse">Evolução Macroscópica!</h1>
+        <p class="text-lg text-slate-300 mb-6 max-w-2xl">O teu aglomerado atingiu o limite evolutivo celular. Personaliza a tua nova forma antes de entrares no vasto ecossistema!</p>
+       
+        <div class="bg-slate-800 p-6 rounded-xl border border-slate-600 w-full max-w-md flex flex-col gap-4 mb-8 text-left">
+            <div>
+                <label class="block text-sm text-slate-400 mb-1">Nome Científico</label>
+                <input type="text" id="species-name-input" class="w-full p-2 rounded text-xl font-mono text-yellow-300" value="Generica simplex">
+            </div>
+            <div class="flex gap-4">
+                <div class="flex-1">
+                    <label class="block text-sm text-slate-400 mb-1">Cor Principal</label>
+                    <input type="color" id="species-color-input" class="w-full h-10 rounded cursor-pointer" value="#3b82f6">
+                </div>
+                <div class="flex-1">
+                    <label class="block text-sm text-slate-400 mb-1">Detalhe Evolutivo</label>
+                    <select id="species-detail-input" class="w-full p-2 rounded h-10">
+                        <option value="nenhum">Nenhum</option>
+                        <option value="barbatanas">Barbatanas/Folhas</option>
+                        <option value="espinhos">Espinhos/Manchas</option>
+                        <option value="tentaculos">Tentáculos/Gavinhas</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <button id="btn-evolve-macro" class="px-8 py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-2xl transition-all shadow-[0_0_20px_rgba(52,211,153,0.5)]">
+            Entrar na Nova Era
+        </button>
+    </div>
+
     <div id="ui-layer" class="p-4 flex flex-col justify-between">
         <!-- Top UI -->
         <div class="flex justify-between items-start pointer-events-auto">
             <div class="glass-panel p-4 rounded-xl shadow-lg">
-                <h1 class="text-2xl font-bold text-emerald-400 mb-1">Evolução Celular</h1>
+                <h1 id="main-title" class="text-2xl font-bold text-emerald-400 mb-1">Evolução Celular</h1>
                 <p class="text-lg">Biomassa: <span id="biomass-display" class="font-mono text-yellow-300 font-bold">0</span></p>
-                <p class="text-sm text-slate-300 mt-2">Use o rato para mover.<br>Pressione <kbd class="bg-slate-700 px-1 rounded border border-slate-500">K</kbd> para escala.</p>
+                <p id="cell-count-container" class="text-md hidden text-cyan-300 mt-1">Células Fundidas: <span id="cell-count-display" class="font-bold">1</span>/200</p>
+                <p id="traits-container" class="text-sm text-purple-400 hidden mt-1">Traços: <span id="traits-display" class="capitalize">Nenhum</span></p>
+                <p class="text-sm text-slate-300 mt-2">Use o rato para mover (animais).<br>Pressione <kbd class="bg-slate-700 px-1 rounded border border-slate-500">K</kbd> para escala.</p>
                 <div id="ai-status" class="mt-2 text-sm font-bold text-slate-400 hidden cursor-pointer pointer-events-auto transition-colors hover:text-white">IA: Inativa (Pressione A)</div>
             </div>
 
@@ -64,8 +112,16 @@
             </button>
         </div>
 
+        <!-- Nova UI Macroscópica -->
+        <div id="macro-ui" class="absolute bottom-8 left-1/2 transform -translate-x-1/2 glass-panel p-4 rounded-xl hidden flex-col gap-2 items-center pointer-events-auto shadow-2xl border-emerald-500/50">
+            <div class="flex gap-4">
+                <button id="btn-reproduce" class="px-4 py-2 bg-pink-700 hover:bg-pink-600 rounded text-white font-bold transition-colors">Reproduzir (R) - 20 Bio</button>
+            </div>
+            <div id="repro-status" class="text-sm font-bold text-pink-300 hidden animate-pulse"></div>
+        </div>
+
         <!-- Escala (Botão K) -->
-        <div id="scale-container" class="glass-panel p-2 rounded-lg self-start mt-auto mb-4 hidden items-center space-x-2">
+        <div id="scale-container" class="glass-panel p-2 rounded-lg self-start mt-auto mb-4 hidden items-center space-x-2 pointer-events-auto">
             <span class="text-sm font-mono text-slate-300">Escala:</span>
             <div class="flex flex-col items-center w-32">
                 <div class="w-full h-px bg-white relative">
@@ -80,9 +136,12 @@
     <!-- Menu de Evolução Lateral -->
     <div id="evo-menu" class="absolute right-4 top-20 bottom-4 w-80 glass-panel rounded-xl shadow-2xl p-6 flex flex-col pointer-events-auto menu-hidden overflow-y-auto">
         <h2 class="text-xl font-bold text-center text-white border-b border-slate-600 pb-3 mb-4">Mutações</h2>
+        <div id="upgrades-list" class="space-y-4 flex-1"></div>
        
-        <div id="upgrades-list" class="space-y-4 flex-1">
-            <!-- Os itens serão gerados por JS -->
+        <!-- Zona de Cheatcode -->
+        <div class="mt-4 pt-4 border-t border-slate-600">
+            <label class="block text-xs text-slate-400 mb-1">Código Genético (Cheat)</label>
+            <input type="text" id="cheat-input" placeholder="Insira o código..." class="w-full p-2 text-sm rounded font-mono text-center">
         </div>
     </div>
 
@@ -96,8 +155,22 @@
         const toggleMenuBtn = document.getElementById('toggle-menu-btn');
         const upgradesList = document.getElementById('upgrades-list');
         const aiStatusEl = document.getElementById('ai-status');
+        const cellCountContainer = document.getElementById('cell-count-container');
+        const cellCountDisplay = document.getElementById('cell-count-display');
+        const traitsContainer = document.getElementById('traits-container');
+        const traitsDisplay = document.getElementById('traits-display');
+        const cheatInput = document.getElementById('cheat-input');
+       
+        // Elementos Modal Macroscópico e UI
+        const macroModal = document.getElementById('macro-modal');
+        const speciesNameInput = document.getElementById('species-name-input');
+        const speciesColorInput = document.getElementById('species-color-input');
+        const speciesDetailInput = document.getElementById('species-detail-input');
+        const btnEvolveMacro = document.getElementById('btn-evolve-macro');
+        const macroUi = document.getElementById('macro-ui');
+        const btnReproduce = document.getElementById('btn-reproduce');
+        const reproStatus = document.getElementById('repro-status');
 
-        // Redimensionar Canvas
         function resize() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
@@ -105,7 +178,8 @@
         window.addEventListener('resize', resize);
         resize();
 
-        // Estado do Jogo
+        const MACRO_THRESHOLD = 200;
+
         const gameState = {
             biomass: 0,
             showScale: false,
@@ -114,10 +188,25 @@
             worldSize: 4000,
             zoom: 1.0,
             menuOpen: false,
-            autoPilot: false
+            autoPilot: false,
+            macroPhase: null, // null, 'animal', 'plant', 'fungus'
+            bgColor: '#0f172a',
+            // Correntes Oceânicas
+            currentAngle: Math.PI / 4, // Direção da corrente (diagonal Nordeste -> Sudoeste)
+            currentStrength: 0.8,
+            currentParticles: []
         };
 
-        // Rastreamento do rato
+        // Gerar partículas de corrente visíveis
+        for (let i = 0; i < 60; i++) {
+            gameState.currentParticles.push({
+                x: Math.random() * 8000,
+                y: Math.random() * 8000,
+                length: 40 + Math.random() * 60,
+                speed: 1.5 + Math.random() * 2
+            });
+        }
+
         window.addEventListener('mousemove', (e) => {
             gameState.mouseX = e.clientX;
             gameState.mouseY = e.clientY;
@@ -134,15 +223,23 @@
             if (e.key.toLowerCase() === 'a' && player.parts.nucleus) {
                 toggleAutoPilot();
             }
+            if (e.key.toLowerCase() === 'r' && gameState.macroPhase) {
+                handleReproduction();
+            }
+        });
+
+        // Escuta Cheatcode
+        cheatInput.addEventListener('input', () => {
+            if (cheatInput.value.trim() === 'macro.cenn.av') {
+                player.cellCount = MACRO_THRESHOLD;
+                cheatInput.value = '';
+                toggleMenu(); // fecha menu
+            }
         });
 
         toggleMenuBtn.addEventListener('click', toggleMenu);
-
-        aiStatusEl.addEventListener('click', () => {
-            if (player.parts.nucleus) {
-                toggleAutoPilot();
-            }
-        });
+        aiStatusEl.addEventListener('click', () => { if (player.parts.nucleus) toggleAutoPilot(); });
+        btnReproduce.addEventListener('click', handleReproduction);
 
         function toggleAutoPilot() {
             gameState.autoPilot = !gameState.autoPilot;
@@ -163,124 +260,201 @@
 
         function toggleMenu() {
             gameState.menuOpen = !gameState.menuOpen;
-            if (gameState.menuOpen) {
-                evoMenu.classList.remove('menu-hidden');
+            if (gameState.menuOpen) evoMenu.classList.remove('menu-hidden');
+            else evoMenu.classList.add('menu-hidden');
+        }
+
+        function handleReproduction() {
+            if (gameState.biomass < 20) return;
+           
+            if (player.parts.sexualReproduction) {
+                if (!player.seekingMate) {
+                    player.seekingMate = true;
+                    reproStatus.innerText = gameState.macroPhase === 'fungus' ? 'Lançando esporos sexuais...' : 'Buscando parceiro...';
+                    reproStatus.classList.remove('hidden');
+                }
             } else {
-                evoMenu.classList.add('menu-hidden');
+                if (gameState.macroPhase === 'plant') {
+                    if (player.branches <= 0) {
+                        reproStatus.innerText = 'Requer bifurcações!';
+                        reproStatus.classList.remove('hidden');
+                        setTimeout(() => reproStatus.classList.add('hidden'), 2000);
+                        return;
+                    }
+                    player.branches--;
+                }
+                gameState.biomass -= 20;
+                player.isBudding = true;
+                player.budProgress = 0;
+                reproStatus.innerText = 'Reprodução assexuada...';
+                reproStatus.classList.remove('hidden');
             }
         }
 
-        // Definição das Evoluções
-        const evolutions = [
+        // Evoluções Microscópicas Base
+        const microEvolutions = [
             { id: 'nucleus', name: 'Núcleo', cost: 15, desc: 'Protege o ADN e ativa a IA (Piloto Automático).', requires: null },
             { id: 'flagellum', name: 'Flagelo', cost: 30, desc: 'Aumenta significativamente a velocidade de movimento.', requires: 'nucleus' },
-            { id: 'mitochondria', name: 'Mitocôndria', cost: 50, desc: 'A central de energia da célula. Permite movimentos mais ágeis.', requires: 'nucleus', max: 3 },
-            { id: 'membrane', name: 'Membrana Reforçada', cost: 75, desc: 'Aumenta o tamanho base e a capacidade de absorção.', requires: 'mitochondria' },
-            { id: 'multicellular', name: 'Pluricelular', cost: 200, desc: 'O derradeiro passo evolutivo. Torna-se num aglomerado de células.', requires: 'membrane' }
+            { id: 'cellWall', name: 'Parede Celular', cost: 40, desc: 'Cria uma parede exterior forte e vacúolo interior. Fica verde.', requires: 'nucleus' },
+            { id: 'chloroplast', name: 'Cloroplasto', cost: 50, desc: 'Faz fotossíntese passiva. Bloqueia Mitocôndria.', requires: 'cellWall', excludes: 'mitochondria', max: 3 },
+            { id: 'mitochondria', name: 'Mitocôndria', cost: 50, desc: 'Permite caçar outras células. Bloqueia Cloroplasto.', requires: 'nucleus', excludes: 'chloroplast', max: 3 },
+            { id: 'membrane', name: 'Membrana Reforçada', cost: 75, desc: 'Aumenta tamanho base e absorção.', requires: 'nucleus' },
+            { id: 'multicellular', name: 'Pluricelular', cost: 200, desc: 'Funde outras células. 200 células necessárias para Macro-Evolução.', requires: 'membrane' }
         ];
 
-        // Objeto Jogador (A Célula)
+        // Mutações Exclusivas da Fase Macroscópica
+        const macroEvolutions = {
+            animal: [
+                { id: 'sexualReproduction', name: 'Reprodução Sexuada', cost: 60, desc: 'Permite cruzar com outros da mesma espécie e gerar ovos.' }
+            ],
+            plant: [
+                { id: 'buyBranch', name: 'Bifurcação de Ramos', cost: 20, desc: 'Cria um novo ramo bifurcado da planta base para reprodução.', max: 5 },
+                { id: 'sexualReproduction', name: 'Flores de Polinização (Sexuada)', cost: 80, desc: 'Usa flores brilhantes para lançar sementes polinizadas ao oceano.' }
+            ],
+            fungus: [
+                { id: 'sexualReproduction', name: 'Esporulação Sexuada (Esporos)', cost: 70, desc: 'Liberta esporos magnéticos que encontram parceiros na corrente.' }
+            ]
+        };
+
         const player = {
             x: gameState.worldSize / 2,
             y: gameState.worldSize / 2,
-            vx: 0,
-            vy: 0,
-            baseRadius: 20,
-            targetRadius: 20,
-            currentRadius: 20,
+            vx: 0, vy: 0,
+            baseRadius: 20, targetRadius: 20, currentRadius: 20,
+            cellCount: 1,
+            traits: [],
+            speciesName: "",
+            bodyColor: "#3b82f6",
+            bodyDetail: "nenhum",
             speed: 2.5,
             turnSpeed: 0.05,
-            angle: 0,
-            tailAngle: 0, // Para animação do flagelo
+            angle: 0, tailAngle: 0,
+           
+            // Variáveis de reprodução
+            branches: 0,
+            isBudding: false,
+            budProgress: 0,
+            seekingMate: false,
+
             parts: {
-                nucleus: false,
-                flagellum: false,
-                mitochondria: 0, // Pode ter até 3
-                membrane: false,
-                multicellular: false
+                nucleus: false, flagellum: false, cellWall: false, chloroplast: 0, mitochondria: 0, membrane: false, multicellular: false, sexualReproduction: false
             },
            
             update() {
                 let targetAngle = this.angle;
                 let shouldMove = false;
+                let nearestTarget = null;
+                let distToTarget = Infinity;
 
-                if (gameState.autoPilot && this.parts.nucleus) {
-                    // IA: Encontrar comida mais próxima
-                    let nearestFood = null;
+                // Restringir movimento se for planta ou fungo na fase macro (são sésseis)
+                const canMove = !(gameState.macroPhase === 'plant' || gameState.macroPhase === 'fungus');
+
+                if (gameState.autoPilot && this.parts.nucleus && canMove) {
                     let minDist = Infinity;
-                    for (let i = 0; i < foods.length; i++) {
-                        const f = foods[i];
-                        const distSq = Math.pow(f.x - this.x, 2) + Math.pow(f.y - this.y, 2);
-                        if (distSq < minDist) {
-                            minDist = distSq;
-                            nearestFood = f;
+
+                    if (gameState.macroPhase === 'animal') {
+                        if (this.seekingMate) {
+                            for (let s of sameSpecies) {
+                                let dSq = Math.pow(s.x - this.x, 2) + Math.pow(s.y - this.y, 2);
+                                if (dSq < minDist) { minDist = dSq; nearestTarget = s; }
+                            }
+                        } else {
+                            // IA Macroscópica caça plantas/fungos menores
+                            for (let p of macroPlants) {
+                                let dSq = Math.pow(p.x - this.x, 2) + Math.pow(p.y - this.y, 2);
+                                if (dSq < minDist) { minDist = dSq; nearestTarget = p; }
+                            }
+                        }
+                    } else if (!gameState.macroPhase) {
+                        // IA Microscópica caça células ou comida
+                        if (this.parts.mitochondria > 0 || this.parts.multicellular) {
+                            for (let c of otherCells) {
+                                let dSq = Math.pow(c.x - this.x, 2) + Math.pow(c.y - this.y, 2);
+                                if (dSq < minDist) { minDist = dSq; nearestTarget = c; }
+                            }
+                        }
+                        if (!nearestTarget) {
+                            for (let f of foods) {
+                                let dSq = Math.pow(f.x - this.x, 2) + Math.pow(f.y - this.y, 2);
+                                if (dSq < minDist) { minDist = dSq; nearestTarget = f; }
+                            }
                         }
                     }
-                    if (nearestFood) {
-                        const dx = nearestFood.x - this.x;
-                        const dy = nearestFood.y - this.y;
-                        targetAngle = Math.atan2(dy, dx);
+
+                    if (nearestTarget) {
+                        targetAngle = Math.atan2(nearestTarget.y - this.y, nearestTarget.x - this.x);
+                        distToTarget = Math.sqrt(minDist);
                         shouldMove = true;
                     }
-                } else {
-                    // Controlo manual pelo rato
-                    const screenCenterX = canvas.width / 2;
-                    const screenCenterY = canvas.height / 2;
+                } else if (canMove) {
+                    const dx = gameState.mouseX - canvas.width / 2;
+                    const dy = gameState.mouseY - canvas.height / 2;
+                    distToTarget = Math.sqrt(dx*dx + dy*dy);
                    
-                    const dx = gameState.mouseX - screenCenterX;
-                    const dy = gameState.mouseY - screenCenterY;
-                   
-                    // Distância do centro do ecrã
-                    const distToMouse = Math.sqrt(dx*dx + dy*dy);
-                   
-                    if (distToMouse > 20 && !gameState.menuOpen) {
+                    if (distToTarget > 20 && !gameState.menuOpen) {
                         targetAngle = Math.atan2(dy, dx);
                         shouldMove = true;
                     }
                 }
 
-                if (shouldMove) {
-                    // Rotação suave
+                if (shouldMove && canMove) {
                     let angleDiff = targetAngle - this.angle;
-                    // Normalizar ângulo
                     while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
                     while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
                    
-                    this.angle += angleDiff * this.turnSpeed;
-                   
-                    // Velocidade baseada na evolução
-                    let currentMaxSpeed = this.speed;
-                    if (this.parts.flagellum) currentMaxSpeed *= 1.8;
-                    currentMaxSpeed += this.parts.mitochondria * 0.5;
-                    if (this.parts.multicellular) currentMaxSpeed *= 1.2;
+                    let currentTurnSpeed = this.turnSpeed;
+                    if (distToTarget < 60) currentTurnSpeed = 1.0;
+                    else if (distToTarget < 150) currentTurnSpeed *= 4;
 
-                    // Mover na direção do ângulo
+                    this.angle += angleDiff * currentTurnSpeed;
+                   
+                    let currentMaxSpeed = this.speed;
+                    if (gameState.macroPhase) currentMaxSpeed = 4.0;
+                    if (this.parts.flagellum && !gameState.macroPhase) currentMaxSpeed *= 1.8;
+                    if (this.parts.multicellular && !gameState.macroPhase) currentMaxSpeed *= 1.2;
+                    if (this.traits.includes('velocidade')) currentMaxSpeed *= 1.3;
+
                     this.vx = Math.cos(this.angle) * currentMaxSpeed;
                     this.vy = Math.sin(this.angle) * currentMaxSpeed;
                 } else {
-                    // Fricção
-                    this.vx *= 0.95;
-                    this.vy *= 0.95;
+                    this.vx *= 0.95; this.vy *= 0.95;
                 }
 
-                this.x += this.vx;
-                this.y += this.vy;
+                this.x += this.vx; this.y += this.vy;
 
-                // Limites do mundo
-                this.x = Math.max(this.currentRadius, Math.min(gameState.worldSize - this.currentRadius, this.x));
-                this.y = Math.max(this.currentRadius, Math.min(gameState.worldSize - this.currentRadius, this.y));
+                const boundRadius = this.getClusterRadius();
+                this.x = Math.max(boundRadius, Math.min(gameState.worldSize - boundRadius, this.x));
+                this.y = Math.max(boundRadius, Math.min(gameState.worldSize - boundRadius, this.y));
 
-                // Animação do tamanho
-                this.currentRadius += (this.targetRadius - this.currentRadius) * 0.05;
+                if (!gameState.macroPhase) {
+                    if (this.targetRadius > 25) this.targetRadius = 25;
+                    this.currentRadius += (this.targetRadius - this.currentRadius) * 0.05;
+                } else {
+                    this.currentRadius += (this.targetRadius - this.currentRadius) * 0.02;
+                }
                
-                // Animação do flagelo
                 this.tailAngle += (Math.abs(this.vx) + Math.abs(this.vy)) * 0.1;
 
-                // Atualizar câmara zoom baseado no tamanho
-                let targetZoom = 25 / this.currentRadius;
-                if (targetZoom > 1.2) targetZoom = 1.2;
-                if (targetZoom < 0.3) targetZoom = 0.3;
+                let visualSize = gameState.macroPhase ? this.currentRadius : this.getClusterRadius();
+                let targetZoom = 25 / visualSize;
+               
+                if (gameState.macroPhase) {
+                    targetZoom = 150 / visualSize;
+                    if (targetZoom > 1.0) targetZoom = 1.0;
+                    if (targetZoom < 0.1) targetZoom = 0.1;
+                } else {
+                    if (targetZoom > 1.2) targetZoom = 1.2;
+                    if (targetZoom < 0.15) targetZoom = 0.15;
+                }
+               
                 gameState.zoom += (targetZoom - gameState.zoom) * 0.02;
+            },
+
+            getClusterRadius() {
+                if (gameState.macroPhase) return this.currentRadius;
+                if (!this.parts.multicellular) return this.currentRadius;
+                let maxVisualRings = Math.min(6, Math.ceil(Math.sqrt(this.cellCount)));
+                return maxVisualRings * (this.currentRadius * 1.2) + this.currentRadius;
             },
 
             draw(ctx) {
@@ -288,150 +462,391 @@
                 ctx.translate(this.x, this.y);
                 ctx.rotate(this.angle);
 
-                if (this.parts.multicellular) {
-                    // Renderização de ser pluricelular (aglomerado de células)
-                    const cellCount = 6;
-                    const offset = this.currentRadius * 0.6;
+                if (gameState.macroPhase === 'animal') {
+                    this.drawMacroAnimal(ctx);
+                } else if (gameState.macroPhase === 'plant') {
+                    this.drawMacroPlant(ctx);
+                } else if (gameState.macroPhase === 'fungus') {
+                    this.drawMacroFungus(ctx);
+                } else if (this.parts.multicellular) {
+                    let count = this.cellCount;
+                    let rings = Math.min(6, Math.ceil(Math.sqrt(count)));
+                    let cellsDrawn = 0;
                    
-                    for (let i = 0; i < cellCount; i++) {
-                        const a = (Math.PI * 2 / cellCount) * i;
-                        ctx.save();
-                        ctx.translate(Math.cos(a) * offset, Math.sin(a) * offset);
-                        this.drawSingleCell(ctx, this.currentRadius * 0.65, true);
-                        ctx.restore();
-                    }
-                    // Célula central
-                    this.drawSingleCell(ctx, this.currentRadius * 0.8, true);
-
-                } else {
-                    // Renderização de célula única
                     this.drawSingleCell(ctx, this.currentRadius, false);
+                    cellsDrawn++;
+
+                    for (let r = 1; r <= rings; r++) {
+                        let cellsInRing = r * 6;
+                        for (let i = 0; i < cellsInRing; i++) {
+                            if (cellsDrawn >= count && cellsDrawn > 36) break;
+                            let a = (Math.PI * 2 / cellsInRing) * i;
+                            let dist = r * (this.currentRadius * 1.6);
+                            ctx.save();
+                            ctx.translate(Math.cos(a) * dist, Math.sin(a) * dist);
+                            ctx.rotate(Math.sin(this.tailAngle + cellsDrawn) * 0.2);
+                            this.drawSingleCell(ctx, this.currentRadius * 0.9, true);
+                            ctx.restore();
+                            cellsDrawn++;
+                        }
+                    }
+                } else {
+                    this.drawSingleCell(ctx, this.currentRadius, false);
+                }
+
+                // Brotamento assexuado
+                if (this.isBudding) {
+                    const progress = this.budProgress / 3000;
+                    const budDist = this.currentRadius * (0.8 + progress * 0.5);
+                    const budSize = this.currentRadius * 0.4 * progress;
+                    ctx.beginPath();
+                    ctx.arc(budDist, 0, budSize, 0, Math.PI*2);
+                    ctx.fillStyle = this.bodyColor || '#34d399';
+                    ctx.fill();
+                    ctx.lineWidth = 2;
+                    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+                    ctx.stroke();
                 }
 
                 ctx.restore();
             },
 
-            drawSingleCell(ctx, radius, isSubCell) {
-                // Membrana e Citoplasma
-                ctx.beginPath();
-                ctx.arc(0, 0, radius, 0, Math.PI * 2);
+            drawMacroFungus(ctx) {
+                const r = this.currentRadius;
+                ctx.fillStyle = '#fef08a'; // Caule claro
+                ctx.strokeStyle = '#ca8a04';
+                ctx.lineWidth = 4;
                
-                if (this.parts.membrane) {
-                    ctx.fillStyle = 'rgba(16, 185, 129, 0.4)'; // Citoplasma mais escuro
-                    ctx.fill();
-                    ctx.lineWidth = 4;
-                    ctx.strokeStyle = '#10b981'; // Membrana espessa verde
-                } else {
-                    ctx.fillStyle = 'rgba(52, 211, 153, 0.3)'; // Citoplasma base
-                    ctx.fill();
-                    ctx.lineWidth = 2;
-                    ctx.strokeStyle = '#34d399'; // Membrana fina
+                // Caule
+                ctx.beginPath();
+                ctx.roundRect(-r*0.2, 0, r*0.4, r, r*0.1);
+                ctx.fill(); ctx.stroke();
+
+                // Chapéu do cogumelo
+                ctx.fillStyle = this.bodyColor;
+                ctx.beginPath();
+                ctx.arc(0, 0, r*0.8, Math.PI, 0);
+                ctx.closePath();
+                ctx.fill(); ctx.stroke();
+               
+                // Pontos / Manchas no chapéu (Esporos sexuais modificam a estética)
+                if (this.parts.sexualReproduction || this.bodyDetail === 'espinhos' || this.bodyDetail === 'tentaculos') {
+                    ctx.fillStyle = this.parts.sexualReproduction ? '#c084fc' : '#ffffff'; // Esporos dão tom roxo brilhante
+                    ctx.beginPath(); ctx.arc(-r*0.3, -r*0.4, r*0.1, 0, Math.PI*2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(r*0.4, -r*0.2, r*0.15, 0, Math.PI*2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(0, -r*0.6, r*0.12, 0, Math.PI*2); ctx.fill();
                 }
+            },
+
+            drawMacroAnimal(ctx) {
+                ctx.fillStyle = this.bodyColor;
+                ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+                ctx.lineWidth = 4;
+               
+                const r = this.currentRadius;
+                const wave = Math.sin(this.tailAngle * 0.5) * (r * 0.3);
+
+                if (this.bodyDetail === 'tentaculos') {
+                    ctx.strokeStyle = this.bodyColor;
+                    ctx.lineWidth = r * 0.15;
+                    for(let i=-2; i<=2; i++) {
+                        ctx.beginPath();
+                        ctx.moveTo(-r*0.5, i * r*0.2);
+                        ctx.quadraticCurveTo(-r*1.5, i*r*0.4 + wave, -r*2, i*r*0.5 - wave);
+                        ctx.stroke();
+                    }
+                    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+                }
+
+                if (this.bodyDetail === 'barbatanas') {
+                    ctx.beginPath();
+                    ctx.moveTo(0, -r*0.4); ctx.quadraticCurveTo(-r*0.2, -r*1.2, r*0.2, -r*0.8);
+                    ctx.moveTo(0, r*0.4); ctx.quadraticCurveTo(-r*0.2, r*1.2, r*0.2, r*0.8);
+                    ctx.fillStyle = this.bodyColor;
+                    ctx.fill(); ctx.stroke();
+                }
+
+                ctx.beginPath();
+                ctx.ellipse(0, 0, r, r*0.5, 0, 0, Math.PI * 2);
+                ctx.fill(); ctx.stroke();
+
+                if (this.bodyDetail === 'espinhos') {
+                    ctx.fillStyle = '#cbd5e1';
+                    for(let i=1; i<=4; i++) {
+                        ctx.beginPath(); ctx.moveTo(-r + (i*r*0.4), -r*0.4); ctx.lineTo(-r + (i*r*0.4) + 10, -r*0.8); ctx.lineTo(-r + (i*r*0.4) + 20, -r*0.3); ctx.fill();
+                        ctx.beginPath(); ctx.moveTo(-r + (i*r*0.4), r*0.4); ctx.lineTo(-r + (i*r*0.4) + 10, r*0.8); ctx.lineTo(-r + (i*r*0.4) + 20, r*0.3); ctx.fill();
+                    }
+                }
+
+                if (this.bodyDetail !== 'tentaculos') {
+                    ctx.beginPath();
+                    ctx.moveTo(-r*0.8, 0);
+                    ctx.quadraticCurveTo(-r*1.5, wave, -r*1.8, wave * 1.5 - r*0.4);
+                    ctx.lineTo(-r*1.8, wave * 1.5 + r*0.4);
+                    ctx.closePath();
+                    ctx.fillStyle = this.bodyColor;
+                    ctx.fill(); ctx.stroke();
+                }
+
+                ctx.beginPath(); ctx.arc(r*0.6, -r*0.2, r*0.15, 0, Math.PI * 2);
+                ctx.fillStyle = 'white'; ctx.fill();
+                ctx.beginPath(); ctx.arc(r*0.65, -r*0.2, r*0.05, 0, Math.PI * 2);
+                ctx.fillStyle = 'black'; ctx.fill();
+            },
+
+            drawMacroPlant(ctx) {
+                ctx.fillStyle = this.bodyColor;
+                ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+                ctx.lineWidth = 4;
+               
+                const r = this.currentRadius;
+                const wave = Math.sin(this.tailAngle * 0.2) * (r * 0.2);
+
+                // Caule central
+                ctx.beginPath();
+                ctx.moveTo(-r, 0);
+                ctx.quadraticCurveTo(0, wave, r, 0);
                 ctx.stroke();
 
-                // Flagelo (Apenas na célula principal ou base)
-                if (this.parts.flagellum && !isSubCell) {
-                    ctx.beginPath();
-                    ctx.moveTo(-radius, 0);
-                   
-                    const tailLen = radius * 2.5;
-                    const wave = Math.sin(this.tailAngle) * (radius * 0.8);
-                   
-                    ctx.quadraticCurveTo(-radius - tailLen/2, wave, -radius - tailLen, 0);
-                    ctx.lineWidth = 3;
-                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
-                    ctx.stroke();
+                // Desenhar Folhas Normais
+                ctx.fillStyle = this.bodyColor;
+                for(let i = -r*0.8; i <= r*0.8; i+= r*0.4) {
+                    ctx.beginPath(); ctx.ellipse(i, wave * (i/r) - r*0.3, r*0.4, r*0.15, -Math.PI/6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+                    ctx.beginPath(); ctx.ellipse(i+r*0.2, wave * (i/r) + r*0.3, r*0.4, r*0.15, Math.PI/6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
                 }
-
-                // Mitocôndrias
-                for (let i = 0; i < this.parts.mitochondria; i++) {
+               
+                // DESENHO DAS BIFURCAÇÕES REAIS (Ramos que dividem)
+                for(let b = 1; b <= this.branches; b++) {
+                    const branchAngle = -Math.PI/3 + (b * 0.2) + Math.sin(this.tailAngle * 0.2) * 0.05;
+                    const bx = Math.cos(branchAngle) * r;
+                    const by = Math.sin(branchAngle) * r;
+                   
                     ctx.save();
-                    const angleOffset = (Math.PI * 2 / 3) * i + this.tailAngle * 0.1;
-                    const dist = radius * 0.5;
-                    ctx.translate(Math.cos(angleOffset) * dist, Math.sin(angleOffset) * dist);
-                    ctx.rotate(angleOffset + Math.PI/4); // Rotação da mitocôndria
+                    ctx.translate(bx, by);
                    
-                    // Desenhar forma de pílula
+                    // Desenhar bifurcação
                     ctx.beginPath();
-                    ctx.ellipse(0, 0, radius*0.25, radius*0.12, 0, 0, Math.PI * 2);
-                    ctx.fillStyle = '#f59e0b'; // Laranja
-                    ctx.fill();
-                    ctx.lineWidth = 1;
-                    ctx.strokeStyle = '#d97706';
+                    ctx.strokeStyle = '#166534';
+                    ctx.lineWidth = 4;
+                    ctx.moveTo(0,0);
+                    ctx.lineTo(-20, -30);
+                    ctx.moveTo(0,0);
+                    ctx.lineTo(20, -30);
                     ctx.stroke();
                    
-                    // Dobras internas (cristas)
-                    ctx.beginPath();
-                    ctx.moveTo(-radius*0.15, 0);
-                    ctx.lineTo(radius*0.15, 0);
-                    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
-                    ctx.stroke();
-                   
+                    // Folhas nas pontas bifurcadas
+                    ctx.fillStyle = '#65a30d';
+                    ctx.beginPath(); ctx.ellipse(-20, -30, 8, 15, -Math.PI/4, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+                    ctx.beginPath(); ctx.ellipse(20, -30, 8, 15, Math.PI/4, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+
+                    // Se tem polinização sexuada (Flores), desenha flores coloridas na ponta das bifurcações
+                    if (this.parts.sexualReproduction) {
+                        ctx.fillStyle = '#f43f5e'; // Flores rosa choque brilhante
+                        ctx.beginPath(); ctx.arc(-20, -30, 6, 0, Math.PI*2); ctx.fill();
+                        ctx.beginPath(); ctx.arc(20, -30, 6, 0, Math.PI*2); ctx.fill();
+                        ctx.fillStyle = '#fbbf24'; // Centro da flor
+                        ctx.beginPath(); ctx.arc(-20, -30, 2, 0, Math.PI*2); ctx.fill();
+                        ctx.beginPath(); ctx.arc(20, -30, 2, 0, Math.PI*2); ctx.fill();
+                    }
                     ctx.restore();
                 }
 
-                // Núcleo
-                if (this.parts.nucleus) {
+                if (this.bodyDetail === 'espinhos') {
+                     ctx.fillStyle = '#ef4444';
+                     for(let i = -r*0.6; i <= r*0.6; i+= r*0.5) {
+                        ctx.beginPath(); ctx.arc(i, wave*(i/r), r*0.1, 0, Math.PI*2); ctx.fill();
+                     }
+                }
+            },
+
+            drawSingleCell(ctx, radius, isSubCell) {
+                ctx.beginPath();
+                ctx.arc(0, 0, radius, 0, Math.PI * 2);
+               
+                let fillColor = 'rgba(52, 211, 153, 0.3)';
+                let strokeColor = '#34d399';
+               
+                if (this.parts.cellWall) {
+                    fillColor = 'rgba(34, 197, 94, 0.4)';
+                    strokeColor = '#15803d';
+                } else if (this.parts.membrane) {
+                    fillColor = 'rgba(16, 185, 129, 0.4)';
+                    strokeColor = '#10b981';
+                }
+               
+                if (this.traits.includes('toxina')) {
+                    fillColor = 'rgba(168, 85, 247, 0.4)';
+                    strokeColor = '#c084fc';
+                } else if (this.traits.includes('velocidade')) {
+                    fillColor = 'rgba(250, 204, 21, 0.3)';
+                }
+
+                ctx.fillStyle = fillColor;
+                ctx.fill();
+                ctx.lineWidth = (this.parts.membrane || this.parts.cellWall) ? 4 : 2;
+                ctx.strokeStyle = strokeColor;
+                ctx.stroke();
+
+                if (this.parts.cellWall && !isSubCell) {
                     ctx.beginPath();
-                    // Colocar o núcleo ligeiramente à frente
-                    ctx.arc(radius * 0.2, 0, radius * 0.35, 0, Math.PI * 2);
-                    ctx.fillStyle = 'rgba(59, 130, 246, 0.8)'; // Azul escuro
+                    ctx.ellipse(0, 0, radius*0.5, radius*0.6, 0, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(56, 189, 248, 0.4)';
                     ctx.fill();
-                    ctx.lineWidth = 2;
-                    ctx.strokeStyle = '#2563eb';
+                    ctx.strokeStyle = 'rgba(56, 189, 248, 0.8)';
+                    ctx.lineWidth = 1;
                     ctx.stroke();
-                   
-                    // Nucléolo
-                    ctx.beginPath();
-                    ctx.arc(radius * 0.2, 0, radius * 0.15, 0, Math.PI * 2);
-                    ctx.fillStyle = '#1e3a8a';
-                    ctx.fill();
+                }
+
+                if (this.parts.flagellum && !isSubCell) {
+                    ctx.beginPath(); ctx.moveTo(-radius, 0);
+                    const tailLen = radius * 2.5;
+                    const wave = Math.sin(this.tailAngle) * (radius * 0.8);
+                    ctx.quadraticCurveTo(-radius - tailLen/2, wave, -radius - tailLen, 0);
+                    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)'; ctx.stroke();
+                }
+
+                for (let i = 0; i < this.parts.chloroplast; i++) {
+                    ctx.save();
+                    const a = (Math.PI * 2 / 3) * i + this.tailAngle * 0.05;
+                    ctx.translate(Math.cos(a) * radius * 0.55, Math.sin(a) * radius * 0.55);
+                    ctx.rotate(a + Math.PI/4);
+                    ctx.beginPath(); ctx.ellipse(0, 0, radius*0.25, radius*0.12, 0, 0, Math.PI * 2);
+                    ctx.fillStyle = '#15803d'; ctx.fill();
+                    ctx.lineWidth = 1; ctx.strokeStyle = '#166534'; ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(-radius*0.1, -radius*0.05); ctx.lineTo(-radius*0.1, radius*0.05);
+                    ctx.moveTo(0, -radius*0.06); ctx.lineTo(0, radius*0.06);
+                    ctx.moveTo(radius*0.1, -radius*0.05); ctx.lineTo(radius*0.1, radius*0.05);
+                    ctx.strokeStyle = '#4ade80'; ctx.stroke();
+                    ctx.restore();
+                }
+
+                for (let i = 0; i < this.parts.mitochondria; i++) {
+                    ctx.save();
+                    const a = (Math.PI * 2 / 3) * i + Math.PI/3 + this.tailAngle * 0.1;
+                    ctx.translate(Math.cos(a) * radius * 0.5, Math.sin(a) * radius * 0.5);
+                    ctx.rotate(a + Math.PI/4);
+                    ctx.beginPath(); ctx.ellipse(0, 0, radius*0.25, radius*0.12, 0, 0, Math.PI * 2);
+                    ctx.fillStyle = '#f59e0b'; ctx.fill();
+                    ctx.lineWidth = 1; ctx.strokeStyle = '#d97706'; ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(-radius*0.15, 0); ctx.lineTo(radius*0.15, 0);
+                    ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.stroke();
+                    ctx.restore();
+                }
+
+                if (this.parts.nucleus && !isSubCell) {
+                    ctx.beginPath(); ctx.arc(radius * 0.2, 0, radius * 0.35, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(59, 130, 246, 0.8)'; ctx.fill();
+                    ctx.lineWidth = 2; ctx.strokeStyle = '#2563eb'; ctx.stroke();
+                    ctx.beginPath(); ctx.arc(radius * 0.2, 0, radius * 0.15, 0, Math.PI * 2);
+                    ctx.fillStyle = '#1e3a8a'; ctx.fill();
                 }
             }
         };
 
-        // Comida (Nutrientes)
+        // Entidades Microscópicas
         const foods = [];
-        const maxFoods = 300;
+        const otherCells = [];
+        for (let i = 0; i < 300; i++) foods.push(spawnFood());
+        for (let i = 0; i < 50; i++) otherCells.push(spawnOtherCell());
 
         function spawnFood() {
             return {
-                x: Math.random() * gameState.worldSize,
-                y: Math.random() * gameState.worldSize,
+                x: Math.random() * gameState.worldSize, y: Math.random() * gameState.worldSize,
                 radius: Math.random() * 3 + 2,
-                color: Math.random() > 0.5 ? '#a7f3d0' : '#6ee7b7' // Tons de verde claro
+                color: Math.random() > 0.5 ? '#a7f3d0' : '#6ee7b7'
             };
         }
 
-        for (let i = 0; i < maxFoods; i++) {
-            foods.push(spawnFood());
+        function spawnOtherCell() {
+            const isToxic = Math.random() > 0.85;
+            const isFast = Math.random() > 0.85;
+            let traitName = null;
+            let color = 'rgba(239, 68, 68, 0.4)', border = '#ef4444';
+
+            if (isToxic) { color = 'rgba(168, 85, 247, 0.5)'; border = '#a855f7'; traitName = 'toxina'; }
+            else if (isFast) { color = 'rgba(250, 204, 21, 0.5)'; border = '#facc15'; traitName = 'velocidade'; }
+
+            return {
+                x: Math.random() * gameState.worldSize, y: Math.random() * gameState.worldSize,
+                vx: 0, vy: 0,
+                radius: 12 + Math.random() * 8,
+                angle: Math.random() * Math.PI * 2,
+                speed: (isFast ? 3 : 1) + Math.random(),
+                turnTimer: 0,
+                trait: traitName,
+                color: color, borderColor: border,
+                cellCount: 1
+            };
         }
 
-        // Sistema de Evolução UI
+        // Entidades Macroscópicas
+        const rocks = [];
+        const macroPlants = [];
+        const sameSpecies = [];
+        const eggs = [];
+        const spores = []; // Esporos flutuantes (para fungos sexuais)
+        const offspringList = [];
+
+        function initMacroWorld() {
+            gameState.worldSize = 8000;
+            player.x = gameState.worldSize / 2;
+            player.y = gameState.worldSize / 2;
+            player.targetRadius = 80;
+           
+            for(let i=0; i<100; i++) {
+                rocks.push({
+                    x: Math.random() * gameState.worldSize, y: Math.random() * gameState.worldSize,
+                    r: 50 + Math.random() * 150,
+                    points: Array.from({length: 8}, () => 0.8 + Math.random() * 0.4)
+                });
+            }
+            for(let i=0; i<80; i++) {
+                macroPlants.push({
+                    x: Math.random() * gameState.worldSize, y: Math.random() * gameState.worldSize,
+                    r: 40 + Math.random() * 60,
+                    angle: Math.random() * Math.PI * 2
+                });
+            }
+            for(let i=0; i<15; i++) {
+                sameSpecies.push({
+                    x: Math.random() * gameState.worldSize, y: Math.random() * gameState.worldSize,
+                    r: 80,
+                    angle: Math.random() * Math.PI * 2,
+                    speed: 2.0
+                });
+            }
+        }
+
+        // Atualizar lista de upgrades dependendo da fase (Micro ou Macro)
         function updateEvoUI() {
             upgradesList.innerHTML = '';
            
-            evolutions.forEach(evo => {
-                // Verificar requisitos
+            // Escolher array de evolução baseado no estado
+            let activeEvolutions = microEvolutions;
+            if (gameState.macroPhase) {
+                activeEvolutions = macroEvolutions[gameState.macroPhase] || [];
+            }
+
+            activeEvolutions.forEach(evo => {
                 let reqMet = true;
-                if (evo.requires) {
-                    reqMet = player.parts[evo.requires] > 0 || player.parts[evo.requires] === true;
+                if (!gameState.macroPhase) {
+                    if (evo.requires) reqMet = player.parts[evo.requires] > 0 || player.parts[evo.requires] === true;
+                    else if (evo.requiresAny) reqMet = evo.requiresAny.some(req => player.parts[req] > 0 || player.parts[req] === true);
                 }
 
-                // Verificar estado atual
-                let currentLevel = 0;
-                let isMaxed = false;
+                let isExcluded = !gameState.macroPhase && evo.excludes && (player.parts[evo.excludes] > 0 || player.parts[evo.excludes] === true);
                
-                if (typeof player.parts[evo.id] === 'boolean') {
-                    currentLevel = player.parts[evo.id] ? 1 : 0;
-                    isMaxed = player.parts[evo.id];
+                // Tratar upgrades numéricos ou booleanos
+                let currentLevel = 0;
+                if (evo.id === 'buyBranch') {
+                    currentLevel = player.branches;
                 } else {
-                    currentLevel = player.parts[evo.id];
-                    isMaxed = currentLevel >= (evo.max || 1);
+                    currentLevel = typeof player.parts[evo.id] === 'boolean' ? (player.parts[evo.id] ? 1 : 0) : player.parts[evo.id];
                 }
-
+               
+                let isMaxed = currentLevel >= (evo.max || 1);
                 const canAfford = gameState.biomass >= evo.cost;
-                const isLocked = !reqMet;
+                const isLocked = !reqMet || isExcluded;
 
                 const btn = document.createElement('button');
                 btn.className = `w-full text-left p-3 rounded-lg border transition-all ${
@@ -441,28 +856,17 @@
                     'bg-slate-800 border-slate-600 text-slate-400 cursor-not-allowed'
                 }`;
                
-                let statusText = '';
-                if (isMaxed) statusText = 'Adquirido';
-                else if (isLocked) statusText = `Requer: ${evolutions.find(e => e.id === evo.requires).name}`;
-                else statusText = `Custo: ${evo.cost} Biomassa`;
-
+                let statusText = isMaxed ? 'Adquirido' : (isExcluded ? `Bloqueado` : (!reqMet ? `Requisitos não cumpridos` : `Custo: ${evo.cost} Biomassa`));
                 let levelText = evo.max ? ` (Nível ${currentLevel}/${evo.max})` : '';
 
                 btn.innerHTML = `
-                    <div class="flex justify-between items-center mb-1">
-                        <span class="font-bold">${evo.name}${levelText}</span>
-                        ${!isMaxed && !isLocked ? `<span class="${canAfford ? 'text-yellow-300' : 'text-slate-500'} font-mono text-sm">${evo.cost}</span>` : ''}
-                    </div>
+                    <div class="flex justify-between items-center mb-1"><span class="font-bold">${evo.name}${levelText}</span>
+                    ${!isMaxed && !isLocked ? `<span class="${canAfford ? 'text-yellow-300' : 'text-slate-500'} font-mono text-sm">${evo.cost}</span>` : ''}</div>
                     <p class="text-xs mb-2 opacity-80">${evo.desc}</p>
-                    <div class="text-xs font-mono uppercase tracking-wider ${isMaxed ? 'text-emerald-400' : (isLocked ? 'text-red-400' : 'text-slate-300')}">
-                        ${statusText}
-                    </div>
+                    <div class="text-xs font-mono uppercase tracking-wider ${isMaxed ? 'text-emerald-400' : (isLocked ? 'text-red-400' : 'text-slate-300')}">${statusText}</div>
                 `;
 
-                if (!isMaxed && !isLocked && canAfford) {
-                    btn.onclick = () => buyUpgrade(evo);
-                }
-
+                if (!isMaxed && !isLocked && canAfford) btn.onclick = () => buyUpgrade(evo);
                 upgradesList.appendChild(btn);
             });
         }
@@ -471,131 +875,518 @@
             if (gameState.biomass >= evo.cost) {
                 gameState.biomass -= evo.cost;
                
-                if (typeof player.parts[evo.id] === 'boolean') {
-                    player.parts[evo.id] = true;
+                if (evo.id === 'buyBranch') {
+                    player.branches++;
                 } else {
-                    player.parts[evo.id]++;
+                    if (typeof player.parts[evo.id] === 'boolean') player.parts[evo.id] = true;
+                    else player.parts[evo.id]++;
                 }
 
-                // Efeitos imediatos
                 if (evo.id === 'nucleus') {
                     aiStatusEl.style.display = 'block';
-                    gameState.autoPilot = true; // Ativa por defeito após comprar
+                    gameState.autoPilot = true;
                     updateAIText();
                 }
-                if (evo.id === 'membrane') {
-                    player.targetRadius += 10;
-                }
+                if (evo.id === 'membrane' || evo.id === 'cellWall') player.targetRadius += 5;
                 if (evo.id === 'multicellular') {
-                    player.targetRadius += 30;
+                    cellCountContainer.style.display = 'block';
+                    traitsContainer.style.display = 'block';
                 }
-
                 updateEvoUI();
             }
         }
 
-        // Loop Principal
         let lastTime = 0;
+        let passiveBiomassAcc = 0;
+
         function gameLoop(timestamp) {
             const deltaTime = timestamp - lastTime;
             lastTime = timestamp;
 
-            // Lógica
             player.update();
 
-            // Colisão com comida
-            for (let i = foods.length - 1; i >= 0; i--) {
-                const f = foods[i];
-                const dx = player.x - f.x;
-                const dy = player.y - f.y;
-                const dist = Math.sqrt(dx*dx + dy*dy);
+            // Lógica Macroscópica e Transição
+            if (player.cellCount >= MACRO_THRESHOLD && !gameState.macroPhase) {
+                let genus = 'Generica';
+                if (player.parts.cellWall && player.parts.mitochondria > 0) genus = 'Mycota';
+                else if (player.parts.cellWall || player.parts.chloroplast > 0) genus = 'Chlorophytum';
+                else genus = 'Gnathostoma';
+               
+                let species = 'simplex';
+                if (player.traits.includes('toxina')) species = 'toxicum';
+                else if (player.traits.includes('velocidade')) species = 'velox';
+               
+                speciesNameInput.value = `${genus} ${species}`;
+               
+                macroModal.classList.remove('hidden');
+                if (gameState.autoPilot) toggleAutoPilot();
+               
+                btnEvolveMacro.onclick = () => {
+                    if (genus === 'Mycota') gameState.macroPhase = 'fungus';
+                    else if (genus === 'Chlorophytum') gameState.macroPhase = 'plant';
+                    else gameState.macroPhase = 'animal';
+                   
+                    player.speciesName = speciesNameInput.value;
+                    player.bodyColor = speciesColorInput.value;
+                    player.bodyDetail = speciesDetailInput.value;
+                   
+                    macroModal.classList.add('hidden');
+                    gameState.biomass = 0;
+                    gameState.bgColor = '#0c4a6e'; // Azul marinho profundo das correntes
+                   
+                    initMacroWorld();
+                    updateEvoUI();
+                    cellCountContainer.style.display = 'none';
+                    document.getElementById('main-title').innerText = player.speciesName;
+                   
+                    macroUi.classList.remove('hidden');
+                    macroUi.style.display = 'flex';
+                };
+            }
 
-                // Raio de recolha base do organismo
-                const collectRadius = player.currentRadius + (player.parts.multicellular ? 30 : 5);
+            // Atualização de Partículas de Corrente Oceânica (Apenas na fase Macro)
+            if (gameState.macroPhase) {
+                const windVx = Math.cos(gameState.currentAngle) * gameState.currentStrength;
+                const windVy = Math.sin(gameState.currentAngle) * gameState.currentStrength;
 
-                if (dist < collectRadius) {
-                    gameState.biomass += 1;
-                    player.targetRadius += 0.1; // Crescimento gradual mínimo
-                    foods.splice(i, 1);
-                    foods.push(spawnFood()); // Repor comida
-                    updateEvoUI(); // Atualiza botões
+                gameState.currentParticles.forEach(p => {
+                    p.x += windVx * p.speed;
+                    p.y += windVy * p.speed;
+                    // Reset se sair da zona
+                    if (p.x > 8000) p.x = 0;
+                    if (p.y > 8000) p.y = 0;
+                });
+            }
+
+            if (!gameState.macroPhase) {
+                // Microscopic Logic
+                if (player.parts.chloroplast > 0) {
+                    passiveBiomassAcc += 0.02 * player.parts.chloroplast;
+                    if (passiveBiomassAcc >= 1) {
+                        gameState.biomass += Math.floor(passiveBiomassAcc);
+                        passiveBiomassAcc -= Math.floor(passiveBiomassAcc);
+                        player.targetRadius += 0.02;
+                        updateEvoUI();
+                    }
+                }
+
+                otherCells.forEach(cell => {
+                    cell.turnTimer -= deltaTime || 16;
+                    if (cell.turnTimer <= 0) {
+                        cell.angle += (Math.random() - 0.5) * Math.PI;
+                        cell.turnTimer = 1000 + Math.random() * 2000;
+                    }
+                    cell.x += Math.cos(cell.angle) * cell.speed;
+                    cell.y += Math.sin(cell.angle) * cell.speed;
+                   
+                    if (cell.x < cell.radius) { cell.x = cell.radius; cell.angle = Math.PI - cell.angle; }
+                    if (cell.x > gameState.worldSize - cell.radius) { cell.x = gameState.worldSize - cell.radius; cell.angle = Math.PI - cell.angle; }
+                    if (cell.y < cell.radius) { cell.y = cell.radius; cell.angle = -cell.angle; }
+                    if (cell.y > gameState.worldSize - cell.radius) { cell.y = gameState.worldSize - cell.radius; cell.angle = -cell.angle; }
+                });
+
+                const collectRadius = player.getClusterRadius() + 5;
+                for (let i = foods.length - 1; i >= 0; i--) {
+                    if (Math.hypot(player.x - foods[i].x, player.y - foods[i].y) < collectRadius) {
+                        gameState.biomass += 1;
+                        player.targetRadius += 0.05;
+                        foods.splice(i, 1);
+                        foods.push(spawnFood());
+                        updateEvoUI();
+                    }
+                }
+
+                if (player.parts.mitochondria > 0 || player.parts.multicellular) {
+                    for (let i = otherCells.length - 1; i >= 0; i--) {
+                        let c = otherCells[i];
+                        let npcRadius = c.cellCount > 1 ? c.radius * 1.5 : c.radius;
+                        if (Math.hypot(player.x - c.x, player.y - c.y) < collectRadius + npcRadius) {
+                            if (player.parts.multicellular) {
+                                player.cellCount += 1; // FIX: O jogador ganha estritamente 1 célula de cada vez para equilibrar
+                                cellCountDisplay.innerText = `${player.cellCount}`;
+                                if (c.trait && !player.traits.includes(c.trait)) {
+                                    player.traits.push(c.trait);
+                                    traitsDisplay.innerText = player.traits.join(', ');
+                                }
+                                gameState.biomass += 5;
+                            } else {
+                                gameState.biomass += 15 + player.parts.mitochondria * 5;
+                                player.targetRadius += 0.5;
+                            }
+                            otherCells.splice(i, 1);
+                            otherCells.push(spawnOtherCell());
+                            updateEvoUI();
+                        }
+                    }
+                }
+            } else {
+                // Macroscopic Logic
+                const currentVx = Math.cos(gameState.currentAngle) * gameState.currentStrength;
+                const currentVy = Math.sin(gameState.currentAngle) * gameState.currentStrength;
+
+                if (gameState.macroPhase === 'plant' || gameState.macroPhase === 'fungus') {
+                    passiveBiomassAcc += 0.1;
+                    if (passiveBiomassAcc >= 1) {
+                        gameState.biomass += Math.floor(passiveBiomassAcc);
+                        passiveBiomassAcc -= Math.floor(passiveBiomassAcc);
+                        player.targetRadius += 0.05;
+                    }
+                } else if (gameState.macroPhase === 'animal') {
+                    for (let i = macroPlants.length - 1; i >= 0; i--) {
+                        if (Math.hypot(player.x - macroPlants[i].x, player.y - macroPlants[i].y) < player.currentRadius + macroPlants[i].r) {
+                            gameState.biomass += 50;
+                            player.targetRadius += 2;
+                            macroPlants.splice(i, 1);
+                            setTimeout(() => {
+                                macroPlants.push({
+                                    x: Math.random() * gameState.worldSize, y: Math.random() * gameState.worldSize,
+                                    r: 40 + Math.random() * 60, angle: Math.random() * Math.PI * 2
+                                });
+                            }, 5000);
+                        }
+                    }
+                }
+
+                // Lógica de Reprodução (Budding)
+                if (player.isBudding) {
+                    player.budProgress += deltaTime || 16;
+                    if (player.budProgress > 3000) {
+                        player.isBudding = false;
+                        reproStatus.classList.add('hidden');
+                        offspringList.push({
+                            x: player.x + player.currentRadius * 1.5,
+                            y: player.y,
+                            r: player.currentRadius * 0.5,
+                            angle: Math.random() * Math.PI * 2
+                        });
+                    }
+                }
+
+                // Lógica de Reprodução Sexuada (Flores para Plantas e Esporos para Fungos)
+                if (player.seekingMate) {
+                    if (gameState.macroPhase === 'animal') {
+                        let touched = false;
+                        for(let i=0; i < sameSpecies.length; i++) {
+                            if (Math.hypot(player.x - sameSpecies[i].x, player.y - sameSpecies[i].y) < player.currentRadius + sameSpecies[i].r) {
+                                touched = true;
+                                break;
+                            }
+                        }
+                        if (touched) {
+                            player.seekingMate = false;
+                            gameState.biomass -= 20;
+                            reproStatus.innerText = 'Ovo gerado!';
+                            setTimeout(() => reproStatus.classList.add('hidden'), 2000);
+                            eggs.push({ x: player.x, y: player.y, timer: 5000 });
+                        }
+                    } else if (gameState.macroPhase === 'plant') {
+                        // Reprodução Sexuada por Flores (libertação de sementes que polinizam flutuando)
+                        player.seekingMate = false;
+                        gameState.biomass -= 20;
+                        reproStatus.innerText = 'Sementes libertadas na corrente!';
+                        setTimeout(() => reproStatus.classList.add('hidden'), 2000);
+                       
+                        // Gera "sementes" que são influenciadas pela corrente
+                        for(let k=0; k<3; k++) {
+                            eggs.push({
+                                x: player.x + (Math.random()-0.5)*50,
+                                y: player.y + (Math.random()-0.5)*50,
+                                timer: 6000,
+                                isFloating: true
+                            });
+                        }
+                    } else if (gameState.macroPhase === 'fungus') {
+                        // Reprodução Sexuada por Esporos
+                        player.seekingMate = false;
+                        gameState.biomass -= 20;
+                        reproStatus.innerText = 'Nuvem de esporos libertada!';
+                        setTimeout(() => reproStatus.classList.add('hidden'), 2000);
+
+                        // Gera esporos que flutuam em direção aos parceiros
+                        for(let k=0; k<5; k++) {
+                            spores.push({
+                                x: player.x,
+                                y: player.y,
+                                r: 6,
+                                vx: (Math.random() - 0.5) * 4,
+                                vy: (Math.random() - 0.5) * 4,
+                                life: 8000
+                            });
+                        }
+                    }
+                }
+
+                // Atualizar esporos (Fungos) com influência das correntes
+                for(let i = spores.length - 1; i >= 0; i--) {
+                    const sp = spores[i];
+                    sp.life -= deltaTime || 16;
+                   
+                    // Movimento do esporo = velocidade inicial + força da corrente
+                    sp.x += sp.vx + currentVx;
+                    sp.y += sp.vy + currentVy;
+
+                    // Colisão com outro parceiro (sameSpecies) para gerar novos fungos
+                    let fertilized = false;
+                    for (let s of sameSpecies) {
+                        if (Math.hypot(sp.x - s.x, sp.y - s.y) < s.r) {
+                            fertilized = true;
+                            offspringList.push({ x: sp.x, y: sp.y, r: 20, angle: Math.random()*Math.PI*2 });
+                            break;
+                        }
+                    }
+
+                    if (sp.life <= 0 || fertilized) {
+                        spores.splice(i, 1);
+                    }
+                }
+
+                // Atualizar NPCs parceiros
+                sameSpecies.forEach(s => {
+                    if (gameState.macroPhase === 'animal') {
+                        s.angle += (Math.random() - 0.5) * 0.1;
+                        s.x += Math.cos(s.angle) * s.speed;
+                        s.y += Math.sin(s.angle) * s.speed;
+                        if (s.x < s.r) { s.x = s.r; s.angle = Math.PI - s.angle; }
+                        if (s.x > gameState.worldSize - s.r) { s.x = gameState.worldSize - s.r; s.angle = Math.PI - s.angle; }
+                        if (s.y < s.r) { s.y = s.r; s.angle = -s.angle; }
+                        if (s.y > gameState.worldSize - s.r) { s.y = gameState.worldSize - s.r; s.angle = -s.angle; }
+                    }
+                });
+
+                // Atualizar Ovos/Sementes (Influenciados pela Corrente se isFloating)
+                for(let i = eggs.length - 1; i >= 0; i--) {
+                    eggs[i].timer -= deltaTime || 16;
+                   
+                    if (eggs[i].isFloating) {
+                        eggs[i].x += currentVx * 1.5;
+                        eggs[i].y += currentVy * 1.5;
+                    }
+
+                    if (eggs[i].timer <= 0) {
+                        offspringList.push({
+                            x: eggs[i].x, y: eggs[i].y, r: 20, angle: Math.random() * Math.PI * 2
+                        });
+                        eggs.splice(i, 1);
+                    }
+                }
+
+                // Atualizar Descendentes (Arrastados suavemente pela corrente)
+                offspringList.forEach(off => {
+                    if (off.r < player.currentRadius * 0.8) off.r += 0.05;
+                   
+                    // Força da corrente oceânica empurra descendentes continuamente
+                    off.x += currentVx;
+                    off.y += currentVy;
+
+                    if (gameState.macroPhase === 'animal') {
+                        off.angle += (Math.random() - 0.5) * 0.1;
+                        off.x += Math.cos(off.angle) * 1.5;
+                        off.y += Math.sin(off.angle) * 1.5;
+                    }
+                });
+            }
+
+            biomassDisplay.innerText = gameState.biomass;
+           
+            if (gameState.showScale) {
+                const uiScaleWidthPx = 128;
+                if (!gameState.macroPhase) {
+                    const actualMicrons = (uiScaleWidthPx / gameState.zoom) * 0.1;
+                    scaleText.innerText = actualMicrons.toFixed(1) + ' µm';
+                } else {
+                    const actualMM = (uiScaleWidthPx / gameState.zoom) * 0.5;
+                    if (actualMM > 10) scaleText.innerText = (actualMM / 10).toFixed(2) + ' cm';
+                    else scaleText.innerText = actualMM.toFixed(1) + ' mm';
                 }
             }
 
-            // Atualizar UI visual
-            biomassDisplay.innerText = gameState.biomass;
-           
-            // Atualizar lógica da escala de tamanho (K)
-            if (gameState.showScale) {
-                // Se 20 pixels iniciais = 2 µm, e a escala da linha visual é 128px (w-32)
-                // Escala visualizada real = (Tamanho da linha UI / zoom) * fator_de_conversão
-                // Fator: 1 pixel sem zoom = 0.1 µm
-                const uiScaleWidthPx = 128;
-                const actualMicrons = (uiScaleWidthPx / gameState.zoom) * 0.1;
-                scaleText.innerText = actualMicrons.toFixed(1) + ' µm';
-            }
-
-            // Renderização
-            ctx.fillStyle = '#0f172a';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            // Renderização do cenário
+            document.body.style.backgroundColor = gameState.bgColor;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             ctx.save();
-           
-            // Centralizar a câmara no jogador e aplicar zoom
             ctx.translate(canvas.width / 2, canvas.height / 2);
             ctx.scale(gameState.zoom, gameState.zoom);
             ctx.translate(-player.x, -player.y);
 
-            // Desenhar limites do mundo
+            // Desenhar Limites do Mundo
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
             ctx.lineWidth = 10;
             ctx.strokeRect(0, 0, gameState.worldSize, gameState.worldSize);
 
-            // Grelha de fundo para noção de movimento
+            // Desenhar Linhas de Fluxo de Correntes Oceânicas (Apenas na fase Macro)
+            if (gameState.macroPhase) {
+                ctx.strokeStyle = 'rgba(14, 165, 233, 0.15)'; // Azul luminoso das correntes
+                ctx.lineWidth = 2;
+                gameState.currentParticles.forEach(p => {
+                    ctx.beginPath();
+                    ctx.moveTo(p.x, p.y);
+                    ctx.lineTo(p.x + Math.cos(gameState.currentAngle)*p.length, p.y + Math.sin(gameState.currentAngle)*p.length);
+                    ctx.stroke();
+                });
+            }
+
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
             ctx.lineWidth = 1;
-            const gridSize = 100;
+            const gridSize = gameState.macroPhase ? 500 : 100;
             const startX = Math.floor((player.x - canvas.width/(2*gameState.zoom)) / gridSize) * gridSize;
             const endX = startX + (canvas.width/gameState.zoom) + gridSize;
             const startY = Math.floor((player.y - canvas.height/(2*gameState.zoom)) / gridSize) * gridSize;
             const endY = startY + (canvas.height/gameState.zoom) + gridSize;
 
             ctx.beginPath();
-            for (let x = startX; x < endX; x += gridSize) {
-                ctx.moveTo(x, startY);
-                ctx.lineTo(x, endY);
-            }
-            for (let y = startY; y < endY; y += gridSize) {
-                ctx.moveTo(startX, y);
-                ctx.lineTo(endX, y);
-            }
+            for (let x = startX; x < endX; x += gridSize) { ctx.moveTo(x, startY); ctx.lineTo(x, endY); }
+            for (let y = startY; y < endY; y += gridSize) { ctx.moveTo(startX, y); ctx.lineTo(endX, y); }
             ctx.stroke();
 
-            // Desenhar comida
-            foods.forEach(f => {
-                // Apenas desenhar se estiver perto do ecrã (Otimização)
-                if (Math.abs(f.x - player.x) < canvas.width/gameState.zoom &&
-                    Math.abs(f.y - player.y) < canvas.height/gameState.zoom) {
-                    ctx.beginPath();
-                    ctx.arc(f.x, f.y, f.radius, 0, Math.PI * 2);
-                    ctx.fillStyle = f.color;
-                    ctx.fill();
-                    ctx.shadowBlur = 10;
-                    ctx.shadowColor = f.color;
-                    ctx.fill(); // Duplo fill para o glow bater certo
-                    ctx.shadowBlur = 0; // Reset
-                }
-            });
+            if (!gameState.macroPhase) {
+                foods.forEach(f => {
+                    if (Math.abs(f.x - player.x) < canvas.width/gameState.zoom && Math.abs(f.y - player.y) < canvas.height/gameState.zoom) {
+                        ctx.beginPath(); ctx.arc(f.x, f.y, f.radius, 0, Math.PI * 2);
+                        ctx.fillStyle = f.color; ctx.fill();
+                        ctx.shadowBlur = 10; ctx.shadowColor = f.color; ctx.fill(); ctx.shadowBlur = 0;
+                    }
+                });
 
-            // Desenhar jogador
+                otherCells.forEach(c => {
+                    if (Math.abs(c.x - player.x) < canvas.width/gameState.zoom && Math.abs(c.y - player.y) < canvas.height/gameState.zoom) {
+                        ctx.save();
+                        ctx.translate(c.x, c.y);
+                       
+                        if (c.cellCount > 1) {
+                            ctx.beginPath(); ctx.arc(0, 0, c.radius * 1.5, 0, Math.PI * 2);
+                            ctx.fillStyle = c.color; ctx.fill();
+                            ctx.lineWidth = 2; ctx.strokeStyle = c.borderColor; ctx.stroke();
+                            for(let i=0; i<Math.min(c.cellCount, 5); i++) {
+                                ctx.beginPath();
+                                ctx.arc(Math.cos(i) * c.radius*0.5, Math.sin(i) * c.radius*0.5, c.radius * 0.4, 0, Math.PI * 2);
+                                ctx.fillStyle = c.borderColor; ctx.fill();
+                            }
+                        } else {
+                            ctx.beginPath(); ctx.arc(0, 0, c.radius, 0, Math.PI * 2);
+                            ctx.fillStyle = c.color; ctx.fill();
+                            ctx.lineWidth = 2; ctx.strokeStyle = c.borderColor; ctx.stroke();
+                            ctx.beginPath(); ctx.arc(0, 0, c.radius * 0.4, 0, Math.PI * 2);
+                            ctx.fillStyle = c.borderColor; ctx.fill();
+                        }
+                        ctx.restore();
+                    }
+                });
+            } else {
+                rocks.forEach(rk => {
+                    if (Math.abs(rk.x - player.x) < canvas.width/gameState.zoom + rk.r && Math.abs(rk.y - player.y) < canvas.height/gameState.zoom + rk.r) {
+                        ctx.save();
+                        ctx.translate(rk.x, rk.y);
+                        ctx.beginPath();
+                        for(let i=0; i<8; i++) {
+                            let a = (Math.PI*2/8) * i;
+                            let dist = rk.r * rk.points[i];
+                            if(i===0) ctx.moveTo(Math.cos(a)*dist, Math.sin(a)*dist);
+                            else ctx.lineTo(Math.cos(a)*dist, Math.sin(a)*dist);
+                        }
+                        ctx.closePath();
+                        ctx.fillStyle = '#1e293b'; ctx.fill();
+                        ctx.lineWidth = 4; ctx.strokeStyle = '#0f172a'; ctx.stroke();
+                        ctx.restore();
+                    }
+                });
+
+                macroPlants.forEach(mp => {
+                    if (Math.abs(mp.x - player.x) < canvas.width/gameState.zoom + mp.r && Math.abs(mp.y - player.y) < canvas.height/gameState.zoom + mp.r) {
+                        ctx.save();
+                        ctx.translate(mp.x, mp.y);
+                        ctx.rotate(mp.angle + Math.sin(timestamp * 0.001) * 0.1);
+                       
+                        ctx.fillStyle = '#15803d';
+                        ctx.strokeStyle = '#166534';
+                        ctx.lineWidth = 3;
+
+                        for(let i=0; i<3; i++) {
+                            ctx.rotate(Math.PI*2/3);
+                            ctx.beginPath();
+                            ctx.ellipse(mp.r*0.6, 0, mp.r*0.6, mp.r*0.2, 0, 0, Math.PI * 2);
+                            ctx.fill(); ctx.stroke();
+                        }
+                        ctx.restore();
+                    }
+                });
+
+                // Desenhar Espécimes da mesma espécie (Parceiros)
+                sameSpecies.forEach(s => {
+                    if (Math.abs(s.x - player.x) < canvas.width/gameState.zoom + s.r && Math.abs(s.y - player.y) < canvas.height/gameState.zoom + s.r) {
+                        ctx.save();
+                        ctx.translate(s.x, s.y);
+                        ctx.rotate(s.angle);
+                       
+                        const fakeObj = { ...player, currentRadius: s.r, tailAngle: timestamp * 0.005 };
+                        if (gameState.macroPhase === 'animal') {
+                            fakeObj.drawMacroAnimal = player.drawMacroAnimal;
+                            fakeObj.drawMacroAnimal(ctx);
+                        } else if (gameState.macroPhase === 'plant') {
+                            fakeObj.drawMacroPlant = player.drawMacroPlant;
+                            fakeObj.drawMacroPlant(ctx);
+                        } else if (gameState.macroPhase === 'fungus') {
+                            fakeObj.drawMacroFungus = player.drawMacroFungus;
+                            fakeObj.drawMacroFungus(ctx);
+                        }
+                        ctx.restore();
+                    }
+                });
+
+                // Desenhar Esporos flutuantes (Fungos Sexuais)
+                spores.forEach(sp => {
+                    ctx.save();
+                    ctx.translate(sp.x, sp.y);
+                    ctx.fillStyle = '#c084fc';
+                    ctx.shadowBlur = 8;
+                    ctx.shadowColor = '#c084fc';
+                    ctx.beginPath(); ctx.arc(0,0, sp.r, 0, Math.PI*2); ctx.fill();
+                    ctx.shadowBlur = 0;
+                    ctx.restore();
+                });
+
+                // Desenhar Descendentes
+                offspringList.forEach(off => {
+                    if (Math.abs(off.x - player.x) < canvas.width/gameState.zoom + off.r && Math.abs(off.y - player.y) < canvas.height/gameState.zoom + off.r) {
+                        ctx.save();
+                        ctx.translate(off.x, off.y);
+                        ctx.rotate(off.angle);
+                       
+                        const fakeObj = { ...player, currentRadius: off.r, tailAngle: timestamp * 0.008 };
+                        if (gameState.macroPhase === 'animal') {
+                            fakeObj.drawMacroAnimal = player.drawMacroAnimal;
+                            fakeObj.drawMacroAnimal(ctx);
+                        } else if (gameState.macroPhase === 'plant') {
+                            fakeObj.drawMacroPlant = player.drawMacroPlant;
+                            fakeObj.drawMacroPlant(ctx);
+                        } else if (gameState.macroPhase === 'fungus') {
+                            fakeObj.drawMacroFungus = player.drawMacroFungus;
+                            fakeObj.drawMacroFungus(ctx);
+                        }
+                        ctx.restore();
+                    }
+                });
+
+                // Desenhar Ovos/Sementes
+                eggs.forEach(e => {
+                    ctx.save();
+                    ctx.translate(e.x, e.y);
+                    ctx.fillStyle = e.isFloating ? '#fde047' : '#fdf4ff'; // Amarelo para sementes de plantas
+                    ctx.strokeStyle = e.isFloating ? '#ca8a04' : '#d8b4fe';
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, 10, 14, 0, 0, Math.PI*2);
+                    ctx.fill(); ctx.stroke();
+                    ctx.restore();
+                });
+            }
+
             player.draw(ctx);
 
             ctx.restore();
-
             requestAnimationFrame(gameLoop);
         }
 
-        // Inicializar UI e iniciar loop
         updateEvoUI();
         requestAnimationFrame(gameLoop);
 
