@@ -1,0 +1,1193 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>GEO-TRACE // Ação de Traçados Geométricos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #030306;
+            font-family: 'Rajdhani', sans-serif;
+            user-select: none;
+            touch-action: none;
+        }
+        .orbitron {
+            font-family: 'Orbitron', sans-serif;
+        }
+        .neon-glow-cyan {
+            text-shadow: 0 0 10px rgba(6, 182, 212, 0.7), 0 0 20px rgba(6, 182, 212, 0.3);
+        }
+        .neon-glow-magenta {
+            text-shadow: 0 0 10px rgba(236, 72, 153, 0.7), 0 0 20px rgba(236, 72, 153, 0.3);
+        }
+        .glass-panel {
+            background: rgba(8, 8, 16, 0.8);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+    </style>
+</head>
+<body class="relative w-screen h-screen flex items-center justify-center">
+
+    <!-- Canvas Principal -->
+    <canvas id="game-canvas" class="absolute inset-0 w-full h-full block"></canvas>
+
+    <!-- Painel Lateral Esquerdo (HUD do Nível) -->
+    <div id="game-hud" class="absolute top-4 left-4 z-10 pointer-events-none flex flex-col gap-3 max-w-xs w-full hidden">
+        <div class="glass-panel p-4 rounded-xl pointer-events-auto flex flex-col gap-2">
+            <div class="flex justify-between items-center">
+                <span id="hud-level-number" class="text-xs font-bold tracking-widest text-cyan-400 orbitron">NÍVEL 01</span>
+                <span id="hud-level-name" class="text-sm font-bold text-white uppercase">Triângulo</span>
+            </div>
+           
+            <!-- Barra de Escudo -->
+            <div class="flex flex-col gap-1 mt-2">
+                <div class="flex justify-between text-[10px] font-bold tracking-wider text-slate-400">
+                    <span>INTEGRIDADE DO ESCUDO</span>
+                    <span id="shield-text">100%</span>
+                </div>
+                <div class="w-full h-2 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
+                    <div id="shield-bar" class="h-full bg-gradient-to-r from-cyan-500 to-indigo-500 transition-all duration-150" style="width: 100%"></div>
+                </div>
+            </div>
+
+            <!-- Progresso do Traçado -->
+            <div class="flex flex-col gap-1 mt-1">
+                <div class="flex justify-between text-[10px] font-bold tracking-wider text-slate-400">
+                    <span>TRAÇADO COMPLETO</span>
+                    <span id="trace-text">0/3</span>
+                </div>
+                <div class="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden">
+                    <div id="trace-bar" class="h-full bg-pink-500 transition-all duration-300" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Instruções Rápidas -->
+        <div class="glass-panel p-3 rounded-lg text-xs text-slate-400 flex items-center gap-2.5">
+            <i class="fa-solid fa-circle-info text-cyan-400 text-sm"></i>
+            <span>Arrastar/Mover o <b class="text-white">Núcleo Azul</b> para ligar os vértices em destaque. Evite as sentinelas vermelhas!</span>
+        </div>
+    </div>
+
+    <!-- Banner de Sucesso do Nível (Modal Centralizado) -->
+    <div id="level-complete-screen" class="absolute inset-0 flex items-center justify-center z-20 p-4 hidden">
+        <div class="glass-panel max-w-sm w-full rounded-2xl p-6 text-center shadow-2xl flex flex-col items-center">
+            <div class="w-14 h-14 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mb-4">
+                <i class="fa-solid fa-circle-check text-2xl"></i>
+            </div>
+            <h2 class="text-2xl font-black orbitron text-white mb-1">GEOMETRIA PERFEITA</h2>
+            <p id="complete-level-desc" class="text-xs text-slate-400 mb-5">O triângulo foi perfeitamente selado.</p>
+
+            <button onclick="nextLevel()" class="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-500 text-white font-bold orbitron text-sm hover:scale-[1.02] transition-transform">
+                AVANÇAR PARA O PRÓXIMO TRAÇADO
+            </button>
+        </div>
+    </div>
+
+    <!-- Menu Principal -->
+    <div id="main-menu" class="absolute inset-0 flex items-center justify-center z-20 p-4">
+        <div class="glass-panel max-w-md w-full rounded-2xl p-8 text-center shadow-2xl flex flex-col items-center">
+            <div class="w-20 h-20 rounded-2xl bg-gradient-to-tr from-cyan-500 via-indigo-500 to-pink-500 flex items-center justify-center text-white mb-6 shadow-lg shadow-cyan-500/20">
+                <i class="fa-solid fa-pencil-ruler text-4xl animate-pulse"></i>
+            </div>
+            <h1 class="text-4xl font-black orbitron tracking-wider text-white mb-2">
+                GEO-<span class="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-indigo-400">TRACE</span>
+            </h1>
+            <p class="text-slate-400 text-xs mb-8 tracking-widest uppercase">Ação tática e meditação geométrica vetorial</p>
+
+            <button onclick="startGame()" class="w-full py-4 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-500 text-white font-black orbitron text-md hover:scale-[1.03] transition-all hover:shadow-lg hover:shadow-cyan-500/20 mb-4">
+                INICIAR JORNADA
+            </button>
+
+            <!-- Lista de Níveis Exibida no Menu -->
+            <div class="w-full border-t border-slate-800/80 pt-5 text-left">
+                <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 text-center">Os 8 Traçados Sagrados</h3>
+                <div class="grid grid-cols-2 gap-2 text-xs text-slate-500">
+                    <div>1. Triângulo Equilátero</div>
+                    <div>2. Quadrado Perfeito</div>
+                    <div>3. Bissetrizes Cruzadas</div>
+                    <div>4. Pentagrama Místico</div>
+                    <div>5. Hexágono Sagrado</div>
+                    <div>6. Estrela de David</div>
+                    <div>7. Cubo de Necker</div>
+                    <div>8. Octagrama Cósmico</div>
+                </div>
+            </div>
+
+            <button id="audio-toggle-btn" onclick="toggleAudio()" class="mt-6 text-xs text-slate-500 hover:text-white flex items-center gap-2 transition-colors">
+                <i class="fa-solid fa-volume-high"></i> Sintetizador de Áudio Habilitado
+            </button>
+        </div>
+    </div>
+
+    <!-- Menu de Game Over -->
+    <div id="game-over-screen" class="absolute inset-0 flex items-center justify-center z-20 p-4 hidden">
+        <div class="glass-panel max-w-md w-full rounded-2xl p-8 text-center shadow-2xl flex flex-col items-center border-red-500/30">
+            <div class="w-16 h-16 rounded-full bg-red-500/10 border border-red-500/20 text-red-500 flex items-center justify-center mb-6">
+                <i class="fa-solid fa-triangle-exclamation text-3xl animate-bounce"></i>
+            </div>
+            <h2 class="text-2xl font-black orbitron text-white mb-2">ESTRUTURA DISSIPADA</h2>
+            <p class="text-xs text-slate-400 tracking-wider mb-6">O seu escudo caiu antes que você pudesse completar a geometria.</p>
+
+            <button onclick="restartLevel()" class="w-full py-3.5 rounded-xl bg-slate-100 text-slate-950 font-black orbitron hover:bg-white transition-colors mb-3">
+                TENTAR ESTE NÍVEL NOVAMENTE
+            </button>
+            <button onclick="returnToMenu()" class="w-full py-3 rounded-xl border border-slate-800 text-slate-400 font-semibold hover:text-white transition-colors text-xs">
+                VOLTAR AO MENU PRINCIPAL
+            </button>
+        </div>
+    </div>
+
+    <!-- Vitória Final -->
+    <div id="victory-screen" class="absolute inset-0 flex items-center justify-center z-20 p-4 hidden">
+        <div class="glass-panel max-w-md w-full rounded-2xl p-8 text-center shadow-2xl flex flex-col items-center border-yellow-500/30">
+            <div class="w-20 h-20 rounded-full bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 flex items-center justify-center mb-6 animate-spin">
+                <i class="fa-solid fa-trophy text-4xl"></i>
+            </div>
+            <h2 class="text-3xl font-black orbitron text-white mb-2 neon-glow-magenta">NIVELAMENTO MÁXIMO</h2>
+            <p class="text-xs text-slate-400 tracking-wider mb-6">Você dominou e sintonizou todos os 8 traçados geométricos ancestrais com precisão cirúrgica!</p>
+
+            <button onclick="returnToMenu()" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-yellow-500 to-pink-500 text-slate-950 font-black orbitron hover:scale-[1.02] transition-transform">
+                REINICIAR DESAFIO
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+
+        let isPlaying = false;
+        let shield = 100;
+        let currentLevel = 1;
+        let maxLevels = 8;
+        let audioEnabled = true;
+
+        // Entidades de Jogo
+        let player = {
+            x: 0,
+            y: 0,
+            radius: 12,
+            targetX: 0,
+            targetY: 0,
+            easing: 0.12 // Movimento mais lento, suave e arrastado
+        };
+       
+        let nodes = [];
+        let edges = [];
+        let enemies = [];
+        let particles = [];
+        let activeAnchorNode = null; // Índice do nó onde a linha atual começou a ser traçada
+
+        // Física da Grade Elástica (Grid)
+        let gridPoints = [];
+        const gridSpacing = 48;
+        const springConstant = 0.015;
+        const dampingConstant = 0.94;
+        let screenShake = 0;
+
+        const levelsData = {
+            1: {
+                name: "Triângulo Equilátero",
+                desc: "Três conexões fundamentais gerando estabilidade espacial.",
+                nodes: [
+                    { x: 0, y: -0.8 },
+                    { x: 0.75, y: 0.5 },
+                    { x: -0.75, y: 0.5 }
+                ],
+                edges: [
+                    { from: 0, to: 1, traced: false },
+                    { from: 1, to: 2, traced: false },
+                    { from: 2, to: 0, traced: false }
+                ],
+                enemies: [
+                    { type: 'patrol', xPct: -0.5, yPct: -0.3, vx: 1.5, vy: 0, radius: 15, shape: 'triangle' }
+                ]
+            },
+            2: {
+                name: "Quadrado Perfeito",
+                desc: "A base da estabilidade e ordem geométrica tridimensional.",
+                nodes: [
+                    { x: -0.6, y: -0.6 },
+                    { x: 0.6, y: -0.6 },
+                    { x: 0.6, y: 0.6 },
+                    { x: -0.6, y: 0.6 }
+                ],
+                edges: [
+                    { from: 0, to: 1, traced: false },
+                    { from: 1, to: 2, traced: false },
+                    { from: 2, to: 3, traced: false },
+                    { from: 3, to: 0, traced: false }
+                ],
+                enemies: [
+                    { type: 'patrol', xPct: 0, yPct: -0.2, vx: 0, vy: 1.8, radius: 14, shape: 'square' },
+                    { type: 'patrol', xPct: -0.4, yPct: 0.4, vx: 2.0, vy: 0, radius: 14, shape: 'square' }
+                ]
+            },
+            3: {
+                name: "Bissetrizes Cruzadas",
+                desc: "Eixos cardeais de equilíbrio focando-se em um núcleo comum.",
+                nodes: [
+                    { x: -0.7, y: 0 },
+                    { x: 0.7, y: 0 },
+                    { x: 0, y: -0.7 },
+                    { x: 0, y: 0.7 },
+                    { x: 0, y: 0 } // Centro
+                ],
+                edges: [
+                    { from: 0, to: 4, traced: false },
+                    { from: 4, to: 1, traced: false },
+                    { from: 2, to: 4, traced: false },
+                    { from: 4, to: 3, traced: false }
+                ],
+                enemies: [
+                    { type: 'orbit', centerX: 0, centerY: 0, angle: 0, speed: 0.02, radiusOrbit: 160, radius: 15, shape: 'circle' },
+                    { type: 'patrol', xPct: -0.6, yPct: -0.6, vx: 1.6, vy: 1.6, radius: 12, shape: 'circle' }
+                ]
+            },
+            4: {
+                name: "Pentagrama Místico",
+                desc: "A icônica estrela de cinco pontas traçada sem interrupções.",
+                nodes: [
+                    { x: 0, y: -0.75 },
+                    { x: 0.71, y: -0.23 },
+                    { x: 0.44, y: 0.61 },
+                    { x: -0.44, y: 0.61 },
+                    { x: -0.71, y: -0.23 }
+                ],
+                edges: [
+                    { from: 0, to: 2, traced: false },
+                    { from: 2, to: 4, traced: false },
+                    { from: 4, to: 1, traced: false },
+                    { from: 1, to: 3, traced: false },
+                    { from: 3, to: 0, traced: false }
+                ],
+                enemies: [
+                    { type: 'patrol', xPct: -0.6, yPct: -0.4, vx: 2.2, vy: 0, radius: 15, shape: 'triangle' },
+                    { type: 'patrol', xPct: 0.6, yPct: 0.4, vx: -2.2, vy: 0, radius: 15, shape: 'triangle' },
+                    { type: 'patrol', xPct: 0, yPct: -0.5, vx: 0, vy: 1.5, radius: 12, shape: 'triangle' }
+                ]
+            },
+            5: {
+                name: "Hexágono Sagrado",
+                desc: "Perfeição natural e otimização geométrica do espaço.",
+                nodes: [
+                    { x: 0, y: -0.75 },
+                    { x: 0.65, y: -0.375 },
+                    { x: 0.65, y: 0.375 },
+                    { x: 0, y: 0.75 },
+                    { x: -0.65, y: 0.375 },
+                    { x: -0.65, y: -0.375 }
+                ],
+                edges: [
+                    { from: 0, to: 1, traced: false },
+                    { from: 1, to: 2, traced: false },
+                    { from: 2, to: 3, traced: false },
+                    { from: 3, to: 4, traced: false },
+                    { from: 4, to: 5, traced: false },
+                    { from: 5, to: 0, traced: false }
+                ],
+                enemies: [
+                    { type: 'orbit', centerX: 0, centerY: 0, angle: 0, speed: 0.015, radiusOrbit: 180, radius: 16, shape: 'square' },
+                    { type: 'orbit', centerX: 0, centerY: 0, angle: Math.PI, speed: 0.015, radiusOrbit: 180, radius: 16, shape: 'square' },
+                    { type: 'patrol', xPct: -0.5, yPct: 0, vx: 2.5, vy: 0, radius: 14, shape: 'square' }
+                ]
+            },
+            6: {
+                name: "Estrela de David",
+                desc: "Dupla geometria simétrica interligada. Requer dois traçados triangulares.",
+                nodes: [
+                    // Triângulo 1
+                    { x: 0, y: -0.75 },
+                    { x: 0.65, y: 0.375 },
+                    { x: -0.65, y: 0.375 },
+                    // Triângulo 2
+                    { x: 0, y: 0.75 },
+                    { x: 0.65, y: -0.375 },
+                    { x: -0.65, y: -0.375 }
+                ],
+                edges: [
+                    // Triângulo 1
+                    { from: 0, to: 1, traced: false },
+                    { from: 1, to: 2, traced: false },
+                    { from: 2, to: 0, traced: false },
+                    // Triângulo 2
+                    { from: 3, to: 4, traced: false },
+                    { from: 4, to: 5, traced: false },
+                    { from: 5, to: 3, traced: false }
+                ],
+                enemies: [
+                    { type: 'patrol', xPct: -0.5, yPct: -0.5, vx: 1.8, vy: 1.2, radius: 14, shape: 'circle' },
+                    { type: 'patrol', xPct: 0.5, yPct: 0.5, vx: -1.2, vy: -1.8, radius: 14, shape: 'circle' },
+                    { type: 'patrol', xPct: 0, yPct: 0, vx: 2.0, vy: -2.0, radius: 12, shape: 'circle' }
+                ]
+            },
+            7: {
+                name: "Cubo de Necker",
+                desc: "Uma ilusão tridimensional clássica aramada em perspectiva.",
+                nodes: [
+                    // Quadrado frontal
+                    { x: -0.4, y: -0.4 },
+                    { x: 0.2, y: -0.4 },
+                    { x: 0.2, y: 0.2 },
+                    { x: -0.4, y: 0.2 },
+                    // Quadrado traseiro
+                    { x: -0.2, y: -0.2 },
+                    { x: 0.4, y: -0.2 },
+                    { x: 0.4, y: 0.4 },
+                    { x: -0.2, y: 0.4 }
+                ],
+                edges: [
+                    // Frontal
+                    { from: 0, to: 1, traced: false },
+                    { from: 1, to: 2, traced: false },
+                    { from: 2, to: 3, traced: false },
+                    { from: 3, to: 0, traced: false },
+                    // Traseiro
+                    { from: 4, to: 5, traced: false },
+                    { from: 5, to: 6, traced: false },
+                    { from: 6, to: 7, traced: false },
+                    { from: 7, to: 4, traced: false },
+                    // Conexões
+                    { from: 0, to: 4, traced: false },
+                    { from: 1, to: 5, traced: false },
+                    { from: 2, to: 6, traced: false },
+                    { from: 3, to: 7, traced: false }
+                ],
+                enemies: [
+                    { type: 'patrol', xPct: -0.7, yPct: -0.2, vx: 1.8, vy: 0, radius: 15, shape: 'square' },
+                    { type: 'patrol', xPct: 0.7, yPct: 0.2, vx: -1.8, vy: 0, radius: 15, shape: 'square' },
+                    { type: 'patrol', xPct: -0.2, yPct: -0.7, vx: 0, vy: 1.8, radius: 15, shape: 'square' },
+                    { type: 'patrol', xPct: 0.2, yPct: 0.7, vx: 0, vy: -1.8, radius: 15, shape: 'square' }
+                ]
+            },
+            8: {
+                name: "Octagrama Cósmico",
+                desc: "Sintonia estelar absoluta. Conecte todos os pontos cruzando o centro.",
+                nodes: [
+                    { x: 0, y: -0.75 },
+                    { x: 0.53, y: -0.53 },
+                    { x: 0.75, y: 0 },
+                    { x: 0.53, y: 0.53 },
+                    { x: 0, y: 0.75 },
+                    { x: -0.53, y: 0.53 },
+                    { x: -0.75, y: 0 },
+                    { x: -0.53, y: -0.53 }
+                ],
+                edges: [
+                    { from: 0, to: 3, traced: false },
+                    { from: 3, to: 6, traced: false },
+                    { from: 6, to: 1, traced: false },
+                    { from: 1, to: 4, traced: false },
+                    { from: 4, to: 7, traced: false },
+                    { from: 7, to: 2, traced: false },
+                    { from: 2, to: 5, traced: false },
+                    { from: 5, to: 0, traced: false }
+                ],
+                enemies: [
+                    { type: 'orbit', centerX: 0, centerY: 0, angle: 0, speed: 0.025, radiusOrbit: 120, radius: 15, shape: 'triangle' },
+                    { type: 'orbit', centerX: 0, centerY: 0, angle: Math.PI, speed: -0.025, radiusOrbit: 220, radius: 15, shape: 'triangle' },
+                    { type: 'patrol', xPct: -0.5, yPct: -0.5, vx: 2.4, vy: 0, radius: 12, shape: 'triangle' },
+                    { type: 'patrol', xPct: 0.5, yPct: 0.5, vx: -2.4, vy: 0, radius: 12, shape: 'triangle' }
+                ]
+            }
+        };
+
+        let ambientSynth, synthChime, polyVictory;
+        let lastChimeTime = 0;
+
+        function initAudio() {
+            if (ambientSynth) return;
+
+            // Sintetizador para acordes e climas sutis de fundo
+            ambientSynth = new Tone.PolySynth(Tone.Synth).toDestination();
+            ambientSynth.set({
+                oscillator: { type: "triangle" },
+                envelope: { attack: 1.5, decay: 2, sustain: 0.6, release: 2 }
+            });
+            ambientSynth.volume.value = -22;
+
+            // Sintetizador rápido de feedback para conexão de vértices (Chime)
+            synthChime = new Tone.MonoSynth({
+                oscillator: { type: "sine" },
+                envelope: { attack: 0.005, decay: 0.15, sustain: 0, release: 0.2 }
+            }).toDestination();
+            synthChime.volume.value = -12;
+
+            // Sintetizador de vitória do nível
+            polyVictory = new Tone.PolySynth(Tone.Synth).toDestination();
+            polyVictory.set({
+                oscillator: { type: "sawtooth" },
+                envelope: { attack: 0.08, decay: 0.3, sustain: 0.4, release: 1 }
+            });
+            polyVictory.volume.value = -16;
+
+            startAmbientPad();
+        }
+
+        function startAmbientPad() {
+            if (!audioEnabled) return;
+            // Loop harmônico infinito e meditativo
+            const playLoop = () => {
+                if (!isPlaying) return;
+                const chords = [
+                    ["C3", "E3", "G3", "B3"],
+                    ["A2", "C3", "E3", "G3"],
+                    ["F2", "A2", "C3", "E3"],
+                    ["G2", "B2", "D3", "F3"]
+                ];
+                const activeChord = chords[Math.floor(Math.random() * chords.length)];
+                ambientSynth.triggerAttackRelease(activeChord, "6n");
+                setTimeout(playLoop, 6000);
+            };
+            playLoop();
+        }
+
+        function playChime(note = "C5") {
+            if (!audioEnabled) return;
+            initAudio();
+            const now = Tone.now();
+            if (now - lastChimeTime < 0.1) return;
+            lastChimeTime = now;
+            synthChime.triggerAttackRelease(note, "16n", now);
+        }
+
+        function playVictorySound() {
+            if (!audioEnabled) return;
+            initAudio();
+            const now = Tone.now();
+            polyVictory.triggerAttackRelease(["C4", "E4", "G4", "C5"], "2n", now);
+            polyVictory.triggerAttackRelease(["E4", "G4", "C5", "E5"], "2n", now + 0.35);
+        }
+
+        function playHitSound() {
+            if (!audioEnabled) return;
+            initAudio();
+            const now = Tone.now();
+            synthChime.triggerAttackRelease("C2", "8n", now);
+        }
+
+        function toggleAudio() {
+            audioEnabled = !audioEnabled;
+            const btn = document.getElementById('audio-toggle-btn');
+            if (audioEnabled) {
+                btn.innerHTML = `<i class="fa-solid fa-volume-high"></i> Sintetizador de Áudio Habilitado`;
+                btn.className = "mt-6 text-xs text-slate-500 hover:text-white flex items-center gap-2 transition-colors";
+                if (ambientSynth) Tone.start();
+            } else {
+                btn.innerHTML = `<i class="fa-solid fa-volume-xmark"></i> Áudio Desabilitado`;
+                btn.className = "mt-6 text-xs text-red-500/80 hover:text-red-400 flex items-center gap-2 transition-colors";
+            }
+        }
+
+        function buildGrid() {
+            gridPoints = [];
+            const cols = Math.ceil(canvas.width / gridSpacing) + 2;
+            const rows = Math.ceil(canvas.height / gridSpacing) + 2;
+
+            for (let i = -1; i < cols; i++) {
+                for (let j = -1; j < rows; j++) {
+                    const ox = i * gridSpacing;
+                    const oy = j * gridSpacing;
+                    gridPoints.push({
+                        x: ox,
+                        y: oy,
+                        ox: ox,
+                        oy: oy,
+                        vx: 0,
+                        vy: 0
+                    });
+                }
+            }
+        }
+
+        function applyGridDeformation(cx, cy, radius, force) {
+            for (let pt of gridPoints) {
+                const dx = pt.x - cx;
+                const dy = pt.y - cy;
+                const distSq = dx*dx + dy*dy;
+                const dist = Math.sqrt(distSq);
+
+                if (dist < radius && dist > 0) {
+                    const factor = (radius - dist) / radius;
+                    const push = factor * force;
+                    pt.vx += (dx / dist) * push;
+                    pt.vy += (dy / dist) * push;
+                }
+            }
+        }
+
+        function updateGrid() {
+            for (let pt of gridPoints) {
+                const fx = (pt.ox - pt.x) * springConstant;
+                const fy = (pt.oy - pt.y) * springConstant;
+
+                pt.vx += fx;
+                pt.vy += fy;
+                pt.vx *= dampingConstant;
+                pt.vy *= dampingConstant;
+
+                pt.x += pt.vx;
+                pt.y += pt.vy;
+            }
+        }
+
+        function drawGrid() {
+            ctx.strokeStyle = 'rgba(20, 25, 45, 0.4)';
+            ctx.lineWidth = 1;
+
+            const cols = Math.ceil(canvas.width / gridSpacing) + 2;
+            const rows = Math.ceil(canvas.height / gridSpacing) + 2;
+
+            for (let i = 0; i < cols; i++) {
+                ctx.beginPath();
+                for (let j = 0; j < rows; j++) {
+                    const idx = i * rows + j;
+                    if (idx < gridPoints.length) {
+                        const pt = gridPoints[idx];
+                        if (j === 0) ctx.moveTo(pt.x, pt.y);
+                        else ctx.lineTo(pt.x, pt.y);
+                    }
+                }
+                ctx.stroke();
+            }
+
+            for (let j = 0; j < rows; j++) {
+                ctx.beginPath();
+                for (let i = 0; i < cols; i++) {
+                    const idx = i * rows + j;
+                    if (idx < gridPoints.length) {
+                        const pt = gridPoints[idx];
+                        if (i === 0) ctx.moveTo(pt.x, pt.y);
+                        else ctx.lineTo(pt.x, pt.y);
+                    }
+                }
+                ctx.stroke();
+            }
+        }
+
+        function initPlayer() {
+            player.x = canvas.width / 2;
+            player.y = canvas.height / 2;
+            player.targetX = canvas.width / 2;
+            player.targetY = canvas.height / 2;
+        }
+
+        function updatePlayer() {
+            // Suavização do movimento (Easing) -> Cria controle macio, hipnótico e preciso
+            player.x += (player.targetX - player.x) * player.easing;
+            player.y += (player.targetY - player.y) * player.easing;
+
+            // Deformação da grade baseada na passagem do jogador
+            applyGridDeformation(player.x, player.y, 75, -1.5);
+        }
+
+        function drawPlayer() {
+            ctx.save();
+            ctx.translate(player.x, player.y);
+
+            // Brilho exterior (Simulação rápida e performática de neon)
+            ctx.strokeStyle = 'rgba(6, 182, 212, 0.25)';
+            ctx.lineWidth = 10;
+            ctx.beginPath();
+            ctx.arc(0, 0, player.radius, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Círculo central do núcleo
+            ctx.fillStyle = '#06b6d4';
+            ctx.beginPath();
+            ctx.arc(0, 0, player.radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Brilho central branco
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(0, 0, player.radius * 0.4, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        // Eventos de Toque e Mouse unificados para controle direto do Núcleo
+        function setupInput() {
+            const handleMove = (x, y) => {
+                if (!isPlaying) return;
+                // Prevenir que o cursor saia das bordas
+                player.targetX = Math.max(20, Math.min(canvas.width - 20, x));
+                player.targetY = Math.max(20, Math.min(canvas.height - 20, y));
+            };
+
+            window.addEventListener('mousemove', (e) => {
+                const rect = canvas.getBoundingClientRect();
+                handleMove(e.clientX - rect.left, e.clientY - rect.top);
+            });
+
+            window.addEventListener('touchmove', (e) => {
+                if (e.touches.length > 0) {
+                    const rect = canvas.getBoundingClientRect();
+                    handleMove(e.touches[0].clientX - rect.left, e.touches[0].clientY - rect.top);
+                }
+                e.preventDefault();
+            }, { passive: false });
+
+            window.addEventListener('touchstart', (e) => {
+                if (e.touches.length > 0) {
+                    const rect = canvas.getBoundingClientRect();
+                    handleMove(e.touches[0].clientX - rect.left, e.touches[0].clientY - rect.top);
+                }
+            });
+        }
+
+        function loadLevelGeometries(levelIdx) {
+            const data = levelsData[levelIdx];
+            if (!data) return;
+
+            nodes = [];
+            edges = [];
+            enemies = [];
+            activeAnchorNode = null;
+
+            const size = Math.min(canvas.width, canvas.height) * 0.32;
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            // Carrega vértices geométricos escalados
+            data.nodes.forEach((n, idx) => {
+                nodes.push({
+                    id: idx,
+                    x: centerX + n.x * size,
+                    y: centerY + n.y * size,
+                    radius: 10,
+                    hovered: false
+                });
+            });
+
+            // Carrega conexões (linhas de traçado)
+            data.edges.forEach(e => {
+                edges.push({
+                    from: e.from,
+                    to: e.to,
+                    traced: false
+                });
+            });
+
+            // Carrega sentinelas inimigas do nível
+            data.enemies.forEach(en => {
+                const enemyObj = {
+                    type: en.type,
+                    radius: en.radius,
+                    shape: en.shape,
+                    color: '#ef4444',
+                    glowColor: 'rgba(239, 68, 68, 0.3)'
+                };
+
+                if (en.type === 'patrol') {
+                    enemyObj.x = centerX + en.xPct * size;
+                    enemyObj.y = centerY + en.yPct * size;
+                    enemyObj.vx = en.vx;
+                    enemyObj.vy = en.vy;
+                } else if (en.type === 'orbit') {
+                    enemyObj.centerX = centerX + en.centerX * size;
+                    enemyObj.centerY = centerY + en.centerY * size;
+                    enemyObj.angle = en.angle;
+                    enemyObj.speed = en.speed;
+                    enemyObj.radiusOrbit = en.radiusOrbit;
+                    enemyObj.x = enemyObj.centerX + Math.cos(en.angle) * en.radiusOrbit;
+                    enemyObj.y = enemyObj.centerY + Math.sin(en.angle) * en.radiusOrbit;
+                }
+
+                enemies.push(enemyObj);
+            });
+
+            updateHUD();
+        }
+
+        function checkNodeInteractions() {
+            nodes.forEach(node => {
+                const dx = player.x - node.x;
+                const dy = player.y - node.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+
+                if (dist < player.radius + node.radius) {
+                    if (!node.hovered) {
+                        node.hovered = true;
+                        handleNodeVisit(node.id);
+                    }
+                } else {
+                    node.hovered = false;
+                }
+            });
+        }
+
+        function handleNodeVisit(nodeId) {
+            const node = nodes[nodeId];
+            if (!node) return;
+
+            if (activeAnchorNode === null) {
+                // Primeira âncora do traçado
+                activeAnchorNode = nodeId;
+                playChime("E4");
+            } else if (activeAnchorNode === nodeId) {
+                // Toque repetido no mesmo ponto
+                return;
+            } else {
+                // Tenta fechar uma conexão de traçado
+                let connectionFound = false;
+
+                edges.forEach(edge => {
+                    if (!edge.traced) {
+                        if ((edge.from === activeAnchorNode && edge.to === nodeId) ||
+                            (edge.to === activeAnchorNode && edge.from === nodeId)) {
+                           
+                            edge.traced = true;
+                            connectionFound = true;
+                            activeAnchorNode = nodeId; // Nova âncora torna-se o ponto visitado
+                           
+                            // Toque de nota ascendente dependendo do progresso
+                            const tracedCount = edges.filter(e => e.traced).length;
+                            const notes = ["G4", "A4", "B4", "C5", "D5", "E5", "G5", "A5"];
+                            const note = notes[Math.min(tracedCount - 1, notes.length - 1)];
+                            playChime(note);
+
+                            // Brilho na grade elástica no local
+                            applyGridDeformation(node.x, node.y, 100, 6);
+                            spawnLevelParticles(node.x, node.y, '#f43f5e', 12);
+                        }
+                    }
+                });
+
+                if (!connectionFound) {
+                    // O jogador moveu-se para um ponto que não possui link pendente a partir do ponto atual
+                    // A âncora é redefinida para o nó atual, agindo de forma fluida
+                    activeAnchorNode = nodeId;
+                    playChime("C4");
+                }
+
+                updateHUD();
+                checkLevelCompletion();
+            }
+        }
+
+        function drawLevelGeometries() {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            // 1. Desenha as linhas fantasmas (Guias apagadas do fundo)
+            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            edges.forEach(edge => {
+                if (!edge.traced) {
+                    const fromNode = nodes[edge.from];
+                    const toNode = nodes[edge.to];
+                    ctx.beginPath();
+                    ctx.moveTo(fromNode.x, fromNode.y);
+                    ctx.lineTo(toNode.x, toNode.y);
+                    ctx.stroke();
+                }
+            });
+
+            // 2. Desenha as linhas que o jogador já completou (Rosa Neon)
+            ctx.lineWidth = 3.5;
+            edges.forEach(edge => {
+                if (edge.traced) {
+                    const fromNode = nodes[edge.from];
+                    const toNode = nodes[edge.to];
+
+                    // Camada de brilho exterior
+                    ctx.strokeStyle = 'rgba(236, 72, 153, 0.25)';
+                    ctx.lineWidth = 10;
+                    ctx.beginPath();
+                    ctx.moveTo(fromNode.x, fromNode.y);
+                    ctx.lineTo(toNode.x, toNode.y);
+                    ctx.stroke();
+
+                    // Linha central acesa
+                    ctx.strokeStyle = '#ec4899';
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.moveTo(fromNode.x, fromNode.y);
+                    ctx.lineTo(toNode.x, toNode.y);
+                    ctx.stroke();
+                }
+            });
+
+            // 3. Linha elástica esticada atualmente pelo jogador
+            if (activeAnchorNode !== null) {
+                const anchor = nodes[activeAnchorNode];
+               
+                // Brilho da linha esticadora
+                ctx.strokeStyle = 'rgba(192, 132, 252, 0.2)';
+                ctx.lineWidth = 6;
+                ctx.beginPath();
+                ctx.moveTo(anchor.x, anchor.y);
+                ctx.lineTo(player.x, player.y);
+                ctx.stroke();
+
+                ctx.strokeStyle = '#c084fc';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(anchor.x, anchor.y);
+                ctx.lineTo(player.x, player.y);
+                ctx.stroke();
+            }
+
+            // 4. Desenha os vértices (Pontos)
+            nodes.forEach(node => {
+                const isActive = (activeAnchorNode === node.id);
+
+                ctx.save();
+                ctx.translate(node.x, node.y);
+
+                if (isActive) {
+                    // Ponto âncora pulsando com o traçado
+                    ctx.strokeStyle = 'rgba(192, 132, 252, 0.4)';
+                    ctx.lineWidth = 8;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, node.radius + 3, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    ctx.fillStyle = '#c084fc';
+                } else {
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, node.radius + 2, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    ctx.fillStyle = '#1e293b';
+                }
+
+                ctx.beginPath();
+                ctx.arc(0, 0, node.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Detalhe brilhante no centro
+                ctx.fillStyle = isActive ? '#ffffff' : 'rgba(255, 255, 255, 0.4)';
+                ctx.beginPath();
+                ctx.arc(0, 0, 3.5, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            });
+        }
+
+        function updateEnemies() {
+            enemies.forEach(en => {
+                if (en.type === 'patrol') {
+                    en.x += en.vx;
+                    en.y += en.vy;
+
+                    // Rebate suave nas bordas da tela
+                    const margin = en.radius + 20;
+                    if (en.x < margin || en.x > canvas.width - margin) {
+                        en.vx *= -1;
+                        en.x = Math.max(margin, Math.min(canvas.width - margin, en.x));
+                    }
+                    if (en.y < margin || en.y > canvas.height - margin) {
+                        en.vy *= -1;
+                        en.y = Math.max(margin, Math.min(canvas.height - margin, en.y));
+                    }
+                } else if (en.type === 'orbit') {
+                    en.angle += en.speed;
+                    en.x = en.centerX + Math.cos(en.angle) * en.radiusOrbit;
+                    en.y = en.centerY + Math.sin(en.angle) * en.radiusOrbit;
+                }
+
+                // Sentinela deforma a grade fisicamente
+                applyGridDeformation(en.x, en.y, 50, -0.8);
+
+                // Colisão direta com o jogador
+                const dx = player.x - en.x;
+                const dy = player.y - en.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+
+                if (dist < player.radius + en.radius) {
+                    handlePlayerHit();
+                }
+            });
+        }
+
+        function handlePlayerHit() {
+            playHitSound();
+            shield = Math.max(0, shield - 25);
+            screenShake = 14;
+
+            // Quando atingido, a linha esticada atual rompe-se
+            activeAnchorNode = null;
+
+            // Explosão local de partículas vermelhas
+            spawnLevelParticles(player.x, player.y, '#ef4444', 18);
+           
+            updateHUD();
+
+            if (shield <= 0) {
+                gameOver();
+            } else {
+                // Impulso físico para empurrar o jogador do perigo
+                player.x += (Math.random() - 0.5) * 60;
+                player.y += (Math.random() - 0.5) * 60;
+            }
+        }
+
+        function drawEnemies() {
+            enemies.forEach(en => {
+                ctx.save();
+                ctx.translate(en.x, en.y);
+
+                // Brilho exterior vermelho
+                ctx.strokeStyle = en.glowColor;
+                ctx.lineWidth = 8;
+                drawEnemyShape(en.shape, en.radius);
+
+                ctx.strokeStyle = en.color;
+                ctx.lineWidth = 2.5;
+                drawEnemyShape(en.shape, en.radius);
+
+                // Centro pulsante perigoso
+                ctx.fillStyle = 'rgba(239, 68, 68, 0.15)';
+                ctx.beginPath();
+                ctx.arc(0, 0, en.radius * 0.5, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            });
+        }
+
+        function drawEnemyShape(shape, radius) {
+            ctx.beginPath();
+            if (shape === 'triangle') {
+                ctx.moveTo(0, -radius);
+                ctx.lineTo(radius * 0.9, radius * 0.6);
+                ctx.lineTo(-radius * 0.9, radius * 0.6);
+                ctx.closePath();
+            } else if (shape === 'square') {
+                ctx.rect(-radius, -radius, radius * 2, radius * 2);
+            } else {
+                ctx.arc(0, 0, radius, 0, Math.PI * 2);
+            }
+            ctx.stroke();
+        }
+
+        function checkLevelCompletion() {
+            const untracedCount = edges.filter(e => !e.traced).length;
+            if (untracedCount === 0) {
+                isPlaying = false;
+                playVictorySound();
+               
+                // Explosão triunfal de partículas multicoloridas no centro
+                spawnLevelParticles(canvas.width / 2, canvas.height / 2, '#34d399', 40);
+                spawnLevelParticles(canvas.width / 2, canvas.height / 2, '#60a5fa', 30);
+               
+                // Pequena onda de choque na malha
+                applyGridDeformation(canvas.width / 2, canvas.height / 2, Math.max(canvas.width, canvas.height), 12);
+
+                setTimeout(() => {
+                    const desc = levelsData[currentLevel].desc;
+                    document.getElementById('complete-level-desc').textContent = desc;
+                    document.getElementById('level-complete-screen').classList.remove('hidden');
+                }, 800);
+            }
+        }
+
+        function updateHUD() {
+            const levelData = levelsData[currentLevel];
+            if (!levelData) return;
+
+            document.getElementById('hud-level-number').textContent = `NÍVEL ${String(currentLevel).padStart(2, '0')}`;
+            document.getElementById('hud-level-name').textContent = levelData.name;
+           
+            // Atualiza Escudo
+            document.getElementById('shield-text').textContent = `${shield}%`;
+            document.getElementById('shield-bar').style.width = `${shield}%`;
+           
+            // Cores de aviso de integridade
+            if (shield <= 25) {
+                document.getElementById('shield-bar').className = "h-full bg-gradient-to-r from-red-500 to-rose-600 transition-all duration-150";
+            } else if (shield <= 50) {
+                document.getElementById('shield-bar').className = "h-full bg-gradient-to-r from-yellow-500 to-amber-600 transition-all duration-150";
+            } else {
+                document.getElementById('shield-bar').className = "h-full bg-gradient-to-r from-cyan-500 to-indigo-500 transition-all duration-150";
+            }
+
+            // Progresso do Traçado
+            const tracedCount = edges.filter(e => e.traced).length;
+            const totalCount = edges.length;
+            document.getElementById('trace-text').textContent = `${tracedCount}/${totalCount}`;
+           
+            const progressPct = (tracedCount / totalCount) * 100;
+            document.getElementById('trace-bar').style.width = `${progressPct}%`;
+        }
+
+        class SparkParticle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+               
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 5 + 1.5;
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed;
+               
+                this.radius = Math.random() * 2 + 1;
+                this.alpha = 1;
+                this.decay = Math.random() * 0.02 + 0.015;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.alpha -= this.decay;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        function spawnLevelParticles(x, y, color, count) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new SparkParticle(x, y, color));
+            }
+        }
+
+        /* INICIALIZADORES DOS ESTADOS DO MENU */
+        function startGame() {
+            if (audioEnabled) {
+                Tone.start();
+                initAudio();
+            }
+            document.getElementById('main-menu').classList.add('hidden');
+            document.getElementById('game-hud').classList.remove('hidden');
+
+            currentLevel = 1;
+            shield = 100;
+            particles = [];
+           
+            initPlayer();
+            buildGrid();
+            loadLevelGeometries(currentLevel);
+           
+            isPlaying = true;
+        }
+
+        function nextLevel() {
+            document.getElementById('level-complete-screen').classList.add('hidden');
+           
+            if (currentLevel < maxLevels) {
+                currentLevel++;
+                shield = Math.min(100, shield + 25); // Recuperação parcial por completar
+                particles = [];
+               
+                initPlayer();
+                loadLevelGeometries(currentLevel);
+                isPlaying = true;
+            } else {
+                // Fim de todos os níveis! Vitória
+                document.getElementById('game-hud').classList.add('hidden');
+                document.getElementById('victory-screen').classList.remove('hidden');
+            }
+        }
+
+        function restartLevel() {
+            document.getElementById('game-over-screen').classList.add('hidden');
+            shield = 100;
+            particles = [];
+            initPlayer();
+            loadLevelGeometries(currentLevel);
+            isPlaying = true;
+        }
+
+        function gameOver() {
+            isPlaying = false;
+            document.getElementById('game-hud').classList.add('hidden');
+            document.getElementById('game-over-screen').classList.remove('hidden');
+        }
+
+        function returnToMenu() {
+            document.getElementById('game-over-screen').classList.add('hidden');
+            document.getElementById('victory-screen').classList.add('hidden');
+            document.getElementById('main-menu').classList.remove('hidden');
+            isPlaying = false;
+        }
+
+        function gameLoop() {
+            updateGrid();
+
+            if (isPlaying) {
+                updatePlayer();
+                checkNodeInteractions();
+                updateEnemies();
+            }
+
+            // Atualização de faíscas neon
+            particles.forEach(p => p.update());
+            particles = particles.filter(p => p.alpha > 0);
+
+            // Preparação do desenho
+            ctx.save();
+           
+            // Screen Shake dinâmico ao receber golpes
+            if (screenShake > 0) {
+                const dx = (Math.random() - 0.5) * screenShake;
+                const dy = (Math.random() - 0.5) * screenShake;
+                ctx.translate(dx, dy);
+                screenShake *= 0.9;
+                if (screenShake < 0.1) screenShake = 0;
+            }
+
+            ctx.fillStyle = '#030306';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            drawGrid();
+            drawLevelGeometries();
+           
+            if (isPlaying) {
+                drawEnemies();
+                drawPlayer();
+            }
+
+            particles.forEach(p => p.draw());
+
+            ctx.restore();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Ajuste inteligente das posições dos nós quando o tamanho da janela muda
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            buildGrid();
+            if (isPlaying) {
+                // Recalcula nós e posições para não distorcer ao mudar a tela
+                loadLevelGeometries(currentLevel);
+            }
+        }
+
+        window.addEventListener('resize', resize);
+        window.addEventListener('load', () => {
+            resize();
+            setupInput();
+            requestAnimationFrame(gameLoop);
+        });
+
+    </script>
+</body>
+</html>
