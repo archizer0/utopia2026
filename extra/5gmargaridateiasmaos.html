@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teia de Dedos - Fios Interativos</title>
+   
+    <!-- Tailwind CSS para estilização rápida -->
+    <script src="https://cdn.tailwindcss.com"></script>
+   
+    <!-- Bibliotecas do MediaPipe para deteção de mãos -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        /* O canvas é espelhado por CSS para dar o efeito de espelho natural */
+        #output_canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+            transform: scaleX(-1);
+            z-index: 1;
+        }
+
+        #ui_layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none; /* Deixa os cliques passarem se necessário */
+        }
+
+        .glass-panel {
+            background: rgba(20, 20, 20, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            pointer-events: auto;
+        }
+
+        /* Efeito de brilho no botão */
+        .btn-glow {
+            transition: all 0.3s ease;
+        }
+        .btn-glow:hover {
+            box-shadow: 0 0 20px rgba(0, 243, 255, 0.6);
+            transform: translateY(-2px);
+        }
+
+        /* Estilização extra para as paletas de cor nativas do browser */
+        input[type="color"]::-webkit-color-swatch-wrapper {
+            padding: 0;
+        }
+        input[type="color"]::-webkit-color-swatch {
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+        }
+        input[type="color"]::-moz-color-swatch {
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Vídeo escondido usado apenas para alimentar a IA -->
+    <video id="input_video" style="display: none;"></video>
+   
+    <!-- Canvas principal onde a magia acontece -->
+    <canvas id="output_canvas"></canvas>
+
+    <!-- Camada de Interface de Utilizador -->
+    <div id="ui_layer">
+        <div id="start_screen" class="glass-panel p-8 rounded-2xl text-center shadow-2xl max-w-md mx-4">
+            <h1 class="text-3xl font-bold text-white mb-4">Teia de Dedos</h1>
+            <p class="text-gray-300 mb-8">
+                Esta experiência usa inteligência artificial para mapear as tuas mãos.
+                Levanta as duas mãos para a câmara para veres os teus dedos interligados por fios de energia.
+            </p>
+            <button id="start_btn" class="btn-glow bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold py-3 px-8 rounded-full text-lg w-full">
+                Iniciar Experiência
+            </button>
+        </div>
+
+        <div id="loading_screen" class="glass-panel p-6 rounded-xl text-center hidden">
+            <div class="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-cyan-400 mb-3"></div>
+            <p class="text-cyan-400 font-semibold animate-pulse">A carregar o modelo de IA e câmara...</p>
+        </div>
+
+        <!-- Painel de Controlos (Paleta de Cores) -->
+        <div id="controls_panel" class="glass-panel p-5 rounded-xl hidden flex flex-col gap-4 absolute top-4 right-4 sm:top-6 sm:right-6 pointer-events-auto shadow-2xl z-50 transition-opacity duration-500">
+            <h2 class="text-white font-semibold mb-1 text-sm uppercase tracking-wider border-b border-gray-500/50 pb-2">Paleta de Cores</h2>
+           
+            <div class="flex items-center justify-between gap-6">
+                <label class="text-gray-300 text-sm cursor-pointer" for="color_intra">Teia da Mão</label>
+                <input type="color" id="color_intra" value="#00f3ff" class="w-8 h-8 rounded cursor-pointer bg-transparent border-0 p-0">
+            </div>
+           
+            <div class="flex items-center justify-between gap-6">
+                <label class="text-gray-300 text-sm cursor-pointer" for="color_inter">Ligação Mãos</label>
+                <input type="color" id="color_inter" value="#ff00e6" class="w-8 h-8 rounded cursor-pointer bg-transparent border-0 p-0">
+            </div>
+
+            <div class="flex items-center justify-between gap-6">
+                <label class="text-gray-300 text-sm cursor-pointer" for="color_node">Nós/Pontos</label>
+                <input type="color" id="color_node" value="#ffffff" class="w-8 h-8 rounded cursor-pointer bg-transparent border-0 p-0">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const videoElement = document.getElementById('input_video');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+       
+        const startScreen = document.getElementById('start_screen');
+        const loadingScreen = document.getElementById('loading_screen');
+        const startBtn = document.getElementById('start_btn');
+
+        let isInitialized = false;
+
+        // Configurações de cores para os "fios" (agora dinâmicas)
+        let COLOR_INTRA_HAND = '#00f3ff'; // Ciano para ligações na mesma mão
+        let COLOR_INTER_HAND = '#ff00e6'; // Magenta para fios entre as duas mãos
+        let COLOR_NODE = '#ffffff';       // Branco para as pontas dos dedos
+
+        // Elementos da paleta de cores
+        const colorIntraInput = document.getElementById('color_intra');
+        const colorInterInput = document.getElementById('color_inter');
+        const colorNodeInput = document.getElementById('color_node');
+        const controlsPanel = document.getElementById('controls_panel');
+
+        // Atualizar cores instantaneamente quando o utilizador muda na paleta
+        colorIntraInput.addEventListener('input', (e) => COLOR_INTRA_HAND = e.target.value);
+        colorInterInput.addEventListener('input', (e) => COLOR_INTER_HAND = e.target.value);
+        colorNodeInput.addEventListener('input', (e) => COLOR_NODE = e.target.value);
+
+        // Índices dos pontos dos dedos (Landmarks do MediaPipe)
+        const WRIST = 0;
+        const PALM_CENTER = 9;
+        const THUMB_TIP = 4;
+        const INDEX_TIP = 8;
+        const MIDDLE_TIP = 12;
+        const RING_TIP = 16;
+        const PINKY_TIP = 20;
+
+        const FINGERTIPS = [THUMB_TIP, INDEX_TIP, MIDDLE_TIP, RING_TIP, PINKY_TIP];
+
+        // Função para desenhar uma linha (fio) entre dois pontos
+        function drawWire(p1, p2, color, thickness = 2) {
+            // Converter coordenadas normalizadas (0 a 1) para pixels do canvas
+            const x1 = p1.x * canvasElement.width;
+            const y1 = p1.y * canvasElement.height;
+            const x2 = p2.x * canvasElement.width;
+            const y2 = p2.y * canvasElement.height;
+
+            canvasCtx.beginPath();
+            canvasCtx.moveTo(x1, y1);
+            canvasCtx.lineTo(x2, y2);
+            canvasCtx.strokeStyle = color;
+            canvasCtx.lineWidth = thickness;
+           
+            // Efeito de brilho neon
+            canvasCtx.shadowBlur = 15;
+            canvasCtx.shadowColor = color;
+            canvasCtx.stroke();
+           
+            // Limpar sombra para não afetar outros desenhos acidentalmente
+            canvasCtx.shadowBlur = 0;
+        }
+
+        // Função para desenhar o nó (ponta do dedo)
+        function drawNode(p, color, radius = 4) {
+            const x = p.x * canvasElement.width;
+            const y = p.y * canvasElement.height;
+
+            canvasCtx.beginPath();
+            canvasCtx.arc(x, y, radius, 0, 2 * Math.PI);
+            canvasCtx.fillStyle = color;
+            canvasCtx.shadowBlur = 10;
+            canvasCtx.shadowColor = color;
+            canvasCtx.fill();
+            canvasCtx.shadowBlur = 0;
+        }
+
+        // Função principal executada sempre que a IA processa um frame da câmara
+        function onResults(results) {
+            // Esconder o ecrã de carregamento quando o primeiro frame for processado
+            if (!isInitialized) {
+                loadingScreen.classList.add('hidden');
+                controlsPanel.classList.remove('hidden'); // Mostra a paleta de cores
+                isInitialized = true;
+            }
+
+            // Ajustar o tamanho interno do canvas para coincidir com a resolução do vídeo
+            if (canvasElement.width !== results.image.width) {
+                canvasElement.width = results.image.width;
+                canvasElement.height = results.image.height;
+            }
+
+            canvasCtx.save();
+           
+            // Desenhar a imagem da câmara como fundo
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+           
+            // Adicionar uma camada escura por cima do vídeo para destacar os fios neon
+            canvasCtx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+            canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+               
+                // 1. Desenhar fios DENTRO de cada mão (Intra-mão)
+                for (const landmarks of results.multiHandLandmarks) {
+                   
+                    // Ligar o centro da palma aos dedos (Efeito teia de aranha)
+                    for (const tip of FINGERTIPS) {
+                        drawWire(landmarks[PALM_CENTER], landmarks[tip], COLOR_INTRA_HAND, 1.5);
+                    }
+                   
+                    // Ligar os dedos adjacentes (Contorno da teia)
+                    for (let i = 0; i < FINGERTIPS.length - 1; i++) {
+                        drawWire(landmarks[FINGERTIPS[i]], landmarks[FINGERTIPS[i+1]], COLOR_INTRA_HAND, 2);
+                    }
+                    // Fechar o ciclo (Mindinho ao Pulso e Pulso ao Polegar)
+                    drawWire(landmarks[PINKY_TIP], landmarks[WRIST], COLOR_INTRA_HAND, 1.5);
+                    drawWire(landmarks[WRIST], landmarks[THUMB_TIP], COLOR_INTRA_HAND, 1.5);
+
+                    // Desenhar os nós luminosos nas pontas dos dedos e palma
+                    for (const tip of FINGERTIPS) {
+                        drawNode(landmarks[tip], COLOR_NODE);
+                    }
+                    drawNode(landmarks[PALM_CENTER], COLOR_NODE, 6);
+                }
+
+                // 2. Desenhar fios ENTRE as mãos (Inter-mãos) - Ligar todas as mãos visíveis
+                if (results.multiHandLandmarks.length > 1) {
+                    for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+                        for (let j = i + 1; j < results.multiHandLandmarks.length; j++) {
+                            const hand1 = results.multiHandLandmarks[i];
+                            const hand2 = results.multiHandLandmarks[j];
+
+                            // Ligar dedo a dedo correspondente (Polegar -> Polegar, etc)
+                            for (const tip of FINGERTIPS) {
+                                drawWire(hand1[tip], hand2[tip], COLOR_INTER_HAND, 2.5);
+                            }
+                           
+                            // Ligar os centros das palmas criando um cabo de energia central
+                            drawWire(hand1[PALM_CENTER], hand2[PALM_CENTER], COLOR_INTER_HAND, 4);
+                        }
+                    }
+                }
+            }
+            canvasCtx.restore();
+        }
+
+        // Configuração da IA MediaPipe Hands
+        const hands = new Hands({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }});
+       
+        hands.setOptions({
+            maxNumHands: 6, // Permite processar até 6 mãos simultaneamente
+            modelComplexity: 1, // Equilíbrio entre velocidade e precisão
+            minDetectionConfidence: 0.6,
+            minTrackingConfidence: 0.6
+        });
+       
+        hands.onResults(onResults);
+
+        // Ação do botão "Iniciar"
+        startBtn.addEventListener('click', () => {
+            startScreen.classList.add('hidden');
+            loadingScreen.classList.remove('hidden');
+
+            // Iniciar a câmara
+            const camera = new Camera(videoElement, {
+                onFrame: async () => {
+                    await hands.send({image: videoElement});
+                },
+                width: 1280,
+                height: 720
+            });
+           
+            camera.start()
+                .catch(err => {
+                    alert('Não foi possível aceder à câmara. Por favor, verifica as permissões.');
+                    loadingScreen.classList.add('hidden');
+                    startScreen.classList.remove('hidden');
+                });
+        });
+
+    </script>
+</body>
+</html>
