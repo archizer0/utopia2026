@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jardim de Pétalas - Experiência Interativa</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: radial-gradient(circle at center, #1a0b2e 0%, #05020a 100%);
+            font-family: 'Georgia', serif;
+            color: white;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+        }
+
+        #poem-text {
+            font-size: 2.5rem;
+            font-style: italic;
+            text-align: center;
+            text-shadow: 0 0 20px rgba(255, 100, 250, 0.6);
+            opacity: 0;
+            transition: opacity 2s ease-in-out;
+            max-width: 80%;
+            background: linear-gradient(to right, #ff77ff, #a066ff, #66aaff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            z-index: 20;
+        }
+
+        #loading-screen {
+            position: fixed;
+            inset: 0;
+            background: #05020a;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            transition: opacity 1s;
+        }
+
+        .loader {
+            width: 48px;
+            height: 48px;
+            border: 5px solid #a066ff;
+            border-bottom-color: transparent;
+            border-radius: 50%;
+            animation: rotation 1s linear infinite;
+        }
+
+        @keyframes rotation {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .instruction {
+            position: absolute;
+            bottom: 20px;
+            font-size: 0.9rem;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            opacity: 0.7;
+            color: #a066ff;
+        }
+
+        #video-container {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loading-screen" onclick="startAudio()">
+        <div class="loader"></div>
+        <p class="mt-4 text-purple-300 animate-pulse">Clica para começar a experiência...</p>
+    </div>
+
+    <div id="ui-overlay">
+        <div id="poem-text"></div>
+        <div class="instruction">Fecha a mão para transformar as flores</div>
+    </div>
+
+    <div id="video-container">
+        <video id="input-video"></video>
+    </div>
+
+    <canvas id="game-canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const videoElement = document.getElementById('input-video');
+        const poemElement = document.getElementById('poem-text');
+        const loadingScreen = document.getElementById('loading-screen');
+
+        let width, height;
+        let flowers = [];
+        let particles = [];
+        
+        // State of hands
+        let activeHands = []; 
+        let audioStarted = false;
+        let isAnyHandClosed = false;
+
+        // Audio Context for the Xylophone
+        let audioCtx;
+        const pentatonicScale = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25];
+
+        const poemLines = [
+            "Uma flor",
+            "Uma pequena flor",
+            "Que eu colhi",
+            "Só a pensar em ti.",
+            "Uma flor",
+            "Uma pequena flor"
+        ];
+        let currentLineIndex = 0;
+        let textVisible = false;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        const colors = [
+            '#ff85da', // Pink
+            '#a855f7', // Purple
+            '#3b82f6', // Blue
+            '#e879f9', // Vibrant Pink
+            '#818cf8'  // Violet Blue
+        ];
+
+        function startAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            audioStarted = true;
+        }
+
+        function playXylophoneNote(frequency, volume) {
+            if (!audioCtx || audioCtx.state === 'suspended' || !isFinite(frequency) || !isFinite(volume)) return;
+            
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+            
+            const safeVolume = Math.max(0, Math.min(0.4, volume));
+            
+            gain.gain.setValueAtTime(0, audioCtx.currentTime);
+            gain.gain.linearRampToValueAtTime(safeVolume, audioCtx.currentTime + 0.01);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.6);
+            
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.6);
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.size = Math.random() * 8 + 4;
+                this.opacity = 1;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2 + 1;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.1;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.rotation += this.rotationSpeed;
+                this.opacity -= 0.005;
+                this.vx += Math.sin(Date.now() * 0.001) * 0.05;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                ctx.globalAlpha = Math.max(0, this.opacity);
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.quadraticCurveTo(this.size, -this.size, 0, -this.size * 2);
+                ctx.quadraticCurveTo(-this.size, -this.size, 0, 0);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        class Flower {
+            constructor() {
+                this.reset();
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.targetX = this.x;
+                this.targetY = this.y;
+            }
+
+            reset() {
+                this.targetX = Math.random() * width;
+                this.targetY = Math.random() * height;
+                this.size = Math.random() * 30 + 20;
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+                this.petalCount = 6 + Math.floor(Math.random() * 4);
+                this.isBlown = false;
+                this.growScale = 0;
+                this.maxGrow = Math.random() * 0.5 + 0.8;
+                this.noiseOffset = Math.random() * 1000;
+            }
+
+            update() {
+                if (textVisible) {
+                    const centerX = width / 2;
+                    const centerY = height / 2;
+                    const distToCenter = Math.sqrt((this.x - centerX)**2 + (this.y - centerY)**2);
+                    
+                    if (distToCenter < 280) {
+                        const angle = Math.atan2(this.y - centerY, this.x - centerX);
+                        this.targetX = centerX + Math.cos(angle) * 320;
+                        this.targetY = centerY + Math.sin(angle) * 320;
+                    }
+                } else {
+                    this.targetX += Math.sin(Date.now() * 0.001 + this.noiseOffset) * 0.5;
+                    this.targetY += Math.cos(Date.now() * 0.001 + this.noiseOffset) * 0.5;
+                }
+
+                this.x += (this.targetX - this.x) * 0.05;
+                this.y += (this.targetY - this.y) * 0.05;
+            }
+
+            draw() {
+                this.update();
+                if (this.growScale < this.maxGrow) this.growScale += 0.01;
+
+                const pulse = Math.sin(Date.now() * 0.002 + this.noiseOffset) * 0.1;
+                const currentSize = Math.max(0, this.size * (this.growScale + pulse));
+
+                if (!this.isBlown && currentSize > 0) {
+                    ctx.save();
+                    ctx.translate(this.x, this.y);
+                    
+                    // Draw center
+                    ctx.beginPath();
+                    ctx.arc(0, 0, Math.max(0.1, currentSize * 0.2), 0, Math.PI * 2);
+                    ctx.fillStyle = 'white';
+                    ctx.globalAlpha = 0.3;
+                    ctx.fill();
+
+                    // Draw petals or crystals
+                    ctx.globalAlpha = 0.6;
+                    ctx.fillStyle = this.color;
+                    
+                    for (let i = 0; i < this.petalCount; i++) {
+                        ctx.save();
+                        ctx.rotate((Math.PI * 2 / this.petalCount) * i);
+                        
+                        ctx.beginPath();
+                        if (isAnyHandClosed) {
+                            // CRYSTAL FORM (Closed hand)
+                            ctx.moveTo(0, 0);
+                            ctx.lineTo(currentSize * 0.5, -currentSize * 1.2);
+                            ctx.lineTo(0, -currentSize * 2);
+                            ctx.lineTo(-currentSize * 0.5, -currentSize * 1.2);
+                            ctx.closePath();
+                        } else {
+                            // FLOWER FORM (Open hand)
+                            ctx.moveTo(0, 0);
+                            ctx.quadraticCurveTo(currentSize, -currentSize, 0, -currentSize * 1.5);
+                            ctx.quadraticCurveTo(-currentSize, -currentSize, 0, 0);
+                        }
+                        ctx.fill();
+                        ctx.restore();
+                    }
+                    ctx.restore();
+                }
+
+                // Interaction with multiple hands
+                activeHands.forEach(hand => {
+                    if (!this.isBlown) {
+                        const dx = this.x - hand.x;
+                        const dy = this.y - hand.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist < 100) this.explode();
+                    }
+                });
+            }
+
+            explode() {
+                this.isBlown = true;
+                for (let i = 0; i < this.petalCount * 2; i++) {
+                    particles.push(new Particle(this.x, this.y, this.color));
+                }
+                setTimeout(() => {
+                    this.isBlown = false;
+                    this.reset();
+                    this.growScale = 0;
+                }, 4000);
+            }
+        }
+
+        for (let i = 0; i < 22; i++) {
+            flowers.push(new Flower());
+        }
+
+        function updatePoem() {
+            textVisible = false;
+            poemElement.style.opacity = 0;
+            setTimeout(() => {
+                poemElement.innerText = poemLines[currentLineIndex];
+                poemElement.style.opacity = 1;
+                textVisible = true;
+                currentLineIndex = (currentLineIndex + 1) % poemLines.length;
+            }, 2000);
+        }
+
+        setInterval(updatePoem, 7500);
+        updatePoem();
+
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 2,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        hands.onResults((results) => {
+            const newHandStates = [];
+            let handClosedInThisFrame = false;
+            
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                results.multiHandLandmarks.forEach((landmarks, index) => {
+                    const palmCenter = landmarks[9];
+                    
+                    // Fist detection logic: 
+                    // Calculate distance between fingers and palm
+                    const fingers = [8, 12, 16, 20]; // Tips of index, middle, ring, pinky
+                    let avgDist = 0;
+                    fingers.forEach(fIdx => {
+                        const dx = landmarks[fIdx].x - landmarks[0].x;
+                        const dy = landmarks[fIdx].y - landmarks[0].y;
+                        avgDist += Math.sqrt(dx*dx + dy*dy);
+                    });
+                    avgDist /= 4;
+                    
+                    // Threshold for a closed hand (distance between tips and wrist/palm)
+                    if (avgDist < 0.15) handClosedInThisFrame = true;
+
+                    if (palmCenter && isFinite(palmCenter.x) && isFinite(palmCenter.y)) {
+                        const hX = (1 - palmCenter.x) * width;
+                        const hY = palmCenter.y * height;
+                        const nIdx = Math.floor(Math.max(0, Math.min(0.99, (1 - palmCenter.x))) * pentatonicScale.length);
+                        const vol = Math.max(0, Math.min(1, 1 - palmCenter.y));
+
+                        const prevHand = activeHands[index];
+                        if (audioStarted && (!prevHand || prevHand.noteIndex !== nIdx)) {
+                            playXylophoneNote(pentatonicScale[nIdx], vol);
+                        }
+
+                        newHandStates.push({ x: hX, y: hY, noteIndex: nIdx, volume: vol });
+                    }
+                });
+            }
+            activeHands = newHandStates;
+            isAnyHandClosed = handClosedInThisFrame;
+        });
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({image: videoElement});
+            },
+            width: 640,
+            height: 480
+        });
+
+        camera.start().then(() => {
+            loadingScreen.querySelector('p').innerText = "Clica para despertar o jardim";
+        });
+
+        function animate() {
+            ctx.fillStyle = 'rgba(5, 2, 10, 0.18)';
+            ctx.fillRect(0, 0, width, height);
+
+            activeHands.forEach(hand => {
+                const gradient = ctx.createRadialGradient(hand.x, hand.y, 0, hand.x, hand.y, 180);
+                // Change trail color if hand is closed
+                const color = isAnyHandClosed ? 'rgba(100, 200, 255, 0.3)' : 'rgba(160, 102, 255, 0.25)';
+                gradient.addColorStop(0, color);
+                gradient.addColorStop(1, 'rgba(160, 102, 255, 0)');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, width, height);
+            });
+
+            flowers.forEach(flower => flower.draw());
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].update();
+                particles[i].draw();
+                if (particles[i].opacity <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        loadingScreen.onclick = () => {
+            startAudio();
+            loadingScreen.style.opacity = 0;
+            setTimeout(() => loadingScreen.style.display = 'none', 1000);
+            animate();
+        };
+    </script>
+</body>
+</html>
