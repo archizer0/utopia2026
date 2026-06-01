@@ -49,7 +49,7 @@
                 <span id="hud-level-number" class="text-xs font-bold tracking-widest text-cyan-400 orbitron">NÍVEL 01</span>
                 <span id="hud-level-name" class="text-sm font-bold text-white uppercase">Triângulo</span>
             </div>
-           
+            
             <!-- Barra de Escudo -->
             <div class="flex flex-col gap-1 mt-2">
                 <div class="flex justify-between text-[10px] font-bold tracking-wider text-slate-400">
@@ -181,9 +181,10 @@
             radius: 12,
             targetX: 0,
             targetY: 0,
-            easing: 0.12 // Movimento mais lento, suave e arrastado
+            easing: 0.12, // Movimento mais lento, suave e arrastado
+            invulnerableFrames: 0 // Novo: Evita receber hits múltiplos seguidos
         };
-       
+        
         let nodes = [];
         let edges = [];
         let enemies = [];
@@ -231,8 +232,8 @@
                     { from: 3, to: 0, traced: false }
                 ],
                 enemies: [
-                    { type: 'patrol', xPct: 0, yPct: -0.2, vx: 0, vy: 1.8, radius: 14, shape: 'square' },
-                    { type: 'patrol', xPct: -0.4, yPct: 0.4, vx: 2.0, vy: 0, radius: 14, shape: 'square' }
+                    { type: 'patrol', xPct: 0.5, yPct: -0.5, vx: -1.5, vy: 1.5, radius: 14, shape: 'square' },
+                    { type: 'patrol', xPct: -0.5, yPct: 0.5, vx: 1.5, vy: -1.5, radius: 14, shape: 'square' }
                 ]
             },
             3: {
@@ -330,7 +331,7 @@
                 enemies: [
                     { type: 'patrol', xPct: -0.5, yPct: -0.5, vx: 1.8, vy: 1.2, radius: 14, shape: 'circle' },
                     { type: 'patrol', xPct: 0.5, yPct: 0.5, vx: -1.2, vy: -1.8, radius: 14, shape: 'circle' },
-                    { type: 'patrol', xPct: 0, yPct: 0, vx: 2.0, vy: -2.0, radius: 12, shape: 'circle' }
+                    { type: 'patrol', xPct: -0.2, yPct: 0.2, vx: 2.0, vy: -2.0, radius: 12, shape: 'circle' }
                 ]
             },
             7: {
@@ -406,6 +407,18 @@
 
         let ambientSynth, synthChime, polyVictory;
         let lastChimeTime = 0;
+        let lastHitSoundTime = 0;
+
+        let synthHit; // Novo sintetizador dedicado para evitar concorrência
+        let lastAudioTime = 0;
+
+        // Função utilitária para prevenir conflitos de concorrência na linha do tempo do Tone.js
+        function getSafeAudioTime() {
+            const now = Tone.now();
+            const safeTime = Math.max(now, lastAudioTime + 0.05);
+            lastAudioTime = safeTime;
+            return safeTime;
+        }
 
         function initAudio() {
             if (ambientSynth) return;
@@ -418,12 +431,19 @@
             });
             ambientSynth.volume.value = -22;
 
-            // Sintetizador rápido de feedback para conexão de vértices (Chime)
-            synthChime = new Tone.MonoSynth({
+            // Sintetizador rápido de feedback para conexão de vértices (Chime) - alterado de MonoSynth para Synth para robustez extrema
+            synthChime = new Tone.Synth({
                 oscillator: { type: "sine" },
                 envelope: { attack: 0.005, decay: 0.15, sustain: 0, release: 0.2 }
             }).toDestination();
             synthChime.volume.value = -12;
+
+            // Sintetizador de impacto dedicado - alterado de MonoSynth para Synth para robustez extrema
+            synthHit = new Tone.Synth({
+                oscillator: { type: "sawtooth" },
+                envelope: { attack: 0.001, decay: 0.15, sustain: 0, release: 0.1 }
+            }).toDestination();
+            synthHit.volume.value = -14;
 
             // Sintetizador de vitória do nível
             polyVictory = new Tone.PolySynth(Tone.Synth).toDestination();
@@ -448,7 +468,11 @@
                     ["G2", "B2", "D3", "F3"]
                 ];
                 const activeChord = chords[Math.floor(Math.random() * chords.length)];
-                ambientSynth.triggerAttackRelease(activeChord, "6n");
+                try {
+                    ambientSynth.triggerAttackRelease(activeChord, "6n");
+                } catch (e) {
+                    console.warn("Tone.js ambient playback bypassed:", e.message);
+                }
                 setTimeout(playLoop, 6000);
             };
             playLoop();
@@ -456,26 +480,44 @@
 
         function playChime(note = "C5") {
             if (!audioEnabled) return;
-            initAudio();
-            const now = Tone.now();
-            if (now - lastChimeTime < 0.1) return;
-            lastChimeTime = now;
-            synthChime.triggerAttackRelease(note, "16n", now);
+            const nowMs = performance.now();
+            if (nowMs - lastChimeTime < 100) return; // Debounce temporal que impede conflito de notas idênticas
+            lastChimeTime = nowMs;
+
+            try {
+                initAudio();
+                const time = getSafeAudioTime();
+                synthChime.triggerAttackRelease(note, "16n", time);
+            } catch (e) {
+                console.warn("Tone.js chime scheduling bypassed:", e.message);
+            }
         }
 
         function playVictorySound() {
             if (!audioEnabled) return;
-            initAudio();
-            const now = Tone.now();
-            polyVictory.triggerAttackRelease(["C4", "E4", "G4", "C5"], "2n", now);
-            polyVictory.triggerAttackRelease(["E4", "G4", "C5", "E5"], "2n", now + 0.35);
+            try {
+                initAudio();
+                const time = getSafeAudioTime();
+                polyVictory.triggerAttackRelease(["C4", "E4", "G4", "C5"], "2n", time);
+                polyVictory.triggerAttackRelease(["E4", "G4", "C5", "E5"], "2n", time + 0.35);
+            } catch (e) {
+                console.warn("Tone.js victory sound bypassed:", e.message);
+            }
         }
 
         function playHitSound() {
             if (!audioEnabled) return;
-            initAudio();
-            const now = Tone.now();
-            synthChime.triggerAttackRelease("C2", "8n", now);
+            const nowMs = performance.now();
+            if (nowMs - lastHitSoundTime < 150) return; // Debounce temporal de colisão
+            lastHitSoundTime = nowMs;
+
+            try {
+                initAudio();
+                const time = getSafeAudioTime();
+                synthHit.triggerAttackRelease("C2", "8n", time);
+            } catch (e) {
+                console.warn("Tone.js hit sound bypassed:", e.message);
+            }
         }
 
         function toggleAudio() {
@@ -578,10 +620,20 @@
         }
 
         function initPlayer() {
-            player.x = canvas.width / 2;
-            player.y = canvas.height / 2;
-            player.targetX = canvas.width / 2;
-            player.targetY = canvas.height / 2;
+            if (nodes && nodes.length > 0) {
+                player.x = nodes[0].x;
+                player.y = nodes[0].y;
+                player.targetX = nodes[0].x;
+                player.targetY = nodes[0].y;
+                // Deixa o primeiro vértice ativado como âncora inicial automaticamente para fluidez total
+                activeAnchorNode = 0;
+            } else {
+                player.x = canvas.width / 2;
+                player.y = canvas.height / 2;
+                player.targetX = canvas.width / 2;
+                player.targetY = canvas.height / 2;
+                activeAnchorNode = null;
+            }
         }
 
         function updatePlayer() {
@@ -594,6 +646,11 @@
         }
 
         function drawPlayer() {
+            // Se estiver invulnerável, pisca o jogador ocultando alguns frames
+            if (player.invulnerableFrames > 0 && Math.floor(player.invulnerableFrames / 4) % 2 === 0) {
+                return;
+            }
+
             ctx.save();
             ctx.translate(player.x, player.y);
 
@@ -749,11 +806,11 @@
                     if (!edge.traced) {
                         if ((edge.from === activeAnchorNode && edge.to === nodeId) ||
                             (edge.to === activeAnchorNode && edge.from === nodeId)) {
-                           
+                            
                             edge.traced = true;
                             connectionFound = true;
                             activeAnchorNode = nodeId; // Nova âncora torna-se o ponto visitado
-                           
+                            
                             // Toque de nota ascendente dependendo do progresso
                             const tracedCount = edges.filter(e => e.traced).length;
                             const notes = ["G4", "A4", "B4", "C5", "D5", "E5", "G5", "A5"];
@@ -825,7 +882,7 @@
             // 3. Linha elástica esticada atualmente pelo jogador
             if (activeAnchorNode !== null) {
                 const anchor = nodes[activeAnchorNode];
-               
+                
                 // Brilho da linha esticadora
                 ctx.strokeStyle = 'rgba(192, 132, 252, 0.2)';
                 ctx.lineWidth = 6;
@@ -907,13 +964,15 @@
                 // Sentinela deforma a grade fisicamente
                 applyGridDeformation(en.x, en.y, 50, -0.8);
 
-                // Colisão direta com o jogador
-                const dx = player.x - en.x;
-                const dy = player.y - en.y;
-                const dist = Math.sqrt(dx*dx + dy*dy);
+                // Colisão direta com o jogador (apenas se não estiver invulnerável)
+                if (player.invulnerableFrames === 0) {
+                    const dx = player.x - en.x;
+                    const dy = player.y - en.y;
+                    const dist = Math.sqrt(dx*dx + dy*dy);
 
-                if (dist < player.radius + en.radius) {
-                    handlePlayerHit();
+                    if (dist < player.radius + en.radius) {
+                        handlePlayerHit();
+                    }
                 }
             });
         }
@@ -923,12 +982,15 @@
             shield = Math.max(0, shield - 25);
             screenShake = 14;
 
+            // Ativa 60 frames (~1 segundo a 60 FPS) de proteção e piscagem
+            player.invulnerableFrames = 60;
+
             // Quando atingido, a linha esticada atual rompe-se
             activeAnchorNode = null;
 
             // Explosão local de partículas vermelhas
             spawnLevelParticles(player.x, player.y, '#ef4444', 18);
-           
+            
             updateHUD();
 
             if (shield <= 0) {
@@ -984,11 +1046,11 @@
             if (untracedCount === 0) {
                 isPlaying = false;
                 playVictorySound();
-               
+                
                 // Explosão triunfal de partículas multicoloridas no centro
                 spawnLevelParticles(canvas.width / 2, canvas.height / 2, '#34d399', 40);
                 spawnLevelParticles(canvas.width / 2, canvas.height / 2, '#60a5fa', 30);
-               
+                
                 // Pequena onda de choque na malha
                 applyGridDeformation(canvas.width / 2, canvas.height / 2, Math.max(canvas.width, canvas.height), 12);
 
@@ -1006,11 +1068,11 @@
 
             document.getElementById('hud-level-number').textContent = `NÍVEL ${String(currentLevel).padStart(2, '0')}`;
             document.getElementById('hud-level-name').textContent = levelData.name;
-           
+            
             // Atualiza Escudo
             document.getElementById('shield-text').textContent = `${shield}%`;
             document.getElementById('shield-bar').style.width = `${shield}%`;
-           
+            
             // Cores de aviso de integridade
             if (shield <= 25) {
                 document.getElementById('shield-bar').className = "h-full bg-gradient-to-r from-red-500 to-rose-600 transition-all duration-150";
@@ -1024,7 +1086,7 @@
             const tracedCount = edges.filter(e => e.traced).length;
             const totalCount = edges.length;
             document.getElementById('trace-text').textContent = `${tracedCount}/${totalCount}`;
-           
+            
             const progressPct = (tracedCount / totalCount) * 100;
             document.getElementById('trace-bar').style.width = `${progressPct}%`;
         }
@@ -1034,12 +1096,12 @@
                 this.x = x;
                 this.y = y;
                 this.color = color;
-               
+                
                 const angle = Math.random() * Math.PI * 2;
                 const speed = Math.random() * 5 + 1.5;
                 this.vx = Math.cos(angle) * speed;
                 this.vy = Math.sin(angle) * speed;
-               
+                
                 this.radius = Math.random() * 2 + 1;
                 this.alpha = 1;
                 this.decay = Math.random() * 0.02 + 0.015;
@@ -1080,24 +1142,24 @@
             currentLevel = 1;
             shield = 100;
             particles = [];
-           
-            initPlayer();
+            
             buildGrid();
             loadLevelGeometries(currentLevel);
-           
+            initPlayer();
+            
             isPlaying = true;
         }
 
         function nextLevel() {
             document.getElementById('level-complete-screen').classList.add('hidden');
-           
+            
             if (currentLevel < maxLevels) {
                 currentLevel++;
                 shield = Math.min(100, shield + 25); // Recuperação parcial por completar
                 particles = [];
-               
-                initPlayer();
+                
                 loadLevelGeometries(currentLevel);
+                initPlayer();
                 isPlaying = true;
             } else {
                 // Fim de todos os níveis! Vitória
@@ -1110,8 +1172,8 @@
             document.getElementById('game-over-screen').classList.add('hidden');
             shield = 100;
             particles = [];
-            initPlayer();
             loadLevelGeometries(currentLevel);
+            initPlayer();
             isPlaying = true;
         }
 
@@ -1135,6 +1197,11 @@
                 updatePlayer();
                 checkNodeInteractions();
                 updateEnemies();
+
+                // Atualizar temporizador de invulnerabilidade do jogador
+                if (player.invulnerableFrames > 0) {
+                    player.invulnerableFrames--;
+                }
             }
 
             // Atualização de faíscas neon
@@ -1143,7 +1210,7 @@
 
             // Preparação do desenho
             ctx.save();
-           
+            
             // Screen Shake dinâmico ao receber golpes
             if (screenShake > 0) {
                 const dx = (Math.random() - 0.5) * screenShake;
@@ -1158,7 +1225,7 @@
 
             drawGrid();
             drawLevelGeometries();
-           
+            
             if (isPlaying) {
                 drawEnemies();
                 drawPlayer();
